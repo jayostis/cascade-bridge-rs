@@ -10,7 +10,7 @@
 // Triples go into the store as triples. There is no N-Triples text in
 // between, so nothing is serialised on one side of a call and parsed back on
 // the other.
-use crate::decode::{decode, is_xml_space, normalise_line_endings};
+use crate::decode::{decode, is_xml_space, normalise_attribute_value, normalise_line_endings};
 use crate::error::Result;
 use oxigraph::model::{BlankNode, GraphName, Literal, NamedNode, NamedOrBlankNode, Quad, Term};
 use oxigraph::store::Store;
@@ -276,8 +276,8 @@ impl<R: BufRead> Lift<R> {
                             namespace.as_deref().unwrap_or(XYZ),
                             std::str::from_utf8(local.as_ref())?,
                         )?;
-                        let value = attribute
-                            .decode_and_unescape_value(self.reader.decoder())?
+                        let raw = std::str::from_utf8(&attribute.value)?;
+                        let value = quick_xml::escape::unescape(&normalise_attribute_value(raw))?
                             .into_owned();
                         attributes.push((predicate, value));
                     }

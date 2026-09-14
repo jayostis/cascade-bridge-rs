@@ -10,7 +10,7 @@ use crate::rdf::{
 };
 use crate::resolver::Resolver;
 use crate::run::{convert, prepare, Finding, Prepared};
-use oxigraph::model::{NamedOrBlankNode, Quad};
+use oxigraph::model::{NamedOrBlankNode, Quad, Term};
 use oxrdfio::{RdfFormat, RdfParser};
 use std::collections::{BTreeMap, HashSet};
 use std::time::{Duration, Instant};
@@ -40,7 +40,9 @@ impl Outcome {
 }
 
 pub struct EntryResult {
-    pub entry: String,
+    /// The entry as the manifest lists it. Only an IRI names a test outside
+    /// the manifest; a blank node or a literal does not.
+    pub entry: Term,
     pub name: String,
     pub type_iri: String,
     pub outcome: Outcome,
@@ -255,10 +257,11 @@ pub fn run_manifest(
     let mut results = Vec::new();
     for entry in entries {
         let start = Instant::now();
-        let Some(node) = as_subject(&entry) else {
-            continue;
+        let node = as_subject(&entry);
+        let (mut types, name) = match &node {
+            Some(node) => (values(graph, node, RDF_TYPE)?, value(graph, node, MF_NAME)?),
+            None => (Vec::new(), None),
         };
-        let mut types = values(graph, &node, RDF_TYPE)?;
         types.sort();
         let known = [BRIDGE_ISOMORPHIC, BRIDGE_INPUT_ONLY, BRIDGE_DATASET];
         let type_iri = known
@@ -267,7 +270,7 @@ pub fn run_manifest(
             .map(|t| (*t).to_owned())
             .or_else(|| types.first().cloned())
             .unwrap_or_default();
-        let name = value(graph, &node, MF_NAME)?.unwrap_or_else(|| term_value(&entry));
+        let name = name.unwrap_or_else(|| term_value(&entry));
 
         let (outcome, description) = if !unoffered.is_empty() {
             (
@@ -278,12 +281,16 @@ pub fn run_manifest(
                 ),
             )
         } else {
-            match &setup {
-                Err(e) => (
+            match (&setup, &node) {
+                (Err(e), _) => (
                     Outcome::Failed,
                     format!("the adapter could not be prepared: {e}"),
                 ),
-                Ok(setup) if type_iri == BRIDGE_DATASET => (
+                (Ok(_), None) => (
+                    Outcome::Inapplicable,
+                    "the entry is a literal, not a test".to_owned(),
+                ),
+                (Ok(_), Some(_)) if type_iri == BRIDGE_DATASET => (
                     Outcome::Untested,
                     if options.datasets {
                         "--datasets was given, but streaming a referenced dataset is not implemented in this Bridge yet".to_owned()
@@ -291,18 +298,22 @@ pub fn run_manifest(
                         "datasets are not fetched; pass --datasets to run them".to_owned()
                     },
                 ),
-                Ok(_) if type_iri != BRIDGE_ISOMORPHIC && type_iri != BRIDGE_INPUT_ONLY => (
-                    Outcome::Inapplicable,
-                    format!(
-                        "entry type {} is not one this Bridge knows",
-                        if type_iri.is_empty() {
-                            "(none)"
-                        } else {
-                            &type_iri
-                        }
-                    ),
-                ),
-                Ok(setup) => {
+                (Ok(_), Some(_))
+                    if type_iri != BRIDGE_ISOMORPHIC && type_iri != BRIDGE_INPUT_ONLY =>
+                {
+                    (
+                        Outcome::Inapplicable,
+                        format!(
+                            "entry type {} is not one this Bridge knows",
+                            if type_iri.is_empty() {
+                                "(none)"
+                            } else {
+                                &type_iri
+                            }
+                        ),
+                    )
+                }
+                (Ok(setup), Some(node)) => {
                     let entry = Entry {
                         adapter,
                         resolver,
@@ -319,7 +330,7 @@ pub fn run_manifest(
         };
 
         results.push(EntryResult {
-            entry: term_value(&entry),
+            entry,
             name,
             type_iri,
             outcome,

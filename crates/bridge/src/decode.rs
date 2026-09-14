@@ -92,3 +92,13 @@ pub fn normalise_line_endings(s: &str) -> Cow<'_, str> {
     }
     Cow::Owned(s.replace("\r\n", "\n").replace('\r', "\n"))
 }
+
+/// An attribute value as XML normalises it: every line ending, then every tab
+/// and line feed, becomes a space. It runs on the raw value, before any
+/// character reference is resolved, which is what keeps "&#10;" a line feed.
+pub fn normalise_attribute_value(raw: &str) -> Cow<'_, str> {
+    if !raw.contains(['\t', '\r', '\n']) {
+        return Cow::Borrowed(raw);
+    }
+    Cow::Owned(normalise_line_endings(raw).replace(['\t', '\n'], " "))
+}

@@ -86,7 +86,7 @@ impl Query {
 }
 
 pub struct Prepared {
-    pub unit: Option<String>,
+    pub unit: String,
     pub mappings: Vec<Query>,
     pub findings_queries: Vec<Query>,
     pub detect: Option<Query>,
@@ -139,6 +139,12 @@ pub fn prepare(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prepared> {
     if adapter.mappings.is_empty() {
         return Err(Error::msg("the adapter names no bridge:mapping"));
     }
+    // Without a unit nothing is split off, so no mapping would run and an
+    // empty result would pass for a conversion.
+    let unit = adapter
+        .unit
+        .clone()
+        .ok_or_else(|| Error::msg("the adapter names no bridge:unit"))?;
     let mut tables = Vec::new();
     for iri in &adapter.tables {
         let format = value(&adapter.graph, &subject(iri)?, SCHEMA_ENCODING_FORMAT)?;
@@ -173,7 +179,7 @@ pub fn prepare(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prepared> {
         .transpose()?;
 
     Ok(Prepared {
-        unit: adapter.unit.clone(),
+        unit,
         mappings,
         findings_queries,
         detect,
@@ -208,7 +214,7 @@ pub fn convert(prepared: &Prepared, xml: &[u8]) -> Result<Conversion> {
     let mut findings = Vec::new();
     let mut units = 0;
 
-    let mut lift = lift_slice(xml, prepared.unit.as_deref())?;
+    let mut lift = lift_slice(xml, Some(&prepared.unit))?;
     loop {
         let at = Instant::now();
         let Some(store) = lift.next_unit()? else {

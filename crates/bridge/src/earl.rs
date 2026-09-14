@@ -3,7 +3,7 @@
 use crate::error::Result;
 use crate::harness::EntryResult;
 use oxrdf::vocab::{rdf, xsd};
-use oxrdf::{BlankNode, GraphName, Literal, NamedNode, NamedOrBlankNode, Quad};
+use oxrdf::{BlankNode, GraphName, Literal, NamedNode, NamedOrBlankNode, Quad, Term};
 use oxrdfio::{RdfFormat, RdfSerializer};
 use oxsdatatypes::DateTime;
 
@@ -62,6 +62,21 @@ pub fn earl_report_at(
     );
 
     for result in results {
+        // An entry with no IRI has no name outside its manifest, so it is
+        // reported as an anonymous test carrying the entry's name: the report
+        // still holds one assertion per entry.
+        let test = match &result.entry {
+            Term::NamedNode(test) => NamedOrBlankNode::from(test.clone()),
+            _ => {
+                let test = NamedOrBlankNode::from(BlankNode::default());
+                triple(
+                    test.clone(),
+                    iri(DCT, "title")?,
+                    Literal::new_simple_literal(&result.name).into(),
+                );
+                test
+            }
+        };
         let assertion = BlankNode::default();
         let test_result = BlankNode::default();
         let a = NamedOrBlankNode::from(assertion);
@@ -72,11 +87,7 @@ pub fn earl_report_at(
         );
         triple(a.clone(), iri(EARL, "assertedBy")?, software.clone().into());
         triple(a.clone(), iri(EARL, "subject")?, software.clone().into());
-        triple(
-            a.clone(),
-            iri(EARL, "test")?,
-            NamedNode::new(&result.entry)?.into(),
-        );
+        triple(a.clone(), iri(EARL, "test")?, test.into());
         triple(
             a.clone(),
             iri(EARL, "mode")?,

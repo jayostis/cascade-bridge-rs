@@ -42,6 +42,12 @@ impl Resolver for DirectoryResolver {
     fn read(&self, iri: &str) -> Result<Vec<u8>> {
         let outside = || Error::msg(format!("not inside the adapter: {iri}"));
         let bare = iri.split('#').next().unwrap_or(iri);
+        // A server in the IRI is a network host. One that is not the
+        // adapter's own is refused before the filesystem is asked, since
+        // asking would contact it.
+        if authority(bare) != authority(&self.root_iri) {
+            return Err(outside());
+        }
         let path = file_iri_to_path(bare).ok_or_else(outside)?;
         // The boundary is decided on the resolved filesystem path, never on
         // the IRI string: percent-encoding hides "%2e%2e" from a prefix test
@@ -84,14 +90,24 @@ fn resolve(path: &Path) -> Option<PathBuf> {
 
 fn path_to_file_iri(path: &Path) -> String {
     let text = path.to_string_lossy().replace('\\', "/");
-    // A Windows canonical path opens with the extended-length prefix, and a
-    // drive letter needs the empty authority's slash that a POSIX path
-    // already carries.
-    let text = text.strip_prefix("//?/").unwrap_or(&text);
+    // A Windows canonical path opens with the extended-length prefix. A
+    // network path's server is the IRI's authority, as RFC 8089 writes a UNC
+    // path; a drive letter needs the empty authority's slash that a POSIX
+    // path already carries.
+    let (server, text) = match text.strip_prefix("//?/UNC/") {
+        Some(unc) => unc.split_once('/').unwrap_or((unc, "")),
+        None => ("", text.strip_prefix("//?/").unwrap_or(&text)),
+    };
     let mut out = String::from("file://");
+    push_encoded(&mut out, server);
     if !text.starts_with('/') {
         out.push('/');
     }
+    push_encoded(&mut out, text);
+    out
+}
+
+fn push_encoded(out: &mut String, text: &str) {
     for byte in text.bytes() {
         match byte {
             b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' | b'/' | b':' => {
@@ -100,16 +116,27 @@ fn path_to_file_iri(path: &Path) -> String {
             _ => out.push_str(&format!("%{byte:02X}")),
         }
     }
-    out
+}
+
+/// The server a file IRI names, empty for this machine; none for an IRI that
+/// is not a file IRI.
+fn authority(iri: &str) -> Option<&str> {
+    let rest = iri.strip_prefix("file://")?;
+    let server = &rest[..rest.find('/').unwrap_or(rest.len())];
+    Some(if server == "localhost" { "" } else { server })
 }
 
 fn file_iri_to_path(iri: &str) -> Option<PathBuf> {
     let rest = iri.strip_prefix("file://")?;
-    let rest = rest.strip_prefix("localhost").unwrap_or(rest);
-    if !rest.starts_with('/') {
-        return None;
-    }
+    let (server, rest) = rest.split_at(rest.find('/')?);
     let decoded = percent_decode(rest)?;
+    // Two leading slashes are what Windows reads as a server and a share.
+    if !server.is_empty() && server != "localhost" {
+        return Some(PathBuf::from(format!(
+            "//{}{decoded}",
+            percent_decode(server)?
+        )));
+    }
     // "/C:/x" is a Windows path; "/home/x" is a POSIX one.
     let bytes = decoded.as_bytes();
     if bytes.len() >= 3 && bytes[0] == b'/' && bytes[1].is_ascii_alphabetic() && bytes[2] == b':' {
@@ -133,4 +160,39 @@ fn percent_decode(s: &str) -> Option<String> {
         }
     }
     String::from_utf8(out).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn writes_a_drive_path_under_the_empty_authority() {
+        assert_eq!(
+            path_to_file_iri(Path::new(r"\\?\C:\dev\adapter")),
+            "file:///C:/dev/adapter"
+        );
+        assert_eq!(
+            file_iri_to_path("file:///C:/dev/adapter/x.json"),
+            Some(PathBuf::from("C:/dev/adapter/x.json"))
+        );
+    }
+
+    #[test]
+    fn writes_a_network_path_with_its_server_as_the_authority() {
+        assert_eq!(
+            path_to_file_iri(Path::new(r"\\?\UNC\server\share\adapter")),
+            "file://server/share/adapter"
+        );
+    }
+
+    #[test]
+    fn reads_a_network_iri_back_to_the_network_path() {
+        assert_eq!(
+            file_iri_to_path("file://server/share/adapter/ro-crate-metadata.json"),
+            Some(PathBuf::from(
+                "//server/share/adapter/ro-crate-metadata.json"
+            ))
+        );
+    }
 }

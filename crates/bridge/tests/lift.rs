@@ -110,3 +110,38 @@ fn treats_a_document_whose_element_is_the_unit_as_one_unit() {
     assert!(lines.iter().any(|line| line.contains("\"9\"")));
     assert!(lift.next_unit().expect("end").is_none());
 }
+
+/// The values an attribute of this local name lifts to.
+fn attribute(xml: &[u8], local: &str) -> Vec<String> {
+    let predicate = format!("http://sparql.xyz/facade-x/data/{local}");
+    lift_slice(xml, None)
+        .expect("lift")
+        .into_skeleton()
+        .expect("skeleton")
+        .iter()
+        .map(|q| q.expect("quad"))
+        .filter(|q| q.predicate.as_str() == predicate)
+        .map(|q| match q.object {
+            oxrdf::Term::Literal(l) => l.value().to_owned(),
+            other => panic!("{local} lifted to {other}"),
+        })
+        .collect()
+}
+
+#[test]
+fn normalises_an_attribute_value_as_xml_does_whatever_the_checkout() {
+    // A line break, however the checkout wrote it, and a tab are each a space;
+    // a character reference is the character it names, whitespace or not.
+    for xml in [
+        &b"<item note=\"a\r\nb\tc&#10;d&#9;e\"/>"[..],
+        b"<item note=\"a\nb\tc&#10;d&#9;e\"/>",
+        b"<item note=\"a\rb\tc&#10;d&#9;e\"/>",
+    ] {
+        assert_eq!(
+            attribute(xml, "note"),
+            ["a b c\nd\te"],
+            "{}",
+            String::from_utf8_lossy(xml).escape_debug()
+        );
+    }
+}

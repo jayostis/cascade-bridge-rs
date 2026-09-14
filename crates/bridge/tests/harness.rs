@@ -2,9 +2,10 @@
 // outcome is reached by the smallest input that can reach it, and two entries
 // must fail.
 use cascade_bridge::{
-    earl_report_at, load_adapter, run_manifest, DirectoryResolver, ReportSubject, RunOptions,
+    earl_report_at, load_adapter, run_manifest, DirectoryResolver, EntryResult, ReportSubject,
+    Resolver, RunOptions,
 };
-use oxrdf::{Graph, NamedNode, Triple};
+use oxrdf::{Graph, NamedNode, TermRef, Triple};
 use oxrdfio::{RdfFormat, RdfParser};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -121,4 +122,135 @@ fn reports_one_earl_assertion_per_entry_its_outcome_on_the_test_result() {
             1
         );
     }
+}
+
+#[test]
+fn fails_every_entry_when_the_adapter_names_no_unit() {
+    let resolver = DirectoryResolver::new(tiny()).expect("resolver");
+    let mut adapter = load_adapter(&resolver).expect("adapter");
+    adapter.unit = None;
+    let results = run_manifest(&adapter, &resolver, RunOptions::default()).expect("manifest");
+    assert!(!results.is_empty());
+    for result in &results {
+        assert_eq!(
+            result.outcome.as_str(),
+            "failed",
+            "{}: {}",
+            result.name,
+            result.description
+        );
+        assert!(
+            result
+                .description
+                .contains("the adapter names no bridge:unit"),
+            "{}: {}",
+            result.name,
+            result.description
+        );
+    }
+}
+
+/// The tiny adapter with its manifest's entry list replaced, so an entry can be
+/// written in a form the adapter on disk does not use.
+struct Entries {
+    directory: DirectoryResolver,
+    entries: &'static str,
+}
+
+impl Resolver for Entries {
+    fn root(&self) -> &str {
+        self.directory.root()
+    }
+
+    fn read(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
+        let bytes = self.directory.read(iri)?;
+        if !iri.ends_with("fixtures/manifest.ttl") {
+            return Ok(bytes);
+        }
+        let text = String::from_utf8(bytes).expect("utf-8");
+        let (head, list) = text.split_once("mf:entries (").expect("an entry list");
+        let tail = &list[list.find(')').expect("the list's end") + 1..];
+        Ok(format!("{head}mf:entries ( {} ){tail}", self.entries).into_bytes())
+    }
+}
+
+fn run_with(entries: &'static str) -> (Vec<EntryResult>, Graph) {
+    let resolver = Entries {
+        directory: DirectoryResolver::new(tiny()).expect("resolver"),
+        entries,
+    };
+    let adapter = load_adapter(&resolver).expect("adapter");
+    let results = run_manifest(&adapter, &resolver, RunOptions::default()).expect("manifest");
+    let subject = ReportSubject {
+        iri: "urn:example:bridge".to_owned(),
+        name: "test".to_owned(),
+        version: "0".to_owned(),
+    };
+    let turtle = earl_report_at(&results, &subject, "2026-01-01T00:00:00Z").expect("a report");
+    let mut report = Graph::new();
+    for quad in RdfParser::from_format(RdfFormat::Turtle).for_slice(turtle.as_bytes()) {
+        let quad = quad.expect("turtle");
+        report.insert(&Triple::new(quad.subject, quad.predicate, quad.object));
+    }
+    (results, report)
+}
+
+/// What each assertion's earl:test names: its IRI, or the title of a test that
+/// has none.
+fn tests_reported(report: &Graph) -> Vec<String> {
+    let test = NamedNode::new(format!("{EARL}test")).expect("iri");
+    let title = NamedNode::new("http://purl.org/dc/terms/title").expect("iri");
+    let mut named: Vec<String> = report
+        .triples_for_predicate(test.as_ref())
+        .map(|t| match t.object {
+            TermRef::NamedNode(n) => n.as_str().to_owned(),
+            TermRef::BlankNode(b) => match report.object_for_subject_predicate(b, title.as_ref()) {
+                Some(TermRef::Literal(l)) => l.value().to_owned(),
+                other => panic!("an anonymous test titled {other:?}"),
+            },
+            other => panic!("earl:test is {other}"),
+        })
+        .collect();
+    named.sort();
+    named
+}
+
+#[test]
+fn reports_an_entry_written_as_a_blank_node_by_its_name() {
+    let (results, report) = run_with(
+        r#"[ a bridge:IsomorphicConversionTest ; mf:name "anonymous" ;
+             mf:action [ bridge:input <in/two.xml> ] ;
+             mf:result [ bridge:graph <expected/two.ttl> ; bridge:findings <findings/two.json> ] ]"#,
+    );
+    let outcomes: Vec<_> = results
+        .iter()
+        .map(|r| (r.name.as_str(), r.outcome.as_str()))
+        .collect();
+    assert_eq!(outcomes, [("anonymous", "passed")]);
+    assert_eq!(tests_reported(&report), ["anonymous"]);
+}
+
+#[test]
+fn reports_a_literal_entry_instead_of_leaving_it_out() {
+    let (results, report) = run_with(r#"<#pass> "not a test""#);
+    let outcomes: Vec<_> = results
+        .iter()
+        .map(|r| (r.name.as_str(), r.outcome.as_str()))
+        .collect();
+    assert_eq!(
+        outcomes,
+        [("pass", "passed"), ("not a test", "inapplicable")]
+    );
+    assert!(
+        results[1].description.contains("literal"),
+        "{}",
+        results[1].description
+    );
+    let reported = tests_reported(&report);
+    assert_eq!(reported.len(), 2, "{reported:?}");
+    assert!(
+        reported[0].ends_with("fixtures/manifest.ttl#pass"),
+        "{reported:?}"
+    );
+    assert_eq!(reported[1], "not a test");
 }

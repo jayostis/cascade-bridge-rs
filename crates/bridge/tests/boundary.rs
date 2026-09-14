@@ -73,4 +73,12 @@ fn refuses_a_path_that_leaves_the_adapter_however_it_is_spelled() {
             .to_string()
             .contains("not inside the adapter"));
     }
+
+    // Another server is outside however its path is spelled.
+    let elsewhere = "file://elsewhere/share/adapter/ro-crate-metadata.json";
+    assert!(resolver
+        .read(elsewhere)
+        .unwrap_err()
+        .to_string()
+        .contains("not inside the adapter"));
 }
