@@ -1,0 +1,4 @@
+_:record <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/ns/root> .
+_:record <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/record> .
+_:record <http://sparql.xyz/facade-x/data/id> "r1" .
+_:record <http://sparql.xyz/facade-x/data/status> "final" .

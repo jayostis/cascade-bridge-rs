@@ -1,0 +1,4 @@
+[
+  { "sourceField": "item/title", "reason": "the item has no title", "severity": "warning", "context": "a" },
+  { "sourceField": "item/title", "reason": "the item has no title", "severity": "warning", "context": "c" }
+]

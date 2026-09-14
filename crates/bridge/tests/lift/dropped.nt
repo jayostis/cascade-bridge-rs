@@ -1,0 +1,5 @@
+_:doc <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/ns/root> .
+_:doc <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/doc> .
+_:doc <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "beforeafter" .
+_:doc <http://www.w3.org/1999/02/22-rdf-syntax-ns#_2> _:e .
+_:e <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/e> .

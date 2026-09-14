@@ -1,0 +1,7 @@
+_:p <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/ns/root> .
+_:p <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/p> .
+_:p <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "Hello " .
+_:p <http://www.w3.org/1999/02/22-rdf-syntax-ns#_2> _:b .
+_:p <http://www.w3.org/1999/02/22-rdf-syntax-ns#_3> " world" .
+_:b <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/b> .
+_:b <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "bold" .

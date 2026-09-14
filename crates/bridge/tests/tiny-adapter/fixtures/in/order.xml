@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<catalog>
+  <item id="a"/>
+  <item id="b"><title>B</title></item>
+  <item id="a"/>
+  <item id="c"/>
+</catalog>

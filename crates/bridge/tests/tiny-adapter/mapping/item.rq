@@ -1,0 +1,11 @@
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX fx:  <http://sparql.xyz/facade-x/ns/>
+PREFIX xyz: <http://sparql.xyz/facade-x/data/>
+PREFIX ex:  <urn:example:catalog#>
+
+CONSTRUCT { ?s a ex:Item ; ex:title ?title . }
+WHERE {
+  ?item a fx:root, xyz:item ; xyz:id ?id .
+  BIND(IRI(CONCAT("urn:example:item:", ?id)) AS ?s)
+  OPTIONAL { ?item ?slot ?t . ?t a xyz:title ; rdf:_1 ?title . }
+}

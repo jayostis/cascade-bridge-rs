@@ -1,0 +1,18 @@
+[package]
+name = "cascade-bridge"
+description = "Cascade Bridge for Rust: runs Cascade Bridge Adapters under the sparql-1.1 profile."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+encoding_rs = "=0.8.35"
+oxigraph = { version = "=0.5.11", default-features = false }
+oxrdf = { version = "=0.3.4", features = ["rdfc-10"] }
+oxrdfio = "=0.2.6"
+oxsdatatypes = "=0.2.3"
+quick-xml = "=0.37.5"
+serde_json = "=1.0.151"
+spargebra = { version = "=0.4.7", features = ["sep-0002", "sep-0006"] }
