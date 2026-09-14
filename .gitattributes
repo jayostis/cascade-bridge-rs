@@ -1,0 +1,3 @@
+# LF on every platform, so the bytes a test reads on Windows are the bytes CI
+# reads on Linux; the test adapter's crate records digests of its files.
+* text=auto eol=lf
