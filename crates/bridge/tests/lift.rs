@@ -14,13 +14,14 @@ use oxrdfio::{RdfFormat, RdfParser};
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-const VECTORS: [&str; 6] = [
+const VECTORS: [&str; 7] = [
     "attributes",
     "mixed-content",
     "whitespace",
     "cdata",
     "dropped",
     "namespaces",
+    "no-break-space",
 ];
 
 fn vector(name: &str, extension: &str) -> Vec<u8> {
