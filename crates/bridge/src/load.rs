@@ -10,6 +10,7 @@ use crate::rdf::{
 use crate::resolver::Resolver;
 use oxrdf::{Graph, NamedNode, NamedOrBlankNode, Term, Triple};
 use oxrdfio::{JsonLdProfile, JsonLdProfileSet, LoadedDocument, RdfFormat, RdfParser};
+use std::collections::HashSet;
 
 /// The contexts a crate may name, bundled: loading an adapter fetches nothing.
 const RO_CRATE_1_2: &str = "https://w3id.org/ro/crate/1.2/context";
@@ -100,13 +101,20 @@ pub fn as_subject(term: &Term) -> Option<NamedOrBlankNode> {
     }
 }
 
-/// The members of an RDF list, in order.
+/// The members of an RDF list, in order. A list that comes back to a cell it
+/// has already passed is refused, since walking it would never end.
 pub fn list(graph: &Graph, head: Option<&Term>) -> Result<Vec<Term>> {
     let mut out = Vec::new();
+    let mut passed = HashSet::new();
     let mut node = head.and_then(as_subject);
     while let Some(current) = node {
         if matches!(&current, NamedOrBlankNode::NamedNode(n) if n.as_str() == RDF_NIL) {
             break;
+        }
+        if !passed.insert(current.clone()) {
+            return Err(Error::msg(format!(
+                "the RDF list loops back on itself at {current}"
+            )));
         }
         if let Some(first) = objects(graph, &current, RDF_FIRST)?.into_iter().next() {
             out.push(first);
