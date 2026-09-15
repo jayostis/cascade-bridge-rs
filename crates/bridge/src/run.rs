@@ -192,9 +192,10 @@ fn finding(solution: &oxigraph::sparql::QuerySolution, query: &str) -> Result<Fi
     for key in FINDING_KEYS {
         match solution.get(key) {
             Some(Term::Literal(l)) => got.push(l.value().to_owned()),
+            Some(Term::NamedNode(n)) => got.push(n.as_str().to_owned()),
             _ => {
                 return Err(Error::msg(format!(
-                    "findings query {query} left ?{key} unbound or not a literal"
+                    "findings query {query} left ?{key} unbound or bound to a term with no lexical form, such as a blank node"
                 )))
             }
         }
