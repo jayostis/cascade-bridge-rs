@@ -9,6 +9,9 @@ use oxrdf::{Graph, NamedNode, TermRef, Triple};
 use oxrdfio::{RdfFormat, RdfParser};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
 
 const EARL: &str = "http://www.w3.org/ns/earl#";
 
@@ -150,11 +153,15 @@ fn fails_every_entry_when_the_adapter_names_no_unit() {
     }
 }
 
-/// The tiny adapter with its manifest's entry list replaced, so an entry can be
-/// written in a form the adapter on disk does not use.
+/// The tiny adapter with its manifest's entry list replaced, so an entry, or
+/// the list itself, can be written in a form the adapter on disk does not use.
 struct Entries {
     directory: DirectoryResolver,
-    entries: &'static str,
+    /// What `mf:entries` names in place of the list on disk.
+    list: String,
+    /// Triples appended to the manifest, for a list Turtle's collection syntax
+    /// cannot write.
+    appended: &'static str,
 }
 
 impl Resolver for Entries {
@@ -170,14 +177,15 @@ impl Resolver for Entries {
         let text = String::from_utf8(bytes).expect("utf-8");
         let (head, list) = text.split_once("mf:entries (").expect("an entry list");
         let tail = &list[list.find(')').expect("the list's end") + 1..];
-        Ok(format!("{head}mf:entries ( {} ){tail}", self.entries).into_bytes())
+        Ok(format!("{head}mf:entries {}{tail}{}", self.list, self.appended).into_bytes())
     }
 }
 
 fn run_with(entries: &'static str) -> (Vec<EntryResult>, Graph) {
     let resolver = Entries {
         directory: DirectoryResolver::new(tiny()).expect("resolver"),
-        entries,
+        list: format!("( {entries} )"),
+        appended: "",
     };
     let adapter = load_adapter(&resolver).expect("adapter");
     let results = run_manifest(&adapter, &resolver, RunOptions::default()).expect("manifest");
@@ -253,4 +261,27 @@ fn reports_a_literal_entry_instead_of_leaving_it_out() {
         "{reported:?}"
     );
     assert_eq!(reported[1], "not a test");
+}
+
+#[test]
+fn refuses_an_entry_list_that_loops_back_on_itself() {
+    let resolver = Entries {
+        directory: DirectoryResolver::new(tiny()).expect("resolver"),
+        list: "_:cell".to_owned(),
+        appended: "_:cell <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:cell .
+",
+    };
+    let adapter = load_adapter(&resolver).expect("adapter");
+    // Walked without a guard this list never ends, so the run is watched from
+    // here: a hang would otherwise be the test's only way to fail.
+    let (sender, receiver) = mpsc::channel();
+    thread::spawn(move || {
+        let run = run_manifest(&adapter, &resolver, RunOptions::default());
+        let _ = sender.send(run.map(|results| results.len()).map_err(|e| e.to_string()));
+    });
+    let run = receiver
+        .recv_timeout(Duration::from_secs(10))
+        .expect("the run to end");
+    let error = run.expect_err("a cyclic entry list refused");
+    assert!(error.contains("loops back on itself"), "{error}");
 }
