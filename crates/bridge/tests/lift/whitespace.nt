@@ -1,0 +1,10 @@
+_:list <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/ns/root> .
+_:list <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/list> .
+_:list <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> _:one .
+_:list <http://www.w3.org/1999/02/22-rdf-syntax-ns#_2> _:blank .
+_:list <http://www.w3.org/1999/02/22-rdf-syntax-ns#_3> _:two .
+_:one <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/item> .
+_:one <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "one" .
+_:blank <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/item> .
+_:two <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/item> .
+_:two <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> " two " .

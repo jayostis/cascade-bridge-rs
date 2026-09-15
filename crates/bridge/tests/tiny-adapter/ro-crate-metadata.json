@@ -1,0 +1,48 @@
+{
+  "@context": [
+    "https://w3id.org/ro/crate/1.2/context",
+    {
+      "bridge": "https://ns.cascadeprotocol.org/bridge/v1-draft#",
+      "bridge:profileRequired": "bridge:profileRequired",
+      "bridge:unit": "bridge:unit",
+      "bridge:envelope": "bridge:envelope",
+      "bridge:rootElement": "bridge:rootElement",
+      "bridge:mapping": "bridge:mapping",
+      "bridge:findingsQuery": "bridge:findingsQuery",
+      "bridge:detectQuery": "bridge:detectQuery",
+      "bridge:testManifest": "bridge:testManifest"
+    }
+  ],
+  "@graph": [
+    {
+      "@id": "ro-crate-metadata.json",
+      "@type": "CreativeWork",
+      "conformsTo": { "@id": "https://w3id.org/ro/crate/1.2" },
+      "about": { "@id": "./" }
+    },
+    {
+      "@id": "./",
+      "@type": ["Dataset", "bridge:Adapter"],
+      "identifier": "catalog",
+      "name": "A synthetic catalog format, the engine's own test subject",
+      "bridge:profileRequired": { "@id": "bridge:sparql-1.1" },
+      "bridge:unit": "item",
+      "bridge:envelope": { "@id": "#envelope-catalog" },
+      "bridge:mapping": { "@id": "mapping/item.rq" },
+      "bridge:findingsQuery": { "@id": "mapping/item-findings.rq" },
+      "bridge:detectQuery": { "@id": "mapping/detect.rq" },
+      "bridge:testManifest": { "@id": "fixtures/manifest.ttl" }
+    },
+    {
+      "@id": "#envelope-catalog",
+      "@type": "bridge:Envelope",
+      "name": "catalog",
+      "bridge:rootElement": "catalog"
+    },
+    {
+      "@id": "bridge:sparql-1.1",
+      "@type": "bridge:Profile",
+      "name": "sparql-1.1"
+    }
+  ]
+}

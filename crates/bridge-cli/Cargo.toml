@@ -1,0 +1,15 @@
+[package]
+name = "cascade-bridge-cli"
+description = "The cascade-bridge command: runs an adapter's test manifest and reports in EARL."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "cascade-bridge"
+path = "src/main.rs"
+
+[dependencies]
+cascade-bridge = { path = "../bridge", version = "=0.0.0" }

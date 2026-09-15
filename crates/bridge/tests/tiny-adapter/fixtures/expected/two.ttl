@@ -1,0 +1,8 @@
+@prefix ex:   <urn:example:catalog#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+<urn:example:item:1> a ex:Item ;
+  ex:title "First" ;
+  prov:generatedAtTime "2026-01-01T00:00:00Z"^^xsd:dateTime .
+<urn:example:item:2> a ex:Item .

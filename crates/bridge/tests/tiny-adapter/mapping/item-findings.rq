@@ -1,0 +1,11 @@
+PREFIX fx:  <http://sparql.xyz/facade-x/ns/>
+PREFIX xyz: <http://sparql.xyz/facade-x/data/>
+
+SELECT ?sourceField ?reason ?severity ?context
+WHERE {
+  ?item a fx:root, xyz:item ; xyz:id ?context .
+  MINUS { ?item ?slot ?t . ?t a xyz:title }
+  BIND("item/title" AS ?sourceField)
+  BIND("the item has no title" AS ?reason)
+  BIND("warning" AS ?severity)
+}

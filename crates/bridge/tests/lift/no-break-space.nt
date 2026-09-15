@@ -1,0 +1,10 @@
+_:doc <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/ns/root> .
+_:doc <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/doc> .
+_:doc <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> _:a .
+_:doc <http://www.w3.org/1999/02/22-rdf-syntax-ns#_2> _:b .
+_:doc <http://www.w3.org/1999/02/22-rdf-syntax-ns#_3> _:c .
+_:a <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/a> .
+_:a <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> " " .
+_:b <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/b> .
+_:b <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "   " .
+_:c <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/c> .
