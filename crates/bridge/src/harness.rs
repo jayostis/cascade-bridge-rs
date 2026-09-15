@@ -248,11 +248,7 @@ pub fn run_manifest(
         .filter(|p| !OFFERED_PROFILES.contains(&p.as_str()))
         .cloned()
         .collect();
-    let setup = if unoffered.is_empty() {
-        prepare(adapter, resolver)
-    } else {
-        Err(Error::msg("unused"))
-    };
+    let setup = unoffered.is_empty().then(|| prepare(adapter, resolver));
 
     let mut results = Vec::new();
     for entry in entries {
@@ -272,59 +268,56 @@ pub fn run_manifest(
             .unwrap_or_default();
         let name = name.unwrap_or_else(|| term_value(&entry));
 
-        let (outcome, description) = if !unoffered.is_empty() {
-            (
+        let (outcome, description) = match (&setup, &node) {
+            (None, _) => (
                 Outcome::Inapplicable,
                 format!(
                     "the adapter requires {}, which this Bridge does not offer",
                     unoffered.join(", ")
                 ),
-            )
-        } else {
-            match (&setup, &node) {
-                (Err(e), _) => (
-                    Outcome::Failed,
-                    format!("the adapter could not be prepared: {e}"),
-                ),
-                (Ok(_), None) => (
+            ),
+            (Some(Err(e)), _) => (
+                Outcome::Failed,
+                format!("the adapter could not be prepared: {e}"),
+            ),
+            (Some(Ok(_)), None) => (
+                Outcome::Inapplicable,
+                "the entry is a literal, not a test".to_owned(),
+            ),
+            (Some(Ok(_)), Some(_)) if type_iri == BRIDGE_DATASET => (
+                Outcome::Untested,
+                if options.datasets {
+                    "--datasets was given, but streaming a referenced dataset is not implemented in this Bridge yet".to_owned()
+                } else {
+                    "datasets are not fetched; pass --datasets to run them".to_owned()
+                },
+            ),
+            (Some(Ok(_)), Some(_))
+                if type_iri != BRIDGE_ISOMORPHIC && type_iri != BRIDGE_INPUT_ONLY =>
+            {
+                (
                     Outcome::Inapplicable,
-                    "the entry is a literal, not a test".to_owned(),
-                ),
-                (Ok(_), Some(_)) if type_iri == BRIDGE_DATASET => (
-                    Outcome::Untested,
-                    if options.datasets {
-                        "--datasets was given, but streaming a referenced dataset is not implemented in this Bridge yet".to_owned()
-                    } else {
-                        "datasets are not fetched; pass --datasets to run them".to_owned()
-                    },
-                ),
-                (Ok(_), Some(_))
-                    if type_iri != BRIDGE_ISOMORPHIC && type_iri != BRIDGE_INPUT_ONLY =>
-                {
-                    (
-                        Outcome::Inapplicable,
-                        format!(
-                            "entry type {} is not one this Bridge knows",
-                            if type_iri.is_empty() {
-                                "(none)"
-                            } else {
-                                &type_iri
-                            }
-                        ),
-                    )
-                }
-                (Ok(setup), Some(node)) => {
-                    let entry = Entry {
-                        adapter,
-                        resolver,
-                        setup,
-                        node: node.clone(),
-                        manifest_ignore: &manifest_ignore,
-                    };
-                    match entry.judge(&type_iri) {
-                        Ok(verdict) => verdict,
-                        Err(e) => (Outcome::Failed, format!("error: {e}")),
-                    }
+                    format!(
+                        "entry type {} is not one this Bridge knows",
+                        if type_iri.is_empty() {
+                            "(none)"
+                        } else {
+                            &type_iri
+                        }
+                    ),
+                )
+            }
+            (Some(Ok(setup)), Some(node)) => {
+                let entry = Entry {
+                    adapter,
+                    resolver,
+                    setup,
+                    node: node.clone(),
+                    manifest_ignore: &manifest_ignore,
+                };
+                match entry.judge(&type_iri) {
+                    Ok(verdict) => verdict,
+                    Err(e) => (Outcome::Failed, format!("error: {e}")),
                 }
             }
         };
