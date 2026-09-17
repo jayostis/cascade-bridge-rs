@@ -66,8 +66,7 @@ cannot be loaded.
 
 - **A name that is not ASCII.** The specification says every name in its lift
   vectors is ASCII and does not say how another character is written in an IRI.
-  This Bridge percent-encodes each UTF-16 code unit outside `A-Za-z0-9_.-`, the
-  same bytes the Cascade Bridge for JavaScript produces, so the two agree; it
+  This Bridge percent-encodes each UTF-16 code unit outside `A-Za-z0-9_.-`; it
   is not a specified behaviour and may change when the specification settles it.
 - **A document that is not UTF-8.** The specification does not mention input
   encoding. This Bridge honours the byte-order mark and the XML declaration. A

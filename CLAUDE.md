@@ -28,8 +28,8 @@ repository is one implementation of it, never a second statement of it.
 - **Every dependency is pinned exactly**, `=x.y.z`, and `Cargo.lock` is
   committed. A range lets the engine change under a green run.
 - **Every query is parsed once per adapter.** `prepare` parses and keeps the
-  algebra; a unit clones it. Re-parsing per unit was a measured cost of the
-  JavaScript Bridge, whose binding exposes no prepared query.
+  algebra; a unit clones it. Re-parsing per unit was a measured cost of a
+  binding that exposes no prepared query.
 
 ## Conventions
 
