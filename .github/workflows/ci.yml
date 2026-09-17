@@ -2,7 +2,6 @@ name: ci
 
 on:
   pull_request:
-    # `edited` is what starts a run when a description's `Depends-On:` lines change.
     types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
@@ -12,7 +11,6 @@ on:
     - cron: '17 3 * * *'
   workflow_dispatch:
 
-# `pull-requests: write` is what posts the table.
 permissions:
   contents: read
   pull-requests: write

@@ -10,7 +10,7 @@ repository is one implementation of it, never a second statement of it.
   `rdfs:comment` on that type in the specification's `vocab/bridge.ttl`.
   Implement that, not a paraphrase. Where the specification is silent or
   wrong, the fix is a pull request there, not a behaviour invented here.
-- **No file here names a version of another repository.** Which version of each
+- **Nothing here pins another repository.** Which version of each
   one a run uses is `jayostis/cascade-bridge-spec`'s
   [`compatibility.md`](https://github.com/jayostis/cascade-bridge-spec/blob/main/compatibility.md).
 - **Its own tests use only the synthetic adapter; real adapters are checked
