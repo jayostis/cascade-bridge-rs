@@ -10,12 +10,11 @@ repository is one implementation of it, never a second statement of it.
   `rdfs:comment` on that type in the specification's `vocab/bridge.ttl`.
   Implement that, not a paraphrase. Where the specification is silent or
   wrong, the fix is a pull request there, not a behaviour invented here.
-- **This repository knows no adapter.** Its test subject is
-  `crates/bridge/tests/tiny-adapter`, synthetic, built so each outcome is
-  reached by the smallest input that can reach it. Running a real adapter
-  produces an EARL report about that pair; it is never a test here. An engine
-  tested against the adapters it has met passes those adapters, not the
-  contract.
+- **Its own tests use only the synthetic adapter; real adapters are checked
+  only through `compatibility.json`.** The test subject is
+  `crates/bridge/tests/tiny-adapter`, built so each outcome is reached by the
+  smallest input that can reach it. An engine tested against the adapters it
+  has met passes those adapters, not the contract.
 - **The library never touches a filesystem.** Only `crates/bridge/src/resolver.rs`
   names `std::fs` or `std::path`, and `crates/bridge/tests/boundary.rs` holds it
   to that. A host that is not a directory — a browser, an object store — supplies
