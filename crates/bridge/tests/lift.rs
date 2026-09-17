@@ -1,8 +1,5 @@
 // The lift vectors of the Cascade Bridge Specification, judged by the
-// bridge:LiftTest rule its vocabulary states: lift the input with its document
-// element as the lift root; the produced graph must be isomorphic to the
-// expected one, blank nodes relabelled and IRIs and literals exact, with
-// nothing removed from either side.
+// bridge:LiftTest and bridge:SkeletonTest rules its vocabulary states.
 //
 // The files in tests/lift/ are copies of fixtures/lift/ in
 // jayostis/cascade-bridge-spec, which is the authority: a disagreement is this
@@ -23,6 +20,11 @@ const VECTORS: [&str; 7] = [
     "namespaces",
     "no-break-space",
 ];
+
+/// Each skeleton vector with the bridge:elementNameOfEachRecord its manifest
+/// entry names.
+const SKELETON_VECTORS: [(&str, &str); 2] =
+    [("skeleton", "Unit"), ("skeleton-record-root", "Unit")];
 
 fn vector(name: &str, extension: &str) -> Vec<u8> {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -52,22 +54,43 @@ fn lift_whole(xml: &[u8]) -> BTreeSet<String> {
     canonical(store.iter().map(|q| q.expect("quad")).collect())
 }
 
+fn expected(name: &str) -> BTreeSet<String> {
+    canonical(
+        RdfParser::from_format(RdfFormat::NTriples)
+            .for_slice(&vector(name, "nt"))
+            .map(|q| q.expect("expected N-Triples"))
+            .collect(),
+    )
+}
+
+fn assert_vector(name: &str, produced: BTreeSet<String>) {
+    let expected = expected(name);
+    assert_eq!(
+        produced,
+        expected,
+        "the {name} vector: missing {:?}, extra {:?}",
+        expected.difference(&produced).collect::<Vec<_>>(),
+        produced.difference(&expected).collect::<Vec<_>>()
+    );
+}
+
 #[test]
 fn reproduces_every_lift_vector_of_the_specification() {
     for name in VECTORS {
-        let produced = lift_whole(&vector(name, "xml"));
-        let expected = canonical(
-            RdfParser::from_format(RdfFormat::NTriples)
-                .for_slice(&vector(name, "nt"))
-                .map(|q| q.expect("expected N-Triples"))
-                .collect(),
-        );
-        assert_eq!(
-            produced,
-            expected,
-            "the {name} vector: missing {:?}, extra {:?}",
-            expected.difference(&produced).collect::<Vec<_>>(),
-            produced.difference(&expected).collect::<Vec<_>>()
+        assert_vector(name, lift_whole(&vector(name, "xml")));
+    }
+}
+
+#[test]
+fn reproduces_every_skeleton_vector_of_the_specification() {
+    for (name, record) in SKELETON_VECTORS {
+        let store = lift_slice(&vector(name, "xml"), Some(record))
+            .expect("lift")
+            .into_skeleton()
+            .expect("skeleton");
+        assert_vector(
+            name,
+            canonical(store.iter().map(|q| q.expect("quad")).collect()),
         );
     }
 }
