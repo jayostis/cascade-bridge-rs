@@ -4,13 +4,14 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   test:
     name: tests, format and lints
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # rust-toolchain.toml names the version and its components; rustup on the
       # runner installs exactly that, so CI and a checkout compile alike.
       - run: rustc --version
@@ -18,3 +19,19 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
+
+  # The names are required status checks on main: a renamed job leaves every
+  # merge waiting on a check that never reports.
+  compatibility:
+    name: compatibility
+    runs-on: ubuntu-latest
+    steps:
+      - uses: jayostis/cascade-bridge-spec/.github/actions/start@d99014607d8dfe981714d41eb4d3f725bfcb4127
+
+  ready-to-merge:
+    name: ready-to-merge
+    runs-on: ubuntu-latest
+    steps:
+      - uses: jayostis/cascade-bridge-spec/.github/actions/start@d99014607d8dfe981714d41eb4d3f725bfcb4127
+        with:
+          check: ready-to-merge
