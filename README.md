@@ -1,5 +1,7 @@
 # cascade-bridge-rs
 
+[![compatibility](https://github.com/jayostis/cascade-bridge-rs/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/jayostis/cascade-bridge-rs/actions/workflows/ci.yml?query=branch%3Amain)
+
 **Cascade Bridge for Rust**: an implementation of the
 [Cascade Bridge Specification](https://github.com/jayostis/cascade-bridge-spec).
 It runs a Cascade Bridge Adapter, a data package for one source format, and
