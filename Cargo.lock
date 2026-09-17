@@ -28,7 +28,7 @@ dependencies = [
 
 [[package]]
 name = "cascade-bridge"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "encoding_rs",
  "oxigraph",
@@ -42,7 +42,7 @@ dependencies = [
 
 [[package]]
 name = "cascade-bridge-cli"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "cascade-bridge",
 ]
