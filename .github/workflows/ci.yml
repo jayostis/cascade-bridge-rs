@@ -26,12 +26,12 @@ jobs:
     name: compatibility
     runs-on: ubuntu-latest
     steps:
-      - uses: jayostis/cascade-bridge-spec/.github/actions/start@d99014607d8dfe981714d41eb4d3f725bfcb4127
+      - uses: jayostis/cascade-bridge-spec/.github/actions/start@start-v1
 
   ready-to-merge:
     name: ready-to-merge
     runs-on: ubuntu-latest
     steps:
-      - uses: jayostis/cascade-bridge-spec/.github/actions/start@d99014607d8dfe981714d41eb4d3f725bfcb4127
+      - uses: jayostis/cascade-bridge-spec/.github/actions/start@start-v1
         with:
           check: ready-to-merge
