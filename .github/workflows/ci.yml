@@ -2,9 +2,20 @@ name: ci
 
 on:
   pull_request:
+    # `edited` is what starts a run when a description's `Depends-On:` lines change.
+    types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
+  # Nothing pins the counterparts, so a green run goes stale as their default
+  # branches move; nightly is what notices.
+  schedule:
+    - cron: '17 3 * * *'
   workflow_dispatch:
+
+# `pull-requests: write` is what posts the table.
+permissions:
+  contents: read
+  pull-requests: write
 
 jobs:
   test:
@@ -26,12 +37,12 @@ jobs:
     name: compatibility
     runs-on: ubuntu-latest
     steps:
-      - uses: jayostis/cascade-bridge-spec/.github/actions/start@start-v1
+      - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
 
   ready-to-merge:
     name: ready-to-merge
     runs-on: ubuntu-latest
     steps:
-      - uses: jayostis/cascade-bridge-spec/.github/actions/start@start-v1
+      - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
         with:
           check: ready-to-merge
