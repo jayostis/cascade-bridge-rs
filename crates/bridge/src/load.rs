@@ -3,9 +3,10 @@
 // through the graph rather than a match on a file name.
 use crate::error::{Error, Result};
 use crate::rdf::{
-    BRIDGE_ADAPTER, BRIDGE_DETECT_QUERY, BRIDGE_ENVELOPE, BRIDGE_FINDINGS_QUERY, BRIDGE_MAPPING,
-    BRIDGE_PROFILE_REQUIRED, BRIDGE_ROOT_ELEMENT, BRIDGE_TABLE, BRIDGE_TEST_MANIFEST, BRIDGE_UNIT,
-    RDF_FIRST, RDF_NIL, RDF_REST, RDF_TYPE, SCHEMA_ABOUT, SCHEMA_IDENTIFIER, SCHEMA_NAME,
+    BRIDGE_ADAPTER, BRIDGE_DETECT_QUERY, BRIDGE_DOC_ROOT_ELEMENT_NAME,
+    BRIDGE_ELEMENT_NAME_OF_EACH_RECORD, BRIDGE_ENVELOPE, BRIDGE_FINDINGS_QUERY, BRIDGE_MAPPING,
+    BRIDGE_REQUIRES_PROFILE, BRIDGE_TABLE, BRIDGE_TEST_MANIFEST, RDF_FIRST, RDF_NIL, RDF_REST,
+    RDF_TYPE, SCHEMA_ABOUT, SCHEMA_IDENTIFIER, SCHEMA_NAME,
 };
 use crate::resolver::Resolver;
 use oxrdf::{Graph, NamedNode, NamedOrBlankNode, Term, Triple};
@@ -38,7 +39,7 @@ fn context(url: &str) -> LoaderResult {
 pub struct Envelope {
     pub iri: String,
     pub name: Option<String>,
-    pub root_element: Option<String>,
+    pub doc_root_element_name: Option<String>,
 }
 
 pub struct Adapter {
@@ -47,8 +48,8 @@ pub struct Adapter {
     pub crate_iri: String,
     pub graph: Graph,
     pub identifier: Option<String>,
-    pub unit: Option<String>,
-    pub profiles_required: Vec<String>,
+    pub element_name_of_each_record: Option<String>,
+    pub required_profiles: Vec<String>,
     pub mappings: Vec<String>,
     pub findings_queries: Vec<String>,
     pub detect_query: Option<String>,
@@ -180,15 +181,19 @@ pub fn load_adapter(resolver: &dyn Resolver) -> Result<Adapter> {
         let s = subject(&iri)?;
         envelopes.push(Envelope {
             name: value(&graph, &s, SCHEMA_NAME)?,
-            root_element: value(&graph, &s, BRIDGE_ROOT_ELEMENT)?,
+            doc_root_element_name: value(&graph, &s, BRIDGE_DOC_ROOT_ELEMENT_NAME)?,
             iri,
         });
     }
 
     Ok(Adapter {
         identifier: value(&graph, &root_subject, SCHEMA_IDENTIFIER)?,
-        unit: value(&graph, &root_subject, BRIDGE_UNIT)?,
-        profiles_required: values(&graph, &root_subject, BRIDGE_PROFILE_REQUIRED)?,
+        element_name_of_each_record: value(
+            &graph,
+            &root_subject,
+            BRIDGE_ELEMENT_NAME_OF_EACH_RECORD,
+        )?,
+        required_profiles: values(&graph, &root_subject, BRIDGE_REQUIRES_PROFILE)?,
         mappings: values(&graph, &root_subject, BRIDGE_MAPPING)?,
         findings_queries: values(&graph, &root_subject, BRIDGE_FINDINGS_QUERY)?,
         detect_query: value(&graph, &root_subject, BRIDGE_DETECT_QUERY)?,

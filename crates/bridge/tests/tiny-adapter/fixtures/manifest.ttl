@@ -6,32 +6,32 @@
 
 <> a mf:Manifest ;
   bridge:adapter <../> ;
-  bridge:ignorePredicate prov:generatedAtTime ;
+  bridge:stampPredicate prov:generatedAtTime ;
   mf:entries ( <#pass> <#graph-fail> <#findings-fail> <#multiset-order> <#input-only> <#dataset> ) .
 
 # Passes only if the stamp in the expected graph is ignored.
 <#pass> a bridge:IsomorphicConversionTest ;
   mf:name "pass" ;
   mf:action [ bridge:input <in/two.xml> ; bridge:envelope <../ro-crate-metadata.json#envelope-catalog> ] ;
-  mf:result [ bridge:graph <expected/two.ttl> ; bridge:findings <findings/two.json> ] .
+  mf:result [ bridge:expectedGraph <expected/two.ttl> ; bridge:expectedFindings <findings/two.json> ] .
 
 # One literal differs.
 <#graph-fail> a bridge:IsomorphicConversionTest ;
   mf:name "graph-fail" ;
   mf:action [ bridge:input <in/two.xml> ; bridge:envelope <../ro-crate-metadata.json#envelope-catalog> ] ;
-  mf:result [ bridge:graph <expected/two-wrong.ttl> ; bridge:findings <findings/two.json> ] .
+  mf:result [ bridge:expectedGraph <expected/two-wrong.ttl> ; bridge:expectedFindings <findings/two.json> ] .
 
 # A duplicate finding is missing: multiplicity is compared.
 <#findings-fail> a bridge:IsomorphicConversionTest ;
   mf:name "findings-fail" ;
   mf:action [ bridge:input <in/order.xml> ; bridge:envelope <../ro-crate-metadata.json#envelope-catalog> ] ;
-  mf:result [ bridge:graph <expected/order.ttl> ; bridge:findings <findings/order-missing-duplicate.json> ] .
+  mf:result [ bridge:expectedGraph <expected/order.ttl> ; bridge:expectedFindings <findings/order-missing-duplicate.json> ] .
 
 # The same findings, duplicate included, in another order: order is not compared.
 <#multiset-order> a bridge:IsomorphicConversionTest ;
   mf:name "multiset-order" ;
   mf:action [ bridge:input <in/order.xml> ; bridge:envelope <../ro-crate-metadata.json#envelope-catalog> ] ;
-  mf:result [ bridge:graph <expected/order.ttl> ; bridge:findings <findings/order.json> ] .
+  mf:result [ bridge:expectedGraph <expected/order.ttl> ; bridge:expectedFindings <findings/order.json> ] .
 
 <#input-only> a bridge:InputOnlyTest ;
   mf:name "input-only" ;

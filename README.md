@@ -57,7 +57,7 @@ cannot be loaded.
    `bridge:mapping` CONSTRUCT, and concatenates every `bridge:findingsQuery`
    SELECT row into a finding.
 5. Judges each manifest entry by its type's rule: graphs compared as RDFC-1.0
-   canonical form after the ignored predicates are removed from both sides,
+   canonical form after every `bridge:stampPredicate` triple is removed from both sides,
    findings compared as a multiset.
 
 ## Two things the specification leaves open, and what this Bridge does

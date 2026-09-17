@@ -4,9 +4,9 @@
 use crate::error::{Error, Result};
 use crate::load::{as_subject, list, objects, subject, term_value, value, values, Adapter};
 use crate::rdf::{
-    canonical_lines, BRIDGE_DATASET, BRIDGE_FINDINGS, BRIDGE_GRAPH, BRIDGE_IGNORE_PREDICATE,
-    BRIDGE_INPUT, BRIDGE_INPUT_ONLY, BRIDGE_ISOMORPHIC, BRIDGE_SPARQL_1_1, MF_ACTION, MF_ENTRIES,
-    MF_NAME, MF_RESULT, RDF_TYPE,
+    canonical_lines, BRIDGE_DATASET, BRIDGE_EXPECTED_FINDINGS, BRIDGE_EXPECTED_GRAPH, BRIDGE_INPUT,
+    BRIDGE_INPUT_ONLY, BRIDGE_ISOMORPHIC, BRIDGE_SPARQL_1_1, BRIDGE_STAMP_PREDICATE, MF_ACTION,
+    MF_ENTRIES, MF_NAME, MF_RESULT, RDF_TYPE,
 };
 use crate::resolver::Resolver;
 use crate::run::{convert, prepare, Finding, Prepared};
@@ -157,11 +157,11 @@ impl Entry<'_> {
             .and_then(as_subject);
         let graph_iri = result
             .as_ref()
-            .map(|r| value(graph, r, BRIDGE_GRAPH))
+            .map(|r| value(graph, r, BRIDGE_EXPECTED_GRAPH))
             .transpose()?
             .flatten()
-            .ok_or_else(|| Error::msg("the entry's result names no bridge:graph"))?;
-        let own = values(graph, &self.node, BRIDGE_IGNORE_PREDICATE)?;
+            .ok_or_else(|| Error::msg("the entry's result names no bridge:expectedGraph"))?;
+        let own = values(graph, &self.node, BRIDGE_STAMP_PREDICATE)?;
         let ignore: HashSet<String> = if own.is_empty() {
             self.manifest_ignore.iter().cloned().collect()
         } else {
@@ -184,12 +184,12 @@ impl Entry<'_> {
 
         let findings_iri = result
             .as_ref()
-            .map(|r| value(graph, r, BRIDGE_FINDINGS))
+            .map(|r| value(graph, r, BRIDGE_EXPECTED_FINDINGS))
             .transpose()?
             .flatten();
         let mut findings_ok = true;
         let mut findings_text =
-            "findings not compared: the entry names no bridge:findings".to_owned();
+            "findings not compared: the entry names no bridge:expectedFindings".to_owned();
         if let Some(iri) = findings_iri {
             let want = expected_findings(&self.resolver.read(&iri)?)?;
             let got: Vec<String> = run
@@ -240,10 +240,10 @@ pub fn run_manifest(
     let graph = &adapter.graph;
     let manifest = subject(&adapter.manifest)?;
     let entries = list(graph, objects(graph, &manifest, MF_ENTRIES)?.first())?;
-    let manifest_ignore = values(graph, &manifest, BRIDGE_IGNORE_PREDICATE)?;
+    let manifest_ignore = values(graph, &manifest, BRIDGE_STAMP_PREDICATE)?;
 
     let unoffered: Vec<String> = adapter
-        .profiles_required
+        .required_profiles
         .iter()
         .filter(|p| !OFFERED_PROFILES.contains(&p.as_str()))
         .cloned()
