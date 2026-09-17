@@ -4,6 +4,6 @@
   "setup": ["cargo", "build", "--release", "--locked", "-p", "cascade-bridge-cli"],
   "command": ["cargo", "run", "--release", "--locked", "-q", "-p", "cascade-bridge-cli", "--"],
   "mustPassWith": [
-    { "codeRepository": "https://github.com/jayostis/cascade-bridge-adapter-clinvar", "branch": "main" }
+    { "codeRepository": "https://github.com/jayostis/cascade-bridge-adapter-clinvar", "tag": "v0.3.0" }
   ]
 }
