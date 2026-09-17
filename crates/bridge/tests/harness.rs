@@ -66,7 +66,7 @@ fn runs_nothing_when_the_adapter_requires_a_profile_this_bridge_does_not_offer()
     let resolver = DirectoryResolver::new(tiny()).expect("resolver");
     let mut adapter = load_adapter(&resolver).expect("adapter");
     adapter
-        .profiles_required
+        .required_profiles
         .push("https://ns.cascadeprotocol.org/bridge/v1-draft#xslt-3".to_owned());
     let results = run_manifest(&adapter, &resolver, RunOptions::default()).expect("manifest");
     assert!(results.iter().all(|r| r.outcome.as_str() == "inapplicable"));
@@ -128,10 +128,10 @@ fn reports_one_earl_assertion_per_entry_its_outcome_on_the_test_result() {
 }
 
 #[test]
-fn fails_every_entry_when_the_adapter_names_no_unit() {
+fn fails_every_entry_when_the_adapter_names_no_element_name_of_each_record() {
     let resolver = DirectoryResolver::new(tiny()).expect("resolver");
     let mut adapter = load_adapter(&resolver).expect("adapter");
-    adapter.unit = None;
+    adapter.element_name_of_each_record = None;
     let results = run_manifest(&adapter, &resolver, RunOptions::default()).expect("manifest");
     assert!(!results.is_empty());
     for result in &results {
@@ -145,7 +145,7 @@ fn fails_every_entry_when_the_adapter_names_no_unit() {
         assert!(
             result
                 .description
-                .contains("the adapter names no bridge:unit"),
+                .contains("the adapter names no bridge:elementNameOfEachRecord"),
             "{}: {}",
             result.name,
             result.description
@@ -228,7 +228,7 @@ fn reports_an_entry_written_as_a_blank_node_by_its_name() {
     let (results, report) = run_with(
         r#"[ a bridge:IsomorphicConversionTest ; mf:name "anonymous" ;
              mf:action [ bridge:input <in/two.xml> ] ;
-             mf:result [ bridge:graph <expected/two.ttl> ; bridge:findings <findings/two.json> ] ]"#,
+             mf:result [ bridge:expectedGraph <expected/two.ttl> ; bridge:expectedFindings <findings/two.json> ] ]"#,
     );
     let outcomes: Vec<_> = results
         .iter()

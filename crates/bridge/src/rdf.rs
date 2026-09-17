@@ -24,18 +24,18 @@ terms! {
 
     BRIDGE_ADAPTER = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "Adapter";
     BRIDGE_TEST_MANIFEST = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "testManifest";
-    BRIDGE_UNIT = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "unit";
-    BRIDGE_PROFILE_REQUIRED = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "profileRequired";
+    BRIDGE_ELEMENT_NAME_OF_EACH_RECORD = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "elementNameOfEachRecord";
+    BRIDGE_REQUIRES_PROFILE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "requiresProfile";
     BRIDGE_MAPPING = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "mapping";
     BRIDGE_FINDINGS_QUERY = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "findingsQuery";
     BRIDGE_DETECT_QUERY = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "detectQuery";
     BRIDGE_TABLE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "table";
     BRIDGE_ENVELOPE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "envelope";
-    BRIDGE_ROOT_ELEMENT = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "rootElement";
+    BRIDGE_DOC_ROOT_ELEMENT_NAME = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "docRootElementName";
     BRIDGE_INPUT = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "input";
-    BRIDGE_GRAPH = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "graph";
-    BRIDGE_FINDINGS = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "findings";
-    BRIDGE_IGNORE_PREDICATE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "ignorePredicate";
+    BRIDGE_EXPECTED_GRAPH = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "expectedGraph";
+    BRIDGE_EXPECTED_FINDINGS = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "expectedFindings";
+    BRIDGE_STAMP_PREDICATE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "stampPredicate";
     BRIDGE_SPARQL_1_1 = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "sparql-1.1";
     BRIDGE_ISOMORPHIC = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "IsomorphicConversionTest";
     BRIDGE_INPUT_ONLY = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "InputOnlyTest";

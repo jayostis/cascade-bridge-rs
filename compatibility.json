@@ -1,0 +1,7 @@
+{
+  "@context": "https://ns.cascadeprotocol.org/bridge/v1-draft/compatibility.jsonld",
+  "specPin": { "codeRepository": "https://github.com/jayostis/cascade-bridge-spec", "commit": "d99014607d8dfe981714d41eb4d3f725bfcb4127" },
+  "setup": ["cargo", "build", "--release", "--locked", "-p", "cascade-bridge-cli"],
+  "command": ["cargo", "run", "--release", "--locked", "-q", "-p", "cascade-bridge-cli", "--"],
+  "mustPassWith": []
+}

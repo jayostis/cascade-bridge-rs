@@ -142,9 +142,9 @@ pub fn prepare(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prepared> {
     // Without a unit nothing is split off, so no mapping would run and an
     // empty result would pass for a conversion.
     let unit = adapter
-        .unit
+        .element_name_of_each_record
         .clone()
-        .ok_or_else(|| Error::msg("the adapter names no bridge:unit"))?;
+        .ok_or_else(|| Error::msg("the adapter names no bridge:elementNameOfEachRecord"))?;
     let mut tables = Vec::new();
     for iri in &adapter.tables {
         let format = value(&adapter.graph, &subject(iri)?, SCHEMA_ENCODING_FORMAT)?;

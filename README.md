@@ -7,10 +7,10 @@ executes the adapter's test manifest.
 
 ## Status: DRAFT
 
-It implements the `sparql-1.1` profile as the specification is being changed to
-define it: a mapping is SPARQL 1.1 CONSTRUCT over a generic lift of the source
-XML. That profile is not in a tagged specification release yet, so this
-repository pins none. No compatibility is promised.
+It implements the `sparql-1.1` profile: a mapping is SPARQL 1.1 CONSTRUCT over
+a generic lift of the source XML. The specification revision it implements is
+`specPin` in [`compatibility.json`](compatibility.json). No compatibility is
+promised.
 
 Built: loading an adapter, the lift, running the mappings and findings queries
 per unit, the detect query, and the test harness with EARL output. Not built
@@ -57,7 +57,7 @@ cannot be loaded.
    `bridge:mapping` CONSTRUCT, and concatenates every `bridge:findingsQuery`
    SELECT row into a finding.
 5. Judges each manifest entry by its type's rule: graphs compared as RDFC-1.0
-   canonical form after the ignored predicates are removed from both sides,
+   canonical form after every `bridge:stampPredicate` triple is removed from both sides,
    findings compared as a multiset.
 
 ## Two things the specification leaves open, and what this Bridge does
