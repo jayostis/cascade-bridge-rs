@@ -10,9 +10,9 @@ executes the adapter's test manifest.
 ## Status: DRAFT
 
 It implements the `sparql-1.1` profile: a mapping is SPARQL 1.1 CONSTRUCT over
-a generic lift of the source XML. The specification revision it implements is
-`specPin` in [`compatibility.json`](compatibility.json). No compatibility is
-promised.
+a generic lift of the source XML. No compatibility is promised. Which version
+of every repository a run uses is
+[`compatibility.md`](https://github.com/jayostis/cascade-bridge-spec/blob/main/compatibility.md).
 
 Built: loading an adapter, the lift, running the mappings and findings queries
 per unit, the detect query, and the test harness with EARL output. Not built

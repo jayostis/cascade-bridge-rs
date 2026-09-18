@@ -1,9 +1,6 @@
 {
   "@context": "https://ns.cascadeprotocol.org/bridge/v1-draft/compatibility.jsonld",
-  "specPin": { "codeRepository": "https://github.com/jayostis/cascade-bridge-spec", "commit": "b72569a6602a5fa715cf83d680c6c87f21cfba8f" },
   "setup": ["cargo", "build", "--release", "--locked", "-p", "cascade-bridge-cli"],
   "command": ["cargo", "run", "--release", "--locked", "-q", "-p", "cascade-bridge-cli", "--"],
-  "mustPassWith": [
-    { "codeRepository": "https://github.com/jayostis/cascade-bridge-adapter-clinvar", "tag": "v0.3.0" }
-  ]
+  "mustPassWith": ["https://github.com/jayostis/cascade-bridge-adapter-clinvar"]
 }
