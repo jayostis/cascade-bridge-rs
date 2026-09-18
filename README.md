@@ -15,13 +15,44 @@ of every repository a run uses is
 [`compatibility.md`](https://github.com/jayostis/cascade-bridge-spec/blob/main/compatibility.md).
 
 Built: loading an adapter, the lift, running the mappings and findings queries
-per unit, the detect query, and the test harness with EARL output. Not built
-yet: the stamp stage, source-schema validation, a `convert` command, and
-streaming a referenced dataset.
+per unit, the detect query, converting a document a caller holds, and the test
+harness with EARL output. Not built yet: the stamp stage, source-schema
+validation, and streaming a referenced dataset.
 
 Known limitation: Oxigraph 0.5.11 returns derived XSD integer types such as
 `xsd:positiveInteger` as `xsd:integer`, which SPARQL 1.1 does not allow, so an
 expected graph that uses them cannot pass on this Bridge.
+
+## Converting a document
+
+```bash
+cargo run -p cascade-bridge-cli -- convert <adapter-dir> <document.xml> [--out <file>] [--format turtle|ntriples]
+```
+
+Installed, the same command is
+`cascade-bridge convert <adapter-dir> <document.xml>`.
+
+It runs the adapter over every record of the document and writes their union as
+one graph: prefixed Turtle on standard output, `--format ntriples` for a reader
+that consumes a stream, `--out` to a file. The prefixes are the names the
+adapter's own mappings give the namespaces the graph uses. Standard output
+carries the graph and nothing else, so the run's adapter, record count and
+detect answer go to standard error and the output pipes into a store as it
+stands. The exit status is 0 when a graph was written, 2 on a usage error, an
+adapter that cannot be loaded or a document that cannot be converted.
+
+`bridge:detectQuery` is reported, never enforced: a document whose ASK answers
+false is converted anyway, and the answer is on standard error.
+
+What it does not do:
+
+- **No findings.** The findings queries run, and what they produce is thrown
+  away. The specification has not settled how a finding is written as RDF, and
+  a flag now would be a flag to break.
+- **No provenance stamp**, because the stamp stage is not built. What it writes
+  is the mapping's output, with nothing added.
+- **The whole graph is held in memory**, so a document the size of a ClinVar
+  release is out of scope.
 
 ## Running an adapter's tests
 
@@ -81,6 +112,7 @@ crates/bridge/                the library, cascade-bridge
   src/decode.rs               the byte-order mark and the XML declaration
   src/load.rs                 the crate and the manifest as one graph
   src/run.rs                  mappings and findings queries, per unit
+  src/rdf.rs                  the shared terms, the canonical form, the serialiser
   src/harness.rs              executing a test manifest
   src/earl.rs                 the EARL report
   src/resolver.rs             the only module that touches a filesystem

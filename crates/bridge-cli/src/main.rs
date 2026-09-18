@@ -1,11 +1,13 @@
 // cascade-bridge test <adapter-dir> [--earl <out.ttl>] [--datasets]
+// cascade-bridge convert <adapter-dir> <document.xml> [--out <file>] [--format turtle|ntriples]
 use cascade_bridge::{
-    earl_report, load_adapter, run_manifest, DirectoryResolver, EntryResult, Outcome,
-    ReportSubject, RunOptions, OFFERED_PROFILES,
+    convert, earl_report, load_adapter, prepare, run_manifest, serialise, DirectoryResolver,
+    EntryResult, GraphFormat, Outcome, ReportSubject, RunOptions, OFFERED_PROFILES,
 };
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: cascade-bridge test <adapter-dir> [--earl <out.ttl>] [--datasets]";
+const USAGE: &str = "usage: cascade-bridge test <adapter-dir> [--earl <out.ttl>] [--datasets]
+       cascade-bridge convert <adapter-dir> <document.xml> [--out <file>] [--format turtle|ntriples]";
 
 /// A run proves nothing when an entry failed or could not be run at all.
 const FAILING: [Outcome; 2] = [Outcome::Failed, Outcome::Inapplicable];
@@ -28,39 +30,74 @@ fn main() -> ExitCode {
     }
 }
 
-struct Arguments {
+struct Test {
     directory: String,
     earl: Option<String>,
     datasets: bool,
 }
 
-fn parse(argv: Vec<String>) -> Option<Arguments> {
+struct Convert {
+    directory: String,
+    document: String,
+    out: Option<String>,
+    format: GraphFormat,
+}
+
+enum Command {
+    Test(Test),
+    Convert(Convert),
+}
+
+fn parse(argv: Vec<String>) -> Option<Command> {
     let mut argv = argv.into_iter();
-    if argv.next()? != "test" {
-        return None;
-    }
-    let directory = argv.next()?;
-    let mut arguments = Arguments {
-        directory,
-        earl: None,
-        datasets: false,
-    };
-    while let Some(flag) = argv.next() {
-        match flag.as_str() {
-            "--earl" => arguments.earl = Some(argv.next()?),
-            "--datasets" => arguments.datasets = true,
-            _ => return None,
+    match argv.next()?.as_str() {
+        "test" => {
+            let mut arguments = Test {
+                directory: argv.next()?,
+                earl: None,
+                datasets: false,
+            };
+            while let Some(flag) = argv.next() {
+                match flag.as_str() {
+                    "--earl" => arguments.earl = Some(argv.next()?),
+                    "--datasets" => arguments.datasets = true,
+                    _ => return None,
+                }
+            }
+            Some(Command::Test(arguments))
         }
+        "convert" => {
+            let mut arguments = Convert {
+                directory: argv.next()?,
+                document: argv.next()?,
+                out: None,
+                format: GraphFormat::Turtle,
+            };
+            while let Some(flag) = argv.next() {
+                match flag.as_str() {
+                    "--out" => arguments.out = Some(argv.next()?),
+                    "--format" => arguments.format = GraphFormat::named(&argv.next()?)?,
+                    _ => return None,
+                }
+            }
+            Some(Command::Convert(arguments))
+        }
+        _ => None,
     }
-    Some(arguments)
 }
 
 fn run(argv: Vec<String>) -> Result<ExitCode, String> {
-    let Some(arguments) = parse(argv) else {
+    let Some(command) = parse(argv) else {
         eprintln!("{USAGE}");
         return Ok(ExitCode::from(2));
     };
+    match command {
+        Command::Test(arguments) => test(arguments),
+        Command::Convert(arguments) => convert_document(arguments),
+    }
+}
 
+fn test(arguments: Test) -> Result<ExitCode, String> {
     let subject = subject();
     let resolver = DirectoryResolver::new(&arguments.directory).map_err(|e| e.to_string())?;
     let adapter = load_adapter(&resolver).map_err(|e| e.to_string())?;
@@ -120,6 +157,51 @@ fn run(argv: Vec<String>) -> Result<ExitCode, String> {
     } else {
         ExitCode::SUCCESS
     })
+}
+
+/// Standard output carries the graph and nothing else, so a caller can pipe it
+/// into a store; everything the run has to say goes to standard error.
+fn convert_document(arguments: Convert) -> Result<ExitCode, String> {
+    let resolver = DirectoryResolver::new(&arguments.directory).map_err(|e| e.to_string())?;
+    let adapter = load_adapter(&resolver).map_err(|e| e.to_string())?;
+    let prepared = prepare(&adapter, &resolver).map_err(|e| e.to_string())?;
+    let document =
+        std::fs::read(&arguments.document).map_err(|e| format!("{}: {e}", arguments.document))?;
+    let conversion = convert(&prepared, &document).map_err(|e| e.to_string())?;
+    let graph = serialise(&conversion.quads, arguments.format, &prepared.prefixes)
+        .map_err(|e| e.to_string())?;
+
+    eprintln!(
+        "Adapter  {}  ({})",
+        adapter.identifier.as_deref().unwrap_or(&adapter.root),
+        adapter.root
+    );
+    eprintln!(
+        "Document {}  {} record(s), {} triples",
+        arguments.document,
+        conversion.units,
+        conversion.quads.len()
+    );
+    // Reported, never enforced: a document the adapter would route elsewhere
+    // is still converted, and the caller is the one told about it.
+    eprintln!(
+        "Detect   {}",
+        match conversion.detected {
+            Some(true) => "true".to_owned(),
+            Some(false) =>
+                "false: this adapter does not claim this document, converted anyway".to_owned(),
+            None => "the adapter names no bridge:detectQuery".to_owned(),
+        }
+    );
+
+    match &arguments.out {
+        Some(path) => {
+            std::fs::write(path, graph).map_err(|e| format!("{path}: {e}"))?;
+            eprintln!("Graph    {path}");
+        }
+        None => print!("{graph}"),
+    }
+    Ok(ExitCode::SUCCESS)
 }
 
 /// The outcomes in the order they were first reached, which is the order the

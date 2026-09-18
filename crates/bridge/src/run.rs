@@ -74,6 +74,9 @@ impl Form {
 pub struct Query {
     pub iri: String,
     pub form: Form,
+    /// The names the query's prologue gives namespaces, so a graph a mapping
+    /// built can be written back in the mapping's own spelling.
+    pub prefixes: Vec<(String, String)>,
     prepared: PreparedSparqlQuery,
 }
 
@@ -92,6 +95,9 @@ pub struct Prepared {
     pub detect: Option<Query>,
     /// The tables, parsed once rather than once per unit.
     pub tables: Vec<Quad>,
+    /// Every name the mappings give a namespace, the first binding of a name
+    /// winning, as a query's own prologue binds it.
+    pub prefixes: Vec<(String, String)>,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -112,6 +118,37 @@ pub struct Conversion {
     pub ms: Ms,
 }
 
+/// The prologue's PREFIX declarations. SPARQL keeps them out of the algebra a
+/// parser returns, and they are the only names for these namespaces anyone has
+/// written down.
+fn prologue_prefixes(text: &str) -> Vec<(String, String)> {
+    let mut prefixes = Vec::new();
+    for line in text.lines() {
+        let line = line.trim_start();
+        if !line
+            .get(..6)
+            .is_some_and(|keyword| keyword.eq_ignore_ascii_case("PREFIX"))
+        {
+            continue;
+        }
+        let rest = &line[6..];
+        if !rest.starts_with(char::is_whitespace) {
+            continue;
+        }
+        let Some((name, namespace)) = rest.trim_start().split_once(':') else {
+            continue;
+        };
+        if let Some(namespace) = namespace
+            .trim()
+            .strip_prefix('<')
+            .and_then(|n| n.strip_suffix('>'))
+        {
+            prefixes.push((name.to_owned(), namespace.to_owned()));
+        }
+    }
+    prefixes
+}
+
 fn query(resolver: &dyn Resolver, iri: &str, expected: Form, what: &str) -> Result<Query> {
     let text = String::from_utf8(resolver.read(iri)?)?;
     let parsed = spargebra::SparqlParser::new()
@@ -129,6 +166,7 @@ fn query(resolver: &dyn Resolver, iri: &str, expected: Form, what: &str) -> Resu
     Ok(Query {
         iri: iri.to_owned(),
         form,
+        prefixes: prologue_prefixes(&text),
         prepared: SparqlEvaluator::new().for_query(parsed),
     })
 }
@@ -178,12 +216,20 @@ pub fn prepare(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prepared> {
         .map(|iri| query(resolver, iri, Form::Ask, "detect query"))
         .transpose()?;
 
+    let mut prefixes: Vec<(String, String)> = Vec::new();
+    for (name, namespace) in mappings.iter().flat_map(|m| m.prefixes.iter()) {
+        if !prefixes.iter().any(|(taken, _)| taken == name) {
+            prefixes.push((name.clone(), namespace.clone()));
+        }
+    }
+
     Ok(Prepared {
         unit,
         mappings,
         findings_queries,
         detect,
         tables,
+        prefixes,
     })
 }
 
@@ -284,4 +330,30 @@ pub fn convert(prepared: &Prepared, xml: &[u8]) -> Result<Conversion> {
         detected,
         ms,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::prologue_prefixes;
+
+    #[test]
+    fn reads_a_prologue_however_its_keyword_and_spacing_are_written() {
+        assert_eq!(
+            prologue_prefixes(
+                "prefix ex: <urn:example:catalog#>\n  PREFIX  g:<https://ns.example.org/g/v1#>\nCONSTRUCT { }"
+            ),
+            [
+                ("ex".to_owned(), "urn:example:catalog#".to_owned()),
+                ("g".to_owned(), "https://ns.example.org/g/v1#".to_owned()),
+            ]
+        );
+    }
+
+    #[test]
+    fn reads_no_prefix_out_of_a_comment_or_a_word_that_merely_starts_with_one() {
+        assert_eq!(
+            prologue_prefixes("# PREFIX ex: <urn:example:catalog#>\nPREFIXES ex: <urn:x#>"),
+            Vec::new()
+        );
+    }
 }
