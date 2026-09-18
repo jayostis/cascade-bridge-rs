@@ -6,6 +6,7 @@
 //! The specification is the authority: a test type's rule is the
 //! `rdfs:comment` on that type in its `vocab/bridge.ttl`.
 
+mod annotation;
 mod decode;
 mod earl;
 mod error;
@@ -15,14 +16,13 @@ mod load;
 mod rdf;
 mod resolver;
 mod run;
+mod validate;
 
 pub use earl::{earl_report, earl_report_at, ReportSubject};
 pub use error::{Error, Result};
-pub use harness::{
-    multiset_diff, run_manifest, EntryResult, Outcome, RunOptions, OFFERED_PROFILES,
-};
-pub use lift::{lift_slice, Lift, FX, XYZ};
+pub use harness::{run_manifest, EntryResult, Outcome, RunOptions, OFFERED_PROFILES};
+pub use lift::{lift_slice, lift_text, Lift, Unit, FX, XYZ};
 pub use load::{load_adapter, Adapter, Envelope};
 pub use rdf::{serialise, GraphFormat};
-pub use resolver::{DirectoryResolver, Resolver};
-pub use run::{convert, prepare, Conversion, Finding, Form, Ms, Prepared};
+pub use resolver::{file_iri, DirectoryResolver, Resolver};
+pub use run::{convert, prepare, Conversion, Form, Ms, Prepared, Source};

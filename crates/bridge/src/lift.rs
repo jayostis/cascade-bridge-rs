@@ -7,6 +7,11 @@
 // over as soon as its end tag is read: a release the size of a disk costs one
 // unit of memory, not one document.
 //
+// The same pass writes each unit out again as XML, since a validator brings
+// its own parser and the decoded document is behind a reader by then. It
+// carries the declarations in scope where the unit stood, so a unit whose
+// prefixes were bound by an ancestor still parses on its own.
+//
 // Triples go into the store as triples. There is no N-Triples text in
 // between, so nothing is serialised on one side of a call and parsed back on
 // the other.
@@ -23,6 +28,10 @@ use std::io::{BufRead, Cursor};
 const RDF: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
 pub const FX: &str = "http://sparql.xyz/facade-x/ns/";
 pub const XYZ: &str = "http://sparql.xyz/facade-x/data/";
+
+/// The declaration a unit is written out under: by the time a unit is written
+/// its characters are characters, whatever bytes the document arrived as.
+const UTF_8_DECLARATION: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>";
 
 /// A name that is not a valid IRI character sequence is percent-encoded, so an
 /// odd local name costs a readable IRI and never a parse failure. The
@@ -54,11 +63,48 @@ fn triple(subject: &BlankNode, predicate: NamedNode, object: impl Into<Term>) ->
     )
 }
 
+/// One record, lifted, with what a stage outside the lift needs to say where
+/// it stood and to hand its own parser the same characters.
+pub struct Unit {
+    pub store: Store,
+    /// Its number among records of its name, from 1 in document order.
+    pub position: usize,
+    pub xml: String,
+    pub is_document_element: bool,
+}
+
+/// An element as the parser read it: what the lift names it by, and what the
+/// document wrote it as.
+struct Element<'a> {
+    local: &'a str,
+    qname: &'a str,
+    type_iri: NamedNode,
+    attributes: Vec<(NamedNode, String)>,
+    written: Vec<(String, String)>,
+    declarations: Vec<(String, String)>,
+}
+
 struct Frame {
     id: BlankNode,
     members: usize,
     /// Whether this element is inside the unit currently being lifted.
     unit: bool,
+    qname: String,
+    declarations: Vec<(String, String)>,
+}
+
+/// A start tag as XML, its declarations written before its attributes.
+fn start_tag(
+    qname: &str,
+    written: &[(String, String)],
+    declarations: &[(String, String)],
+) -> String {
+    let mut tag = format!("<{qname}");
+    for (name, value) in declarations.iter().chain(written) {
+        tag.push_str(&format!(" {name}=\"{}\"", value.replace('"', "&quot;")));
+    }
+    tag.push('>');
+    tag
 }
 
 /// The element names and triples of the pass, without the reader: the parser
@@ -73,6 +119,10 @@ struct Builder {
     skeleton: Vec<Quad>,
     rdf_type: NamedNode,
     fx_root: NamedNode,
+    document_element: Option<String>,
+    units: usize,
+    raw: String,
+    unit_is_document_element: bool,
 }
 
 impl Builder {
@@ -86,12 +136,45 @@ impl Builder {
             skeleton: Vec::new(),
             rdf_type: NamedNode::new(format!("{RDF}type"))?,
             fx_root: NamedNode::new(format!("{FX}root"))?,
+            document_element: None,
+            units: 0,
+            raw: String::new(),
+            unit_is_document_element: false,
         })
     }
 
     fn fresh(&mut self) -> BlankNode {
         self.next += 1;
         BlankNode::new_unchecked(format!("b{}", self.next))
+    }
+
+    fn inside_unit(&self) -> bool {
+        self.stack.last().is_some_and(|f| f.unit)
+    }
+
+    /// Characters of the unit, as the document wrote them.
+    fn write(&mut self, xml: &str) {
+        if self.inside_unit() {
+            self.raw.push_str(xml);
+        }
+    }
+
+    /// Every declaration the open elements bind, the innermost binding of a
+    /// name winning.
+    fn in_scope(&self, own: &[(String, String)]) -> Vec<(String, String)> {
+        let mut scope: Vec<(String, String)> = Vec::new();
+        for (name, value) in self
+            .stack
+            .iter()
+            .flat_map(|frame| frame.declarations.iter())
+            .chain(own)
+        {
+            match scope.iter_mut().find(|(taken, _)| taken == name) {
+                Some(bound) => bound.1.clone_from(value),
+                None => scope.push((name.clone(), value.clone())),
+            }
+        }
+        scope
     }
 
     fn flush(&mut self) -> Result<()> {
@@ -114,31 +197,37 @@ impl Builder {
         Ok(())
     }
 
-    fn open(
-        &mut self,
-        local: &str,
-        element: NamedNode,
-        attributes: Vec<(NamedNode, String)>,
-    ) -> Result<()> {
+    fn open(&mut self, element: Element<'_>) -> Result<()> {
         self.flush()?;
         let rdf_type = self.rdf_type.clone();
+        if self.stack.is_empty() {
+            self.document_element = Some(element.local.to_owned());
+        }
+        let frame = |id: BlankNode, unit: bool| Frame {
+            id,
+            members: 0,
+            unit,
+            qname: element.qname.to_owned(),
+            declarations: element.declarations.clone(),
+        };
 
-        if self.stack.last().is_some_and(|f| f.unit) {
+        if self.inside_unit() {
+            self.raw.push_str(&start_tag(
+                element.qname,
+                &element.written,
+                &element.declarations,
+            ));
             let id = self.fresh();
             let top = self.stack.last_mut().expect("checked above");
             top.members += 1;
             let slot = triple(&top.id, member(top.members)?, id.clone());
             self.unit.push(slot);
-            self.unit.push(triple(&id, rdf_type, element));
-            for (predicate, value) in attributes {
+            self.unit.push(triple(&id, rdf_type, element.type_iri));
+            for (predicate, value) in element.attributes {
                 self.unit
                     .push(triple(&id, predicate, Literal::new_simple_literal(value)));
             }
-            self.stack.push(Frame {
-                id,
-                members: 0,
-                unit: true,
-            });
+            self.stack.push(frame(id, true));
             return Ok(());
         }
 
@@ -155,38 +244,38 @@ impl Builder {
                 .push(triple(&id, rdf_type.clone(), self.fx_root.clone())),
         }
         self.skeleton
-            .push(triple(&id, rdf_type.clone(), element.clone()));
+            .push(triple(&id, rdf_type.clone(), element.type_iri.clone()));
 
-        if self.unit_name.as_deref() == Some(local) {
+        if self.unit_name.as_deref() == Some(element.local) {
+            self.units += 1;
+            self.unit_is_document_element = self.stack.is_empty();
+            self.raw.clear();
+            self.raw.push_str(UTF_8_DECLARATION);
+            let scope = self.in_scope(&element.declarations);
+            self.raw
+                .push_str(&start_tag(element.qname, &element.written, &scope));
+
             let unit_id = self.fresh();
             self.unit.clear();
             self.unit
                 .push(triple(&unit_id, rdf_type.clone(), self.fx_root.clone()));
-            self.unit.push(triple(&unit_id, rdf_type, element));
-            for (predicate, value) in attributes {
+            self.unit.push(triple(&unit_id, rdf_type, element.type_iri));
+            for (predicate, value) in element.attributes {
                 self.unit.push(triple(
                     &unit_id,
                     predicate,
                     Literal::new_simple_literal(value),
                 ));
             }
-            self.stack.push(Frame {
-                id: unit_id,
-                members: 0,
-                unit: true,
-            });
+            self.stack.push(frame(unit_id, true));
             return Ok(());
         }
 
-        for (predicate, value) in attributes {
+        for (predicate, value) in element.attributes {
             self.skeleton
                 .push(triple(&id, predicate, Literal::new_simple_literal(value)));
         }
-        self.stack.push(Frame {
-            id,
-            members: 0,
-            unit: false,
-        });
+        self.stack.push(frame(id, false));
         Ok(())
     }
 
@@ -196,11 +285,14 @@ impl Builder {
         let Some(frame) = self.stack.pop() else {
             return Ok(false);
         };
-        Ok(frame.unit && !self.stack.last().is_some_and(|f| f.unit))
+        if frame.unit {
+            self.raw.push_str(&format!("</{}>", frame.qname));
+        }
+        Ok(frame.unit && !self.inside_unit())
     }
 }
 
-/// One pass over a document, yielding a store per unit. When the iterator ends
+/// One pass over a document, yielding a unit at a time. When the iterator ends
 /// the skeleton is complete.
 pub struct Lift<R: BufRead> {
     reader: NsReader<R>,
@@ -213,7 +305,15 @@ pub struct Lift<R: BufRead> {
 /// becomes its own lifted unit and an empty container in the skeleton; without
 /// it, the skeleton is the whole document lifted and there are no units.
 pub fn lift_slice<'a>(bytes: &'a [u8], unit: Option<&str>) -> Result<Lift<Box<dyn BufRead + 'a>>> {
-    let reader: Box<dyn BufRead + 'a> = match decode(bytes)? {
+    lift_text(decode(bytes)?, unit)
+}
+
+/// Lift a document already read as characters.
+pub fn lift_text<'a>(
+    text: Cow<'a, str>,
+    unit: Option<&str>,
+) -> Result<Lift<Box<dyn BufRead + 'a>>> {
+    let reader: Box<dyn BufRead + 'a> = match text {
         Cow::Borrowed(text) => Box::new(Cursor::new(text.as_bytes())),
         Cow::Owned(text) => Box::new(Cursor::new(text.into_bytes())),
     };
@@ -233,6 +333,11 @@ impl<R: BufRead> Lift<R> {
         })
     }
 
+    /// The local name of the document's own element, once it has been read.
+    pub fn document_element(&self) -> Option<&str> {
+        self.builder.document_element.as_deref()
+    }
+
     /// The whole document with every unit emptied: what a detect query reads.
     /// Complete only once the units have been drained.
     pub fn into_skeleton(mut self) -> Result<Store> {
@@ -240,7 +345,7 @@ impl<R: BufRead> Lift<R> {
         store_of(self.builder.skeleton)
     }
 
-    pub fn next_unit(&mut self) -> Result<Option<Store>> {
+    pub fn next_unit(&mut self) -> Result<Option<Unit>> {
         if self.done {
             return Ok(None);
         }
@@ -254,15 +359,23 @@ impl<R: BufRead> Lift<R> {
             match event {
                 Event::Start(start) => {
                     let local = String::from_utf8(start.local_name().as_ref().to_vec())?;
-                    let element = name(namespace.as_deref().unwrap_or(XYZ), &local)?;
+                    let qname = String::from_utf8(start.name().as_ref().to_vec())?;
+                    let type_iri = name(namespace.as_deref().unwrap_or(XYZ), &local)?;
                     let mut attributes = Vec::new();
+                    let mut written = Vec::new();
+                    let mut declarations = Vec::new();
                     for attribute in start.attributes() {
                         let attribute = attribute?;
                         let key = attribute.key;
-                        // A namespace declaration is not an attribute.
+                        let raw = std::str::from_utf8(&attribute.value)?.to_owned();
+                        // A namespace declaration is not an attribute, but it
+                        // is what makes a unit's own prefixes mean anything
+                        // once the unit is read apart from its document.
                         if key.as_ref() == b"xmlns" || key.as_ref().starts_with(b"xmlns:") {
+                            declarations.push((std::str::from_utf8(key.as_ref())?.to_owned(), raw));
                             continue;
                         }
+                        written.push((std::str::from_utf8(key.as_ref())?.to_owned(), raw));
                         let (resolved, local) = self.reader.resolve_attribute(key);
                         let namespace = match resolved {
                             ResolveResult::Bound(ns) => {
@@ -279,24 +392,40 @@ impl<R: BufRead> Lift<R> {
                             .into_owned();
                         attributes.push((predicate, value));
                     }
-                    self.builder.open(&local, element, attributes)?;
+                    self.builder.open(Element {
+                        local: &local,
+                        qname: &qname,
+                        type_iri,
+                        attributes,
+                        written,
+                        declarations,
+                    })?;
                 }
                 Event::End(_) => {
                     if self.builder.close()? {
                         let quads = std::mem::take(&mut self.builder.unit);
-                        return Ok(Some(store_of(quads)?));
+                        return Ok(Some(Unit {
+                            store: store_of(quads)?,
+                            position: self.builder.units,
+                            xml: std::mem::take(&mut self.builder.raw),
+                            is_document_element: self.builder.unit_is_document_element,
+                        }));
                     }
                 }
                 Event::Text(text) => {
                     let raw = text.into_inner();
-                    let raw = normalise_line_endings(std::str::from_utf8(&raw)?);
+                    let raw = std::str::from_utf8(&raw)?;
+                    self.builder.write(raw);
+                    let raw = normalise_line_endings(raw);
                     self.builder
                         .text
                         .push_str(&quick_xml::escape::unescape(&raw)?);
                 }
                 Event::CData(data) => {
                     let raw = data.into_inner();
-                    let raw = normalise_line_endings(std::str::from_utf8(&raw)?);
+                    let raw = std::str::from_utf8(&raw)?;
+                    self.builder.write(&format!("<![CDATA[{raw}]]>"));
+                    let raw = normalise_line_endings(raw);
                     self.builder.text.push_str(&raw);
                 }
                 // Comments, processing instructions, the document type
@@ -313,7 +442,7 @@ impl<R: BufRead> Lift<R> {
 }
 
 impl<R: BufRead> Iterator for Lift<R> {
-    type Item = Result<Store>;
+    type Item = Result<Unit>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.next_unit().transpose()

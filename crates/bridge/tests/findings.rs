@@ -1,82 +1,158 @@
-// A finding member is the lexical form of the term its variable is bound to:
-// an IRI's own characters, or a literal's lexical form without its datatype or
-// language tag. An unbound variable or a blank node has no such string and is
-// an error in the query (the specification's engine/sparql.md, step 4). The
-// tiny adapter's findings query is rewritten so ?sourceField is bound each way.
-use cascade_bridge::{convert, load_adapter, prepare, DirectoryResolver, Resolver};
+// A findings query is a CONSTRUCT whose annotations name the record by
+// bridge:thisRecord. The Bridge puts the document in that name's place and
+// moves the query's selector under the record's own position, so an adapter
+// says what inside a record a finding is about and the Bridge says which
+// record that was.
+use cascade_bridge::{convert, load_adapter, prepare, DirectoryResolver, Resolver, Source};
+use oxrdf::{Quad, Term};
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-/// The tiny adapter with the line binding ?sourceField in its findings query
-/// replaced.
-struct SourceField {
-    directory: DirectoryResolver,
-    binding: &'static str,
+const OA: &str = "http://www.w3.org/ns/oa#";
+const RDF_TYPE: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
+const RDF_VALUE: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#value";
+
+fn tiny() -> DirectoryResolver {
+    DirectoryResolver::new(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/tiny-adapter"))
+        .expect("resolver")
 }
 
-impl Resolver for SourceField {
+/// The tiny adapter's findings for one of its committed inputs.
+fn findings_for(input: &str) -> Vec<Quad> {
+    findings_through(&tiny(), input)
+}
+
+fn findings_through(resolver: &dyn Resolver, input: &str) -> Vec<Quad> {
+    let adapter = load_adapter(resolver).expect("adapter");
+    let prepared = prepare(&adapter, resolver).expect("prepared");
+    let iri = format!("{}fixtures/in/{input}", resolver.root());
+    let xml = resolver.read(&iri).expect("input");
+    convert(
+        &prepared,
+        Source {
+            iri: &iri,
+            envelope: None,
+            xml: &xml,
+        },
+    )
+    .expect("conversion")
+    .findings
+}
+
+/// Every object of a predicate, written as N-Triples writes it.
+fn objects(quads: &[Quad], predicate: &str) -> Vec<String> {
+    let mut written: Vec<String> = quads
+        .iter()
+        .filter(|q| q.predicate.as_str() == predicate)
+        .map(|q| q.object.to_string())
+        .collect();
+    written.sort();
+    written
+}
+
+/// The XPath every selector node holds, sorted.
+fn selector_values(quads: &[Quad]) -> Vec<String> {
+    let selector = format!("{OA}XPathSelector");
+    let selectors: Vec<String> = quads
+        .iter()
+        .filter(|q| q.predicate.as_str() == RDF_TYPE)
+        .filter(|q| matches!(&q.object, Term::NamedNode(n) if n.as_str() == selector))
+        .map(|q| q.subject.to_string())
+        .collect();
+    let mut values: Vec<String> = quads
+        .iter()
+        .filter(|q| q.predicate.as_str() == RDF_VALUE)
+        .filter(|q| selectors.contains(&q.subject.to_string()))
+        .map(|q| q.object.to_string())
+        .collect();
+    values.sort();
+    values
+}
+
+fn annotations(quads: &[Quad]) -> usize {
+    let annotation = format!("{OA}Annotation");
+    quads
+        .iter()
+        .filter(|q| q.predicate.as_str() == RDF_TYPE)
+        .filter(|q| matches!(&q.object, Term::NamedNode(n) if n.as_str() == annotation))
+        .count()
+}
+
+#[test]
+fn names_the_document_the_record_was_read_from_where_the_query_named_this_record() {
+    let findings = findings_for("two.xml");
+    let sources = objects(&findings, &format!("{OA}hasSource"));
+    assert_eq!(sources.len(), 2);
+    for source in sources {
+        assert!(source.ends_with("fixtures/in/two.xml>"), "{source}");
+    }
+}
+
+#[test]
+fn moves_the_query_s_selector_under_the_record_s_own_position() {
+    let findings = findings_for("two.xml");
+    assert_eq!(
+        objects(&findings, &format!("{OA}refinedBy")).len(),
+        1,
+        "one finding of two names a node inside its record"
+    );
+
+    assert_eq!(
+        selector_values(&findings),
+        ["\"/catalog/item[1]\"", "\"/catalog/item[2]\"", "\"note\""]
+    );
+}
+
+#[test]
+fn gives_every_annotation_a_record_selector_of_its_own() {
+    let findings = findings_for("order.xml");
+    let selectors = objects(&findings, &format!("{OA}hasSelector"));
+    assert_eq!(annotations(&findings), 4);
+    assert_eq!(objects(&findings, &format!("{OA}hasTarget")).len(), 4);
+    assert_eq!(
+        selectors.iter().collect::<BTreeSet<_>>().len(),
+        4,
+        "two annotations share a selector node: {selectors:?}"
+    );
+}
+
+#[test]
+fn counts_a_finding_a_record_produced_twice_twice() {
+    let notes = selector_values(&findings_for("order.xml"))
+        .into_iter()
+        .filter(|value| value == "\"note\"")
+        .count();
+    assert_eq!(notes, 3, "two of one record's, one of the other's");
+}
+
+/// The tiny adapter with the findings query that names a node inside the
+/// record rewritten to name none.
+struct WholeRecord {
+    directory: DirectoryResolver,
+}
+
+const SELECTOR: &str = " ;\n      oa:hasSelector [ a oa:XPathSelector ; rdf:value \"note\" ]";
+
+impl Resolver for WholeRecord {
     fn root(&self) -> &str {
         self.directory.root()
     }
 
     fn read(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
         let bytes = self.directory.read(iri)?;
-        if !iri.ends_with("mapping/item-findings.rq") {
+        if !iri.ends_with("mapping/item-note-findings.rq") {
             return Ok(bytes);
         }
         let text = String::from_utf8(bytes).expect("utf-8");
-        let line = r#"BIND("item/title" AS ?sourceField)"#;
-        assert!(text.contains(line), "the findings query binds {line}");
-        Ok(text.replace(line, self.binding).into_bytes())
+        assert!(text.contains(SELECTOR), "the query names a selector");
+        Ok(text.replace(SELECTOR, "").into_bytes())
     }
 }
 
-/// Each finding's sourceField, from the tiny adapter's two-item input, where
-/// one item has no title and so draws one finding.
-fn source_fields(binding: &'static str) -> cascade_bridge::Result<Vec<String>> {
-    let resolver = SourceField {
-        directory: DirectoryResolver::new(
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/tiny-adapter"),
-        )
-        .expect("resolver"),
-        binding,
-    };
-    let adapter = load_adapter(&resolver).expect("adapter");
-    let prepared = prepare(&adapter, &resolver).expect("prepared");
-    let xml = resolver
-        .read(&format!("{}fixtures/in/two.xml", resolver.root()))
-        .expect("input");
-    let conversion = convert(&prepared, &xml)?;
-    Ok(conversion
-        .findings
-        .into_iter()
-        .map(|finding| finding.source_field)
-        .collect())
-}
-
 #[test]
-fn writes_a_member_bound_to_an_iri_as_the_iri() {
-    assert_eq!(
-        source_fields("BIND(xyz:title AS ?sourceField)").expect("findings"),
-        ["http://sparql.xyz/facade-x/data/title"]
-    );
-}
-
-#[test]
-fn writes_a_literal_member_without_its_language_tag() {
-    assert_eq!(
-        source_fields(r#"BIND("item/title"@en AS ?sourceField)"#).expect("findings"),
-        ["item/title"]
-    );
-}
-
-#[test]
-fn refuses_a_member_bound_to_a_blank_node() {
-    let error = source_fields("BIND(BNODE() AS ?sourceField)").expect_err("refused");
-    assert!(error.to_string().contains("?sourceField"), "{error}");
-}
-
-#[test]
-fn refuses_a_member_left_unbound() {
-    let error = source_fields("").expect_err("refused");
-    assert!(error.to_string().contains("?sourceField"), "{error}");
+fn selects_the_record_itself_for_a_query_that_writes_no_selector() {
+    let findings = findings_through(&WholeRecord { directory: tiny() }, "two.xml");
+    assert_eq!(annotations(&findings), 2);
+    assert!(objects(&findings, &format!("{OA}refinedBy")).is_empty());
+    assert_eq!(objects(&findings, &format!("{OA}hasSelector")).len(), 2);
 }

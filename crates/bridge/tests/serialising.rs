@@ -2,16 +2,21 @@
 // for every record is written once, and two records' blank nodes stay two.
 // The test harness sees neither, because it canonicalises before it compares.
 use cascade_bridge::{
-    convert, load_adapter, prepare, serialise, DirectoryResolver, GraphFormat, Resolver,
+    convert, load_adapter, prepare, serialise, DirectoryResolver, GraphFormat, Resolver, Source,
 };
 use std::path::PathBuf;
 
 /// The tiny adapter with its one mapping replaced, so a mapping that emits
-/// what this file is about can be run without a second adapter.
+/// what this file is about can be run without a second adapter, and with a
+/// lookup table beside it, whose blank node carries one label into every
+/// record's store.
 struct Mapping {
     directory: DirectoryResolver,
     text: String,
+    table: bool,
 }
+
+const TABLE: &str = "_:shared <urn:example:catalog#about> \"the whole catalog\" .";
 
 impl Resolver for Mapping {
     fn root(&self) -> &str {
@@ -22,7 +27,30 @@ impl Resolver for Mapping {
         if iri.ends_with("mapping/item.rq") {
             return Ok(self.text.as_bytes().to_vec());
         }
-        self.directory.read(iri)
+        if !self.table {
+            return self.directory.read(iri);
+        }
+        if iri.ends_with("table/catalog.ttl") {
+            return Ok(TABLE.as_bytes().to_vec());
+        }
+        let text = String::from_utf8(self.directory.read(iri)?).expect("utf-8");
+        if !iri.ends_with("ro-crate-metadata.json") {
+            return Ok(text.into_bytes());
+        }
+        Ok(text
+            .replace(
+                "\"bridge:mapping\": \"bridge:mapping\"",
+                "\"bridge:mapping\": \"bridge:mapping\",\n      \"bridge:table\": \"bridge:table\"",
+            )
+            .replace(
+                "\"bridge:mapping\": { \"@id\": \"mapping/item.rq\" },",
+                "\"bridge:mapping\": { \"@id\": \"mapping/item.rq\" },\n      \"bridge:table\": { \"@id\": \"table/catalog.ttl\" },",
+            )
+            .replace(
+                "{\n      \"@id\": \"#envelope-catalog\",",
+                "{\n      \"@id\": \"table/catalog.ttl\",\n      \"@type\": \"File\",\n      \"encodingFormat\": \"text/turtle\"\n    },\n    {\n      \"@id\": \"#envelope-catalog\",",
+            )
+            .into_bytes())
     }
 }
 
@@ -42,19 +70,32 @@ WHERE {
 /// The tiny adapter's two-record input, converted through the given mapping
 /// and written out.
 fn graph(construct: &str, format: GraphFormat) -> String {
+    through(construct, WHERE, format, false)
+}
+
+fn through(construct: &str, matching: &str, format: GraphFormat, table: bool) -> String {
     let resolver = Mapping {
         directory: DirectoryResolver::new(
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/tiny-adapter"),
         )
         .expect("resolver"),
-        text: format!("{PROLOGUE}CONSTRUCT {{ {construct} }}{WHERE}"),
+        text: format!("{PROLOGUE}CONSTRUCT {{ {construct} }}{matching}"),
+        table,
     };
     let adapter = load_adapter(&resolver).expect("adapter");
     let prepared = prepare(&adapter, &resolver).expect("prepared");
     let xml = resolver
         .read(&format!("{}fixtures/in/two.xml", resolver.root()))
         .expect("input");
-    let conversion = convert(&prepared, &xml).expect("conversion");
+    let conversion = convert(
+        &prepared,
+        Source {
+            iri: "urn:example:document",
+            envelope: None,
+            xml: &xml,
+        },
+    )
+    .expect("conversion");
     assert_eq!(conversion.units, 2);
     serialise(&conversion.quads, format, &prepared.prefixes).expect("graph")
 }
@@ -69,9 +110,8 @@ fn writes_a_triple_every_record_constructs_once() {
     assert_eq!(written.matches("urn:example:catalog#Item").count(), 2);
 }
 
-#[test]
-fn keeps_two_records_blank_nodes_apart() {
-    let written = graph("?s ex:note [ ex:about ?id ] .", GraphFormat::NTriples);
+/// The labels of the blank nodes a written graph names, each once.
+fn labels(written: &str) -> Vec<&str> {
     let mut labels: Vec<&str> = written
         .split("_:")
         .skip(1)
@@ -79,7 +119,36 @@ fn keeps_two_records_blank_nodes_apart() {
         .collect();
     labels.sort_unstable();
     labels.dedup();
-    assert_eq!(labels.len(), 2, "{written}");
+    labels
+}
+
+#[test]
+fn keeps_two_records_blank_nodes_apart() {
+    let written = graph("?s ex:note [ ex:about ?id ] .", GraphFormat::NTriples);
+    assert_eq!(labels(&written).len(), 2, "{written}");
+}
+
+/// A table is parsed once and loaded beside every record, so a mapping that
+/// puts the table's own node in its graph hands every record the same label.
+/// Merging two graphs is standardising their blank nodes apart, not taking a
+/// shared label for a shared node, which is what a query engine free to label
+/// two executions alike would otherwise cost.
+#[test]
+fn keeps_two_records_apart_when_they_were_handed_one_label() {
+    let written = through(
+        "?s ex:note ?shared .",
+        "
+WHERE {
+  ?item a fx:root, xyz:item ; xyz:id ?id .
+  BIND(IRI(CONCAT(\"urn:example:item:\", ?id)) AS ?s)
+  ?shared ex:about \"the whole catalog\" .
+}
+",
+        GraphFormat::NTriples,
+        true,
+    );
+    assert_eq!(written.matches("urn:example:catalog#note").count(), 2);
+    assert_eq!(labels(&written).len(), 2, "{written}");
 }
 
 #[test]

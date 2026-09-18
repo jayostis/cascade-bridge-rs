@@ -7,11 +7,14 @@ PREFIX bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#>
 
 CONSTRUCT {
   [] a oa:Annotation ;
-    oa:hasTarget [ oa:hasSource bridge:thisRecord ] ;
-    oa:hasBody [ a oa:TextualBody ; rdf:value "the item has no title" ] ;
-    sh:resultSeverity sh:Warning .
+    oa:hasTarget [
+      oa:hasSource bridge:thisRecord ;
+      oa:hasSelector [ a oa:XPathSelector ; rdf:value "note" ]
+    ] ;
+    oa:hasBody [ a oa:TextualBody ; rdf:value "no term for a free-text note" ] ;
+    sh:resultSeverity sh:Info .
 }
 WHERE {
-  ?item a fx:root, xyz:item .
-  MINUS { ?item ?slot ?t . ?t a xyz:title }
+  ?item a fx:root, xyz:item ; ?slot ?note .
+  ?note a xyz:note .
 }

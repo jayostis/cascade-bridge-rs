@@ -1,18 +1,19 @@
 // Executing a test manifest. Each entry is judged by the rule its type
 // carries, as the rdfs:comment on that type in the specification's vocabulary
 // states it.
+use crate::annotation;
 use crate::error::{Error, Result};
 use crate::load::{as_subject, list, objects, subject, term_value, value, values, Adapter};
 use crate::rdf::{
-    canonical_lines, BRIDGE_DATASET, BRIDGE_EXPECTED_FINDINGS, BRIDGE_EXPECTED_GRAPH, BRIDGE_INPUT,
-    BRIDGE_INPUT_ONLY, BRIDGE_ISOMORPHIC, BRIDGE_SPARQL_1_1, BRIDGE_STAMP_PREDICATE, MF_ACTION,
-    MF_ENTRIES, MF_NAME, MF_RESULT, RDF_TYPE,
+    canonical_lines, BRIDGE_DATASET, BRIDGE_ENVELOPE, BRIDGE_EXPECTED_FINDINGS,
+    BRIDGE_EXPECTED_GRAPH, BRIDGE_INPUT, BRIDGE_INPUT_ONLY, BRIDGE_ISOMORPHIC, BRIDGE_SPARQL_1_1,
+    BRIDGE_STAMP_PREDICATE, MF_ACTION, MF_ENTRIES, MF_NAME, MF_RESULT, RDF_TYPE,
 };
 use crate::resolver::Resolver;
-use crate::run::{convert, prepare, Finding, Prepared};
+use crate::run::{convert, prepare, Prepared, Source};
 use oxigraph::model::{NamedOrBlankNode, Quad, Term};
 use oxrdfio::{RdfFormat, RdfParser};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 pub const OFFERED_PROFILES: [&str; 1] = [BRIDGE_SPARQL_1_1];
@@ -55,32 +56,6 @@ pub struct RunOptions {
     pub datasets: bool,
 }
 
-/// The difference between two multisets, each entry counted.
-pub fn multiset_diff(produced: &[String], expected: &[String]) -> (Vec<String>, Vec<String>) {
-    let count = |xs: &[String]| {
-        let mut counts: BTreeMap<String, usize> = BTreeMap::new();
-        for x in xs {
-            *counts.entry(x.clone()).or_default() += 1;
-        }
-        counts
-    };
-    let produced = count(produced);
-    let expected = count(expected);
-    let mut missing = Vec::new();
-    let mut extra = Vec::new();
-    for (key, wanted) in &expected {
-        for _ in produced.get(key).copied().unwrap_or(0)..*wanted {
-            missing.push(key.clone());
-        }
-    }
-    for (key, got) in &produced {
-        for _ in expected.get(key).copied().unwrap_or(0)..*got {
-            extra.push(key.clone());
-        }
-    }
-    (missing, extra)
-}
-
 fn sample<'a>(lines: impl IntoIterator<Item = &'a String>, n: usize) -> String {
     lines
         .into_iter()
@@ -103,12 +78,17 @@ fn without(quads: Vec<Quad>, ignore: &HashSet<String>) -> Vec<Quad> {
         .collect()
 }
 
-fn expected_findings(bytes: &[u8]) -> Result<Vec<String>> {
-    let value: serde_json::Value = serde_json::from_slice(bytes)?;
-    let serde_json::Value::Array(entries) = value else {
-        return Err(Error::msg("the findings sidecar is not a JSON array"));
-    };
-    Ok(entries.iter().map(ToString::to_string).collect())
+/// A graph a result names, parsed against its own IRI, so a finding writing
+/// its document as a relative reference names the same document the entry does.
+fn graph_at(bytes: &[u8], iri: &str) -> Result<Vec<Quad>> {
+    let mut quads = Vec::new();
+    for quad in RdfParser::from_format(RdfFormat::Turtle)
+        .with_base_iri(iri)?
+        .for_slice(bytes)
+    {
+        quads.push(quad?);
+    }
+    Ok(quads)
 }
 
 struct Entry<'a> {
@@ -133,7 +113,19 @@ impl Entry<'_> {
             .transpose()?
             .flatten()
             .ok_or_else(|| Error::msg("the entry's action names no bridge:input"))?;
-        let run = convert(self.setup, &self.resolver.read(&input)?)?;
+        let envelope = action
+            .as_ref()
+            .map(|a| value(graph, a, BRIDGE_ENVELOPE))
+            .transpose()?
+            .flatten();
+        let run = convert(
+            self.setup,
+            Source {
+                iri: &input,
+                envelope: envelope.as_deref(),
+                xml: &self.resolver.read(&input)?,
+            },
+        )?;
         let detect = if run.detected == Some(false) {
             "; the detect query is false for this input (reported, not judged)"
         } else {
@@ -144,10 +136,10 @@ impl Entry<'_> {
             return Ok((
                 Outcome::CantTell,
                 format!(
-                    "input-only: {} unit(s), {} triples and {} findings recorded, not judged (bridge:InputOnlyTest){detect}",
+                    "input-only: {} unit(s), {} triples and {} finding(s) recorded, not judged (bridge:InputOnlyTest){detect}",
                     run.units,
                     run.quads.len(),
-                    run.findings.len()
+                    run.annotations()
                 ),
             ));
         }
@@ -168,14 +160,8 @@ impl Entry<'_> {
             own.into_iter().collect()
         };
 
-        let bytes = self.resolver.read(&graph_iri)?;
-        let mut expected = Vec::new();
-        for quad in RdfParser::from_format(RdfFormat::Turtle)
-            .with_base_iri(&graph_iri)?
-            .for_slice(&bytes)
-        {
-            expected.push(quad?);
-        }
+        let annotations = run.annotations();
+        let expected = graph_at(&self.resolver.read(&graph_iri)?, &graph_iri)?;
         let expected = canonical_lines(without(expected, &ignore))?;
         let produced = canonical_lines(without(run.quads, &ignore))?;
         let graph_missing: Vec<String> = expected.difference(&produced).cloned().collect();
@@ -191,19 +177,18 @@ impl Entry<'_> {
         let mut findings_text =
             "findings not compared: the entry names no bridge:expectedFindings".to_owned();
         if let Some(iri) = findings_iri {
-            let want = expected_findings(&self.resolver.read(&iri)?)?;
-            let got: Vec<String> = run
-                .findings
-                .iter()
-                .map(|f: &Finding| f.to_json().to_string())
-                .collect();
-            let (missing, extra) = multiset_diff(&got, &want);
+            let want = graph_at(&self.resolver.read(&iri)?, &iri)?;
+            let wanted = annotation::annotations(&want);
+            let want = canonical_lines(want)?;
+            let got = canonical_lines(run.findings)?;
+            let missing: Vec<String> = want.difference(&got).cloned().collect();
+            let extra: Vec<String> = got.difference(&want).cloned().collect();
             findings_ok = missing.is_empty() && extra.is_empty();
             findings_text = if findings_ok {
-                format!("findings equal as a multiset ({})", want.len())
+                format!("findings isomorphic ({wanted} annotation(s))")
             } else {
                 format!(
-                    "findings differ: {} missing, {} extra (missing: {}; extra: {})",
+                    "findings differ: {annotations} annotation(s) produced, {wanted} expected; {} line(s) missing, {} extra (missing: {}; extra: {})",
                     missing.len(),
                     extra.len(),
                     sample(&missing, 2),

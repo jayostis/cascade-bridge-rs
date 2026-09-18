@@ -100,8 +100,8 @@ fn lifts_each_unit_with_the_unit_as_root_and_empties_it_in_the_skeleton() {
     let xml = br#"<set n="2"><item id="1"><t>x</t></item><item id="2"/></set>"#;
     let mut lift = lift_slice(xml, Some("item")).expect("lift");
     let mut units = Vec::new();
-    while let Some(store) = lift.next_unit().expect("unit") {
-        units.push(store);
+    while let Some(unit) = lift.next_unit().expect("unit") {
+        units.push(unit.store);
     }
     assert_eq!(units.len(), 2);
 
@@ -129,7 +129,7 @@ fn lifts_each_unit_with_the_unit_as_root_and_empties_it_in_the_skeleton() {
 fn treats_a_document_whose_element_is_the_unit_as_one_unit() {
     let mut lift = lift_slice(br#"<item id="9"/>"#, Some("item")).expect("lift");
     let unit = lift.next_unit().expect("unit").expect("one unit");
-    let lines = canonical(unit.iter().map(|q| q.expect("quad")).collect());
+    let lines = canonical(unit.store.iter().map(|q| q.expect("quad")).collect());
     assert!(lines.iter().any(|line| line.contains("\"9\"")));
     assert!(lift.next_unit().expect("end").is_none());
 }

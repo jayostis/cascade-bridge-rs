@@ -1,7 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <catalog>
-  <item id="a"/>
-  <item id="b"><title>B</title></item>
-  <item id="a"/>
-  <item id="c"/>
+  <item id="a"><note>one</note><note>two</note></item>
+  <item id="b"><title>B</title><note>three</note></item>
 </catalog>

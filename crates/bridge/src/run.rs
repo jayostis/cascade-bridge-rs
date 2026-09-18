@@ -1,44 +1,26 @@
-// Running an adapter on one document, per unit: lift the unit, load the tables
-// beside it, run every mapping and union the graphs, then run every findings
-// query and concatenate the rows. Each unit gets a store of its own, so no
-// query can see another unit.
+// Running an adapter on one document, per unit: lift the unit, validate it,
+// load the tables beside it, run every mapping and union the graphs, then run
+// every findings query and make its annotations about that unit. Each unit
+// gets a store of its own, so no query can see another unit, and each query
+// execution's blank nodes are kept apart from every other's, so two findings
+// never fuse into one.
 //
 // Everything an adapter runs is read and parsed once, here, before any
-// document: a query's text is never handed to the engine twice.
+// document: a query's text is never handed to the engine twice, and a schema
+// is compiled once however many records it validates.
+use crate::annotation::{self, Minted, Record};
+use crate::decode::decode;
 use crate::error::{Error, Result};
-use crate::lift::lift_slice;
+use crate::lift::lift_text;
 use crate::load::{subject, value, Adapter};
 use crate::rdf::SCHEMA_ENCODING_FORMAT;
 use crate::resolver::Resolver;
-use oxigraph::model::{GraphName, Quad, Term};
+use crate::validate::{self, Schema};
+use oxigraph::model::{GraphName, Quad};
 use oxigraph::sparql::{PreparedSparqlQuery, QueryResults, SparqlEvaluator};
 use oxigraph::store::Store;
 use oxrdfio::{RdfFormat, RdfParser};
 use std::time::{Duration, Instant};
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Finding {
-    pub source_field: String,
-    pub reason: String,
-    pub severity: String,
-    pub context: String,
-}
-
-const FINDING_KEYS: [&str; 4] = ["sourceField", "reason", "severity", "context"];
-
-impl Finding {
-    /// The finding as the JSON object the sidecar holds. serde_json orders an
-    /// object's members, so two equal findings have one spelling and the
-    /// multiset comparison can key on it.
-    pub fn to_json(&self) -> serde_json::Value {
-        serde_json::json!({
-            "sourceField": self.source_field,
-            "reason": self.reason,
-            "severity": self.severity,
-            "context": self.context,
-        })
-    }
-}
 
 /// The form a query's own text declares, decided when it is parsed. Deciding
 /// it from a result instead accepts a SELECT that matched nothing as a
@@ -86,6 +68,35 @@ impl Query {
         // built; the text is not seen again.
         Ok(self.prepared.clone().on_store(store).execute()?)
     }
+
+    /// The graph the CONSTRUCT built, with this execution's blank nodes kept
+    /// apart from every other execution's.
+    fn graph(&self, store: &Store) -> Result<Vec<Quad>> {
+        let QueryResults::Graph(triples) = self.on(store)? else {
+            return Err(Error::msg(format!(
+                "{} is not a {}",
+                self.iri,
+                Form::Construct.keyword()
+            )));
+        };
+        let mut quads = Vec::new();
+        for triple in triples {
+            let triple = triple?;
+            quads.push(Quad::new(
+                triple.subject,
+                triple.predicate,
+                triple.object,
+                GraphName::DefaultGraph,
+            ));
+        }
+        Ok(Minted::default().apart(quads))
+    }
+}
+
+struct Envelope {
+    iri: String,
+    doc_root_element_name: Option<String>,
+    document_schema: Option<Schema>,
 }
 
 pub struct Prepared {
@@ -98,6 +109,26 @@ pub struct Prepared {
     /// Every name the mappings give a namespace, the first binding of a name
     /// winning, as a query's own prologue binds it.
     pub prefixes: Vec<(String, String)>,
+    envelopes: Vec<Envelope>,
+    source_schema: Option<Schema>,
+}
+
+impl Prepared {
+    fn named_envelope(&self, iri: &str) -> Result<&Envelope> {
+        self.envelopes
+            .iter()
+            .find(|envelope| envelope.iri == iri)
+            .ok_or_else(|| Error::msg(format!("the adapter declares no envelope {iri}")))
+    }
+
+    /// The envelope a document arrived in, when the caller names none: the one
+    /// whose document root element the document's own is.
+    fn envelope_of(&self, document_element: Option<&str>) -> Option<&Envelope> {
+        let element = document_element?;
+        self.envelopes
+            .iter()
+            .find(|envelope| envelope.doc_root_element_name.as_deref() == Some(element))
+    }
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -107,15 +138,31 @@ pub struct Ms {
     pub detect: Duration,
     pub mappings: Duration,
     pub findings: Duration,
+    pub validation: Duration,
 }
 
 pub struct Conversion {
     pub quads: Vec<Quad>,
-    pub findings: Vec<Finding>,
+    /// Every finding about the source document, as Web Annotations.
+    pub findings: Vec<Quad>,
     pub units: usize,
     /// The detect query's answer over the skeleton, when the adapter has one.
     pub detected: Option<bool>,
     pub ms: Ms,
+}
+
+impl Conversion {
+    pub fn annotations(&self) -> usize {
+        annotation::annotations(&self.findings)
+    }
+}
+
+/// A document to convert: its bytes, the IRI a finding about it names, and the
+/// envelope it arrived in where the caller knows it.
+pub struct Source<'a> {
+    pub iri: &'a str,
+    pub envelope: Option<&'a str>,
+    pub xml: &'a [u8],
 }
 
 /// The prologue's PREFIX declarations. SPARQL keeps them out of the algebra a
@@ -208,13 +255,31 @@ pub fn prepare(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prepared> {
     }
     let mut findings_queries = Vec::new();
     for iri in &adapter.findings_queries {
-        findings_queries.push(query(resolver, iri, Form::Select, "findings query")?);
+        findings_queries.push(query(resolver, iri, Form::Construct, "findings query")?);
     }
     let detect = adapter
         .detect_query
         .as_deref()
         .map(|iri| query(resolver, iri, Form::Ask, "detect query"))
         .transpose()?;
+
+    let source_schema = adapter
+        .source_schema
+        .as_deref()
+        .map(|iri| validate::compile(iri, resolver))
+        .transpose()?;
+    let mut envelopes = Vec::new();
+    for envelope in &adapter.envelopes {
+        envelopes.push(Envelope {
+            iri: envelope.iri.clone(),
+            doc_root_element_name: envelope.doc_root_element_name.clone(),
+            document_schema: envelope
+                .document_schema
+                .as_deref()
+                .map(|iri| validate::compile(iri, resolver))
+                .transpose()?,
+        });
+    }
 
     let mut prefixes: Vec<(String, String)> = Vec::new();
     for (name, namespace) in mappings.iter().flat_map(|m| m.prefixes.iter()) {
@@ -230,84 +295,99 @@ pub fn prepare(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prepared> {
         detect,
         tables,
         prefixes,
+        envelopes,
+        source_schema,
     })
 }
 
-fn finding(solution: &oxigraph::sparql::QuerySolution, query: &str) -> Result<Finding> {
-    let mut got = Vec::with_capacity(FINDING_KEYS.len());
-    for key in FINDING_KEYS {
-        match solution.get(key) {
-            Some(Term::Literal(l)) => got.push(l.value().to_owned()),
-            Some(Term::NamedNode(n)) => got.push(n.as_str().to_owned()),
-            _ => {
-                return Err(Error::msg(format!(
-                    "findings query {query} left ?{key} unbound or bound to a term with no lexical form, such as a blank node"
-                )))
-            }
-        }
-    }
-    let mut got = got.into_iter();
-    Ok(Finding {
-        source_field: got.next().expect("four keys"),
-        reason: got.next().expect("four keys"),
-        severity: got.next().expect("four keys"),
-        context: got.next().expect("four keys"),
-    })
-}
-
-pub fn convert(prepared: &Prepared, xml: &[u8]) -> Result<Conversion> {
+pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
     let mut ms = Ms::default();
     let mut quads = Vec::new();
     let mut findings = Vec::new();
     let mut units = 0;
 
-    let mut lift = lift_slice(xml, Some(&prepared.unit))?;
+    let named = source
+        .envelope
+        .map(|iri| prepared.named_envelope(iri))
+        .transpose()?;
+    let text = decode(source.xml)?;
+    let mut lift = lift_text(text, Some(&prepared.unit))?;
+    let mut envelope = named;
     loop {
         let at = Instant::now();
-        let Some(store) = lift.next_unit()? else {
+        let Some(unit) = lift.next_unit()? else {
             break;
         };
         ms.lift += at.elapsed();
         units += 1;
+        if named.is_none() {
+            envelope = prepared.envelope_of(lift.document_element());
+        }
+        let root_element = envelope
+            .and_then(|envelope| envelope.doc_root_element_name.as_deref())
+            .or_else(|| lift.document_element())
+            .ok_or_else(|| Error::msg("the document has no element to select a record in"))?;
+        let selector = annotation::selector(
+            root_element,
+            if unit.is_document_element {
+                root_element
+            } else {
+                &prepared.unit
+            },
+            unit.position,
+        );
+        let record = Record {
+            source: source.iri,
+            selector: &selector,
+        };
 
         let at = Instant::now();
-        store.extend(prepared.tables.iter().cloned())?;
+        if let Some(schema) = &prepared.source_schema {
+            for reason in schema.errors(&unit.xml)? {
+                findings.extend(annotation::violation(&record, &reason)?);
+            }
+        }
+        ms.validation += at.elapsed();
+
+        let at = Instant::now();
+        unit.store.extend(prepared.tables.iter().cloned())?;
         ms.load += at.elapsed();
 
         let at = Instant::now();
         for mapping in &prepared.mappings {
-            let QueryResults::Graph(triples) = mapping.on(&store)? else {
-                return Err(Error::msg(format!(
-                    "mapping {} is not a CONSTRUCT",
-                    mapping.iri
-                )));
-            };
-            for triple in triples {
-                let triple = triple?;
-                quads.push(Quad::new(
-                    triple.subject,
-                    triple.predicate,
-                    triple.object,
-                    GraphName::DefaultGraph,
-                ));
-            }
+            quads.extend(mapping.graph(&unit.store)?);
         }
         ms.mappings += at.elapsed();
 
         let at = Instant::now();
         for findings_query in &prepared.findings_queries {
-            let QueryResults::Solutions(rows) = findings_query.on(&store)? else {
-                return Err(Error::msg(format!(
-                    "findings query {} is not a SELECT",
-                    findings_query.iri
-                )));
-            };
-            for row in rows {
-                findings.push(finding(&row?, &findings_query.iri)?);
-            }
+            let constructed = findings_query.graph(&unit.store)?;
+            findings.extend(annotation::about(&record, constructed)?);
         }
         ms.findings += at.elapsed();
     }
+
+    if named.is_none() {
+        envelope = prepared.envelope_of(lift.document_element());
+    }
+    let at = Instant::now();
+    if let Some(schema) = envelope.and_then(|envelope| envelope.document_schema.as_ref()) {
+        let root_element = envelope
+            .and_then(|envelope| envelope.doc_root_element_name.as_deref())
+            .or_else(|| lift.document_element())
+            .unwrap_or(&prepared.unit)
+            .to_owned();
+        let selector = format!("/{root_element}");
+        let record = Record {
+            source: source.iri,
+            selector: &selector,
+        };
+        let text = decode(source.xml)?;
+        for reason in schema.errors(&text)? {
+            findings.extend(annotation::violation(&record, &reason)?);
+        }
+    }
+    ms.validation += at.elapsed();
 
     let mut detected = None;
     if let Some(detect) = &prepared.detect {

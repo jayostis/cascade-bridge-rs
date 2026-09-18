@@ -17,6 +17,19 @@ terms! {
     RDF_FIRST = "http://www.w3.org/1999/02/22-rdf-syntax-ns#", "first";
     RDF_REST = "http://www.w3.org/1999/02/22-rdf-syntax-ns#", "rest";
     RDF_NIL = "http://www.w3.org/1999/02/22-rdf-syntax-ns#", "nil";
+    RDF_VALUE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#", "value";
+
+    OA_ANNOTATION = "http://www.w3.org/ns/oa#", "Annotation";
+    OA_HAS_TARGET = "http://www.w3.org/ns/oa#", "hasTarget";
+    OA_HAS_SOURCE = "http://www.w3.org/ns/oa#", "hasSource";
+    OA_HAS_SELECTOR = "http://www.w3.org/ns/oa#", "hasSelector";
+    OA_HAS_BODY = "http://www.w3.org/ns/oa#", "hasBody";
+    OA_REFINED_BY = "http://www.w3.org/ns/oa#", "refinedBy";
+    OA_XPATH_SELECTOR = "http://www.w3.org/ns/oa#", "XPathSelector";
+    OA_TEXTUAL_BODY = "http://www.w3.org/ns/oa#", "TextualBody";
+
+    SH_RESULT_SEVERITY = "http://www.w3.org/ns/shacl#", "resultSeverity";
+    SH_VIOLATION = "http://www.w3.org/ns/shacl#", "Violation";
 
     SCHEMA_ABOUT = "http://schema.org/", "about";
     SCHEMA_NAME = "http://schema.org/", "name";
@@ -33,6 +46,9 @@ terms! {
     BRIDGE_TABLE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "table";
     BRIDGE_ENVELOPE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "envelope";
     BRIDGE_DOC_ROOT_ELEMENT_NAME = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "docRootElementName";
+    BRIDGE_SOURCE_SCHEMA = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "sourceSchema";
+    BRIDGE_DOCUMENT_SCHEMA = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "documentSchema";
+    BRIDGE_THIS_RECORD = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "thisRecord";
     BRIDGE_INPUT = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "input";
     BRIDGE_EXPECTED_GRAPH = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "expectedGraph";
     BRIDGE_EXPECTED_FINDINGS = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "expectedFindings";

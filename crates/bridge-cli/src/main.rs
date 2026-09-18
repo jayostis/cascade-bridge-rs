@@ -1,8 +1,9 @@
 // cascade-bridge test <adapter-dir> [--earl <out.ttl>] [--datasets]
 // cascade-bridge convert <adapter-dir> <document.xml> [--out <file>] [--format turtle|ntriples]
 use cascade_bridge::{
-    convert, earl_report, load_adapter, prepare, run_manifest, serialise, DirectoryResolver,
-    EntryResult, GraphFormat, Outcome, ReportSubject, RunOptions, OFFERED_PROFILES,
+    convert, earl_report, file_iri, load_adapter, prepare, run_manifest, serialise,
+    DirectoryResolver, EntryResult, GraphFormat, Outcome, ReportSubject, RunOptions, Source,
+    OFFERED_PROFILES,
 };
 use std::process::ExitCode;
 
@@ -167,7 +168,19 @@ fn convert_document(arguments: Convert) -> Result<ExitCode, String> {
     let prepared = prepare(&adapter, &resolver).map_err(|e| e.to_string())?;
     let document =
         std::fs::read(&arguments.document).map_err(|e| format!("{}: {e}", arguments.document))?;
-    let conversion = convert(&prepared, &document).map_err(|e| e.to_string())?;
+    // A finding names the document it is about, and the document is the
+    // caller's rather than the adapter's, so its own IRI is the only one there
+    // is to name it by.
+    let iri = file_iri(&arguments.document).map_err(|e| e.to_string())?;
+    let conversion = convert(
+        &prepared,
+        Source {
+            iri: &iri,
+            envelope: None,
+            xml: &document,
+        },
+    )
+    .map_err(|e| e.to_string())?;
     let graph = serialise(&conversion.quads, arguments.format, &prepared.prefixes)
         .map_err(|e| e.to_string())?;
 
@@ -177,10 +190,11 @@ fn convert_document(arguments: Convert) -> Result<ExitCode, String> {
         adapter.root
     );
     eprintln!(
-        "Document {}  {} record(s), {} triples",
+        "Document {}  {} record(s), {} triples, {} finding(s)",
         arguments.document,
         conversion.units,
-        conversion.quads.len()
+        conversion.quads.len(),
+        conversion.annotations()
     );
     // Reported, never enforced: a document the adapter would route elsewhere
     // is still converted, and the caller is the one told about it.

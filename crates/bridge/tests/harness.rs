@@ -38,7 +38,7 @@ fn reaches_every_outcome_and_fails_exactly_the_entries_built_to_fail() {
             ("pass", "passed"),
             ("graph-fail", "failed"),
             ("findings-fail", "failed"),
-            ("multiset-order", "passed"),
+            ("findings-repeated", "passed"),
             ("input-only", "cantTell"),
             ("dataset", "untested"),
         ])
@@ -56,9 +56,18 @@ fn says_what_differed_in_the_words_of_the_comparison() {
             .unwrap_or_default()
     };
     assert!(described("graph-fail").contains("graph differs: 1 missing, 1 extra"));
-    assert!(described("findings-fail").contains("findings differ: 0 missing, 1 extra"));
+    assert!(
+        described("findings-fail")
+            .contains("findings differ: 4 annotation(s) produced, 3 expected"),
+        "{}",
+        described("findings-fail")
+    );
     assert!(!described("pass").contains("detect query is false"));
-    assert!(described("pass").contains("findings equal as a multiset (1)"));
+    assert!(
+        described("pass").contains("findings isomorphic (2 annotation(s))"),
+        "{}",
+        described("pass")
+    );
 }
 
 #[test]
@@ -228,7 +237,7 @@ fn reports_an_entry_written_as_a_blank_node_by_its_name() {
     let (results, report) = run_with(
         r#"[ a bridge:IsomorphicConversionTest ; mf:name "anonymous" ;
              mf:action [ bridge:input <in/two.xml> ] ;
-             mf:result [ bridge:expectedGraph <expected/two.ttl> ; bridge:expectedFindings <findings/two.json> ] ]"#,
+             mf:result [ bridge:expectedGraph <expected/two.ttl> ; bridge:expectedFindings <findings/two.ttl> ] ]"#,
     );
     let outcomes: Vec<_> = results
         .iter()
