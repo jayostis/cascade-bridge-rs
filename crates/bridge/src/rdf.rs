@@ -1,9 +1,10 @@
-// The RDF plumbing every stage shares: the terms it names, and the one
-// canonical form graphs are compared in.
+// The RDF plumbing every stage shares: the terms it names, the one canonical
+// form graphs are compared in, and the text a produced graph is handed over as.
 use crate::error::Result;
 use oxrdf::dataset::{CanonicalizationAlgorithm, CanonicalizationHashAlgorithm};
-use oxrdf::{Dataset, Quad};
-use std::collections::BTreeSet;
+use oxrdf::{Dataset, NamedOrBlankNode, Quad, Term};
+use oxrdfio::{RdfFormat, RdfSerializer};
+use std::collections::{BTreeSet, HashSet};
 
 macro_rules! terms {
     ($($name:ident = $namespace:expr, $local:expr;)*) => {
@@ -58,4 +59,84 @@ pub fn canonical_lines(quads: impl IntoIterator<Item = Quad>) -> Result<BTreeSet
         hash_algorithm: CanonicalizationHashAlgorithm::Sha256,
     });
     Ok(dataset.iter().map(|quad| quad.to_string()).collect())
+}
+
+/// The syntax a produced graph is written in: one to read, one to pipe.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GraphFormat {
+    Turtle,
+    NTriples,
+}
+
+impl GraphFormat {
+    pub fn named(name: &str) -> Option<Self> {
+        match name {
+            "turtle" => Some(Self::Turtle),
+            "ntriples" => Some(Self::NTriples),
+            _ => None,
+        }
+    }
+
+    fn format(self) -> RdfFormat {
+        match self {
+            Self::Turtle => RdfFormat::Turtle,
+            Self::NTriples => RdfFormat::NTriples,
+        }
+    }
+}
+
+/// Every IRI a quad names, for deciding which of the offered prefixes the
+/// graph can be spelled with.
+fn iris(quad: &Quad) -> [Option<&str>; 3] {
+    [
+        match &quad.subject {
+            NamedOrBlankNode::NamedNode(n) => Some(n.as_str()),
+            NamedOrBlankNode::BlankNode(_) => None,
+        },
+        Some(quad.predicate.as_str()),
+        match &quad.object {
+            Term::NamedNode(n) => Some(n.as_str()),
+            Term::Literal(l) => Some(l.datatype().as_str()),
+            Term::BlankNode(_) => None,
+        },
+    ]
+}
+
+/// The namespace of every IRI in the graph, cut at its last "#" or "/".
+fn namespaces(quads: &[Quad]) -> HashSet<&str> {
+    let mut namespaces = HashSet::new();
+    for iri in quads.iter().flat_map(iris).flatten() {
+        for cut in [iri.rfind('#'), iri.rfind('/')].into_iter().flatten() {
+            namespaces.insert(&iri[..=cut]);
+        }
+    }
+    namespaces
+}
+
+/// The graph as text.
+///
+/// Each triple is written once: two mappings that construct the same triple,
+/// or one constructed for every record, describe the graph no more than once.
+/// A prefix is declared only where the graph uses it, so a mapping's lift
+/// namespaces do not reach output they never appear in.
+pub fn serialise(
+    quads: &[Quad],
+    format: GraphFormat,
+    prefixes: &[(String, String)],
+) -> Result<String> {
+    let namespaces = namespaces(quads);
+    let mut serializer = RdfSerializer::from_format(format.format());
+    for (prefix, namespace) in prefixes {
+        if namespaces.contains(namespace.as_str()) {
+            serializer = serializer.with_prefix(prefix, namespace)?;
+        }
+    }
+    let mut serializer = serializer.for_writer(Vec::new());
+    let mut written: HashSet<&Quad> = HashSet::new();
+    for quad in quads {
+        if written.insert(quad) {
+            serializer.serialize_quad(quad)?;
+        }
+    }
+    Ok(String::from_utf8(serializer.finish()?)?)
 }

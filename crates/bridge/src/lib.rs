@@ -1,7 +1,7 @@
 //! **Cascade Bridge for Rust**: an implementation of the Cascade Bridge
 //! Specification's `sparql-1.1` profile. It runs a Cascade Bridge Adapter, a
-//! data package for one source format, and executes the adapter's test
-//! manifest.
+//! data package for one source format, over a source document, and executes
+//! the adapter's test manifest.
 //!
 //! The specification is the authority: a test type's rule is the
 //! `rdfs:comment` on that type in its `vocab/bridge.ttl`.
@@ -23,5 +23,6 @@ pub use harness::{
 };
 pub use lift::{lift_slice, Lift, FX, XYZ};
 pub use load::{load_adapter, Adapter, Envelope};
+pub use rdf::{serialise, GraphFormat};
 pub use resolver::{DirectoryResolver, Resolver};
 pub use run::{convert, prepare, Conversion, Finding, Form, Ms, Prepared};
