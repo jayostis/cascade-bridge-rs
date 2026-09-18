@@ -15,9 +15,9 @@ of every repository a run uses is
 [`compatibility.md`](https://github.com/jayostis/cascade-bridge-spec/blob/main/compatibility.md).
 
 Built: loading an adapter, the lift, running the mappings and findings queries
-per unit, the detect query, converting a document a caller holds, and the test
-harness with EARL output. Not built yet: the stamp stage, source-schema
-validation, and streaming a referenced dataset.
+per unit, XSD 1.0 validation of every record and document, the detect query,
+converting a document a caller holds, and the test harness with EARL output.
+Not built yet: the stamp stage and streaming a referenced dataset.
 
 Known limitation: Oxigraph 0.5.11 returns derived XSD integer types such as
 `xsd:positiveInteger` as `xsd:integer`, which SPARQL 1.1 does not allow, so an
@@ -46,9 +46,9 @@ false is converted anyway, and the answer is on standard error.
 
 What it does not do:
 
-- **No findings.** The findings queries run, and what they produce is thrown
-  away. The specification has not settled how a finding is written as RDF, and
-  a flag now would be a flag to break.
+- **Findings are counted, not written.** Standard output carries the converted
+  graph alone, so the findings a run made are a count on standard error. Which
+  flag writes them out waits for a caller that wants one.
 - **No provenance stamp**, because the stamp stage is not built. What it writes
   is the mapping's output, with nothing added.
 - **The whole graph is held in memory**, so a document the size of a ClinVar
@@ -86,12 +86,14 @@ cannot be loaded.
    N-Triples text between the parser and Oxigraph. The rest of the document
    becomes the skeleton the `bridge:detectQuery` ASK reads, finished when the
    last unit has been yielded.
-4. Per unit: loads any Turtle `bridge:table` beside the lift, unions every
-   `bridge:mapping` CONSTRUCT, and concatenates every `bridge:findingsQuery`
-   SELECT row into a finding.
+4. Per unit: validates the record against `bridge:sourceSchema`, loads any
+   Turtle `bridge:table` beside the lift, unions every `bridge:mapping`
+   CONSTRUCT, and makes every `bridge:findingsQuery` CONSTRUCT's annotations
+   about that record. A document is validated against its envelope's
+   `bridge:documentSchema`. Validation reports; it never refuses.
 5. Judges each manifest entry by its type's rule: graphs compared as RDFC-1.0
-   canonical form after every `bridge:stampPredicate` triple is removed from both sides,
-   findings compared as a multiset.
+   canonical form after every `bridge:stampPredicate` triple is removed from
+   both sides, and findings compared the same way.
 
 ## Two things the specification leaves open, and what this Bridge does
 
@@ -112,6 +114,8 @@ crates/bridge/                the library, cascade-bridge
   src/decode.rs               the byte-order mark and the XML declaration
   src/load.rs                 the crate and the manifest as one graph
   src/run.rs                  mappings and findings queries, per unit
+  src/annotation.rs           a finding as a Web Annotation
+  src/validate.rs             XSD 1.0, through the host for every include
   src/rdf.rs                  the shared terms, the canonical form, the serialiser
   src/harness.rs              executing a test manifest
   src/earl.rs                 the EARL report
@@ -127,12 +131,16 @@ crates/bridge-cli/            the cascade-bridge command
 Exact versions, `Cargo.lock` committed, all open source: `oxigraph` 0.5.11 with
 `oxrdf` 0.3.4, `oxrdfio` 0.2.6, `oxsdatatypes` 0.2.3 and `spargebra` 0.4.7, the
 versions it pins itself (MIT OR Apache-2.0); `quick-xml` 0.37.5 (MIT);
-`encoding_rs` 0.8.35 (Apache-2.0 OR MIT OR BSD-3-Clause); `serde_json` 1.0.151
-(MIT OR Apache-2.0). The bundled RO-Crate 1.2 context is CC0.
+`encoding_rs` 0.8.35 (Apache-2.0 OR MIT OR BSD-3-Clause); `serde_json` 1.0.151,
+`oxiri` 0.2.11 and `xsd-schema` 0.2.0 (MIT OR Apache-2.0). The bundled RO-Crate
+1.2 context is CC0.
 
 `oxrdf` carries the RDFC-1.0 canonicalisation the isomorphism comparison needs,
 and `oxrdfio` the JSON-LD parser the crate is read with, so neither is a second
 implementation of something Oxigraph already has.
+
+`xsd-schema` carries its own `quick-xml` 0.41 beside the 0.37.5 the lift uses.
+No `quick-xml` type crosses between them, so the two versions coexist.
 
 ## Licence
 
