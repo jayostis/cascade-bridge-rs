@@ -26,9 +26,7 @@ pub const XYZ: &str = "http://sparql.xyz/facade-x/data/";
 
 /// A name that is not a valid IRI character sequence is percent-encoded, so an
 /// odd local name costs a readable IRI and never a parse failure. The
-/// specification leaves the IRI of a name outside ASCII unspecified; this is
-/// the same spelling the Cascade Bridge for JavaScript produces, so the two
-/// Bridges agree until it is settled.
+/// specification leaves the IRI of a name outside ASCII unspecified.
 fn name(namespace: &str, local: &str) -> Result<NamedNode> {
     let mut iri = String::with_capacity(namespace.len() + local.len());
     iri.push_str(namespace);
