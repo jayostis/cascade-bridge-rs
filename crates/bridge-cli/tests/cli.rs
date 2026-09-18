@@ -1,7 +1,7 @@
 use oxrdfio::{RdfFormat, RdfParser};
 use std::collections::BTreeSet;
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 /// The stamp the tiny adapter's expected graph carries and no stage of this
 /// Bridge writes yet: the harness drops it from both sides, and a converted
@@ -109,6 +109,28 @@ fn says_the_adapter_the_records_and_the_detect_answer_on_standard_error() {
     assert!(stderr.contains("Adapter  catalog"), "{stderr}");
     assert!(stderr.contains("2 record(s)"), "{stderr}");
     assert!(stderr.contains("Detect   true"), "{stderr}");
+}
+
+/// What `| head -5` does to the command: the reader goes away mid-graph, and
+/// the documented statuses are the only ones a caller is given.
+#[test]
+fn reports_a_standard_output_that_has_gone_away_rather_than_panicking() {
+    let document = tiny().join("fixtures/in/two.xml");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_cascade-bridge"))
+        .args([
+            "convert",
+            &tiny().to_string_lossy(),
+            &document.to_string_lossy(),
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("run the command");
+    drop(child.stdout.take());
+    let run = child.wait_with_output().expect("wait for the command");
+    let stderr = String::from_utf8_lossy(&run.stderr);
+    assert!(!stderr.contains("panicked"), "{stderr}");
+    assert_eq!(run.status.code(), Some(2), "{stderr}");
 }
 
 #[test]

@@ -156,3 +156,68 @@ fn selects_the_record_itself_for_a_query_that_writes_no_selector() {
     assert!(objects(&findings, &format!("{OA}refinedBy")).is_empty());
     assert_eq!(objects(&findings, &format!("{OA}hasSelector")).len(), 2);
 }
+
+/// The tiny adapter with the findings query that builds a target of its own
+/// rewritten to name the record itself, which is the same node for every
+/// annotation of every record.
+struct RecordItself {
+    directory: DirectoryResolver,
+}
+
+const TARGET: &str = "[\n      oa:hasSource bridge:thisRecord ;\n      oa:hasSelector [ a oa:XPathSelector ; rdf:value \"note\" ]\n    ]";
+
+impl Resolver for RecordItself {
+    fn root(&self) -> &str {
+        self.directory.root()
+    }
+
+    fn read(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
+        let bytes = self.directory.read(iri)?;
+        if !iri.ends_with("mapping/item-note-findings.rq") {
+            return Ok(bytes);
+        }
+        let text = String::from_utf8(bytes).expect("utf-8");
+        assert!(
+            text.contains(TARGET),
+            "the query builds a target of its own"
+        );
+        Ok(text.replace(TARGET, "bridge:thisRecord").into_bytes())
+    }
+}
+
+#[test]
+fn gives_an_annotation_targeting_the_record_itself_a_record_selector_of_its_own() {
+    let findings = findings_through(&RecordItself { directory: tiny() }, "order.xml");
+    assert_eq!(annotations(&findings), 4);
+
+    let targets = objects(&findings, &format!("{OA}hasTarget"));
+    assert_eq!(
+        targets.iter().collect::<BTreeSet<_>>().len(),
+        4,
+        "annotations share a target node: {targets:?}"
+    );
+
+    let selectors = objects(&findings, &format!("{OA}hasSelector"));
+    assert_eq!(selectors.len(), 4);
+    assert_eq!(
+        selectors.iter().collect::<BTreeSet<_>>().len(),
+        4,
+        "annotations share a record selector: {selectors:?}"
+    );
+
+    let sources = objects(&findings, &format!("{OA}hasSource"));
+    assert_eq!(sources.len(), 4);
+    for source in sources {
+        assert!(source.ends_with("fixtures/in/order.xml>"), "{source}");
+    }
+
+    assert_eq!(
+        selector_values(&findings),
+        [
+            "\"/catalog/item[1]\"",
+            "\"/catalog/item[1]\"",
+            "\"/catalog/item[1]\"",
+            "\"/catalog/item[2]\""
+        ]
+    );
+}

@@ -118,11 +118,13 @@ fn iris(quad: &Quad) -> [Option<&str>; 3] {
     ]
 }
 
-/// The namespace of every IRI in the graph, cut at its last "#" or "/".
+/// The namespace of every IRI in the graph: what stands before its "#", or
+/// before its last "/" where it has none. An IRI has the one namespace, so a
+/// name a path of it merely starts with is not one the graph uses.
 fn namespaces(quads: &[Quad]) -> HashSet<&str> {
     let mut namespaces = HashSet::new();
     for iri in quads.iter().flat_map(iris).flatten() {
-        for cut in [iri.rfind('#'), iri.rfind('/')].into_iter().flatten() {
+        if let Some(cut) = iri.rfind('#').or_else(|| iri.rfind('/')) {
             namespaces.insert(&iri[..=cut]);
         }
     }

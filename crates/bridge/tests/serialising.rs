@@ -2,7 +2,8 @@
 // for every record is written once, and two records' blank nodes stay two.
 // The test harness sees neither, because it canonicalises before it compares.
 use cascade_bridge::{
-    convert, load_adapter, prepare, serialise, DirectoryResolver, GraphFormat, Resolver, Source,
+    convert, load_adapter, prepare, serialise, Conversion, DirectoryResolver, GraphFormat,
+    Resolver, Source,
 };
 use std::path::PathBuf;
 
@@ -58,6 +59,8 @@ const PROLOGUE: &str = "
 PREFIX fx:  <http://sparql.xyz/facade-x/ns/>
 PREFIX xyz: <http://sparql.xyz/facade-x/data/>
 PREFIX ex:  <urn:example:catalog#>
+PREFIX ns:  <https://ns.example.org/>
+PREFIX v1:  <https://ns.example.org/v1#>
 ";
 
 const WHERE: &str = "
@@ -74,6 +77,16 @@ fn graph(construct: &str, format: GraphFormat) -> String {
 }
 
 fn through(construct: &str, matching: &str, format: GraphFormat, table: bool) -> String {
+    converted(construct, matching, format, table).1
+}
+
+/// The conversion and the text it was written as.
+fn converted(
+    construct: &str,
+    matching: &str,
+    format: GraphFormat,
+    table: bool,
+) -> (Conversion, String) {
     let resolver = Mapping {
         directory: DirectoryResolver::new(
             PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/tiny-adapter"),
@@ -97,7 +110,8 @@ fn through(construct: &str, matching: &str, format: GraphFormat, table: bool) ->
     )
     .expect("conversion");
     assert_eq!(conversion.units, 2);
-    serialise(&conversion.quads, format, &prepared.prefixes).expect("graph")
+    let written = serialise(&conversion.quads, format, &prepared.prefixes).expect("graph");
+    (conversion, written)
 }
 
 #[test]
@@ -149,6 +163,32 @@ WHERE {
     );
     assert_eq!(written.matches("urn:example:catalog#note").count(), 2);
     assert_eq!(labels(&written).len(), 2, "{written}");
+}
+
+#[test]
+fn counts_the_triples_the_written_graph_holds() {
+    let (conversion, written) = converted(
+        "?s a ex:Item . <urn:example:catalog> a ex:Catalog .",
+        WHERE,
+        GraphFormat::NTriples,
+        false,
+    );
+    assert_eq!(
+        conversion.quads.len(),
+        4,
+        "the raw union: both records construct the catalog's type"
+    );
+    assert_eq!(conversion.triples(), written.lines().count());
+}
+
+#[test]
+fn declares_no_prefix_that_is_only_a_path_of_an_iri_the_graph_names() {
+    let written = graph("?s a v1:Item .", GraphFormat::Turtle);
+    assert!(
+        written.contains("@prefix v1: <https://ns.example.org/v1#>"),
+        "{written}"
+    );
+    assert!(!written.contains("@prefix ns:"), "{written}");
 }
 
 #[test]

@@ -20,6 +20,7 @@ use oxigraph::model::{GraphName, Quad};
 use oxigraph::sparql::{PreparedSparqlQuery, QueryResults, SparqlEvaluator};
 use oxigraph::store::Store;
 use oxrdfio::{RdfFormat, RdfParser};
+use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 /// The form a query's own text declares, decided when it is parsed. Deciding
@@ -154,6 +155,13 @@ pub struct Conversion {
 impl Conversion {
     pub fn annotations(&self) -> usize {
         annotation::annotations(&self.findings)
+    }
+
+    /// How many triples the graph holds. `quads` is the records' raw union, and
+    /// a triple constructed for every record stands in it once per record and
+    /// in the graph once.
+    pub fn triples(&self) -> usize {
+        self.quads.iter().collect::<HashSet<&Quad>>().len()
     }
 }
 

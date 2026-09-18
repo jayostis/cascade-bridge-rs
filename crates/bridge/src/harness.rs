@@ -138,7 +138,7 @@ impl Entry<'_> {
                 format!(
                     "input-only: {} unit(s), {} triples and {} finding(s) recorded, not judged (bridge:InputOnlyTest){detect}",
                     run.units,
-                    run.quads.len(),
+                    run.triples(),
                     run.annotations()
                 ),
             ));

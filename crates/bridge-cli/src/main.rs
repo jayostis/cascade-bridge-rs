@@ -5,6 +5,7 @@ use cascade_bridge::{
     DirectoryResolver, EntryResult, GraphFormat, Outcome, ReportSubject, RunOptions, Source,
     OFFERED_PROFILES,
 };
+use std::io::Write;
 use std::process::ExitCode;
 
 const USAGE: &str = "usage: cascade-bridge test <adapter-dir> [--earl <out.ttl>] [--datasets]
@@ -193,7 +194,7 @@ fn convert_document(arguments: Convert) -> Result<ExitCode, String> {
         "Document {}  {} record(s), {} triples, {} finding(s)",
         arguments.document,
         conversion.units,
-        conversion.quads.len(),
+        conversion.triples(),
         conversion.annotations()
     );
     // Reported, never enforced: a document the adapter would route elsewhere
@@ -213,7 +214,15 @@ fn convert_document(arguments: Convert) -> Result<ExitCode, String> {
             std::fs::write(path, graph).map_err(|e| format!("{path}: {e}"))?;
             eprintln!("Graph    {path}");
         }
-        None => print!("{graph}"),
+        // The reader of a pipe may go away mid-graph, and a caller is owed one
+        // of the statuses this command documents rather than a panic.
+        None => {
+            let mut stdout = std::io::stdout();
+            stdout
+                .write_all(graph.as_bytes())
+                .and_then(|()| stdout.flush())
+                .map_err(|e| format!("standard output: {e}"))?;
+        }
     }
     Ok(ExitCode::SUCCESS)
 }
