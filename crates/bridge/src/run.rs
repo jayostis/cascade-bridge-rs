@@ -370,7 +370,11 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
         let at = Instant::now();
         for findings_query in &prepared.findings_queries {
             let constructed = findings_query.graph(&unit.store)?;
-            findings.extend(annotation::about(&record, constructed)?);
+            findings.extend(annotation::about(
+                &record,
+                &findings_query.iri,
+                constructed,
+            )?);
         }
         ms.findings += at.elapsed();
     }

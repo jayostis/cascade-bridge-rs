@@ -6,7 +6,7 @@
 // Every annotation carries a record selector of its own: selectors on one node
 // are alternative ways of selecting the same thing, so annotations sharing one
 // would claim to be alternatives of each other.
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::rdf::{
     BRIDGE_THIS_RECORD, OA_ANNOTATION, OA_HAS_BODY, OA_HAS_SELECTOR, OA_HAS_SOURCE, OA_HAS_TARGET,
     OA_REFINED_BY, OA_TEXTUAL_BODY, OA_XPATH_SELECTOR, RDF_TYPE, RDF_VALUE, SH_RESULT_SEVERITY,
@@ -71,24 +71,25 @@ fn record_selector(record: &Record, into: &mut Vec<Quad>) -> Result<BlankNode> {
 }
 
 /// A blank node's description made over as a node of its own: what the query
-/// hung on it, and on every blank node reached from it.
-fn copy(node: &BlankNode, from: &[Quad], into: &mut Vec<Quad>) -> BlankNode {
-    let made = BlankNode::default();
-    let mut over: HashMap<BlankNode, BlankNode> = HashMap::from([(node.clone(), made.clone())]);
+/// hung on it, and on every blank node reached from it. Each node copied maps
+/// to the node standing for it.
+fn copy(node: &BlankNode, from: &[Quad], into: &mut Vec<Quad>) -> HashMap<BlankNode, BlankNode> {
+    let mut made: HashMap<BlankNode, BlankNode> =
+        HashMap::from([(node.clone(), BlankNode::default())]);
     let mut pending = vec![node.clone()];
     while let Some(was) = pending.pop() {
-        let subject = over[&was].clone();
+        let subject = made[&was].clone();
         for quad in from {
             if !matches!(&quad.subject, NamedOrBlankNode::BlankNode(b) if *b == was) {
                 continue;
             }
             let object = match &quad.object {
                 Term::BlankNode(reached) => {
-                    if !over.contains_key(reached) {
-                        over.insert(reached.clone(), BlankNode::default());
+                    if !made.contains_key(reached) {
+                        made.insert(reached.clone(), BlankNode::default());
                         pending.push(reached.clone());
                     }
-                    Term::from(over[reached].clone())
+                    Term::from(made[reached].clone())
                 }
                 other => other.clone(),
             };
@@ -134,16 +135,36 @@ pub fn violation(record: &Record, reason: &str) -> Result<Vec<Quad>> {
 }
 
 /// What a findings query constructed, made about this record: bridge:thisRecord
-/// becomes the document, and each annotation's selector moves under a record
-/// selector of its own.
-pub fn about(record: &Record, constructed: Vec<Quad>) -> Result<Vec<Quad>> {
+/// becomes the document, and each annotation's target becomes a node of its own
+/// carrying a record selector, the query's selector under it.
+pub fn about(record: &Record, query: &str, constructed: Vec<Quad>) -> Result<Vec<Quad>> {
+    let annotations: HashSet<NamedOrBlankNode> = constructed
+        .iter()
+        .filter(|q| q.predicate.as_str() == RDF_TYPE)
+        .filter(|q| matches!(&q.object, Term::NamedNode(n) if n.as_str() == OA_ANNOTATION))
+        .map(|q| q.subject.clone())
+        .collect();
+    let mut targets: Vec<(NamedOrBlankNode, BlankNode)> = Vec::new();
+    for quad in &constructed {
+        if quad.predicate.as_str() != OA_HAS_TARGET || !annotations.contains(&quad.subject) {
+            continue;
+        }
+        let Term::BlankNode(target) = &quad.object else {
+            return Err(Error::msg(format!(
+                "findings query {query} targets {}; a findings query's oa:hasTarget is a blank node",
+                quad.object
+            )));
+        };
+        targets.push((quad.subject.clone(), target.clone()));
+    }
+
     let source = NamedNode::new(record.source)?;
     let this_record = NamedNode::new(BRIDGE_THIS_RECORD)?;
     let named_record = |term: Term| match term {
         Term::NamedNode(n) if n == this_record => Term::from(source.clone()),
         other => other,
     };
-    let mut quads: Vec<Quad> = constructed
+    let quads: Vec<Quad> = constructed
         .into_iter()
         .map(|quad| {
             let subject = match named_record(Term::from(quad.subject)) {
@@ -160,70 +181,34 @@ pub fn about(record: &Record, constructed: Vec<Quad>) -> Result<Vec<Quad>> {
         })
         .collect();
 
-    // A blank node the query minted for a target is given a selector where it
-    // stands, so the second annotation pointed at one is pointed at a copy.
-    let mut copies = Vec::new();
-    let mut targeted: HashSet<BlankNode> = HashSet::new();
-    for at in 0..quads.len() {
-        if quads[at].predicate.as_str() != OA_HAS_TARGET {
-            continue;
-        }
-        let Term::BlankNode(target) = quads[at].object.clone() else {
-            continue;
-        };
-        if targeted.insert(target.clone()) {
-            continue;
-        }
-        let copy = Term::from(copy(&target, &quads, &mut copies));
-        quads[at].object = copy;
-    }
-    quads.append(&mut copies);
-
-    // A name is the same node for every annotation of every record, so a
-    // target that is one becomes a specific resource of this annotation's own
-    // and the record selector hangs there. Only a blank node the query minted
-    // for a target is given a selector where it stands.
-    let mut added = Vec::new();
-    let mut refined: HashMap<NamedOrBlankNode, Vec<BlankNode>> = HashMap::new();
-    for quad in &mut quads {
-        if quad.predicate.as_str() != OA_HAS_TARGET {
-            continue;
-        }
-        let (target, carries) = match &quad.object {
-            Term::NamedNode(name) => {
-                let resource = BlankNode::default();
-                added.push(triple(
-                    resource.clone(),
-                    OA_HAS_SOURCE,
-                    Term::from(name.clone()),
-                )?);
-                let target = NamedOrBlankNode::from(name.clone());
-                quad.object = Term::from(resource.clone());
-                (target, NamedOrBlankNode::from(resource))
+    let mut findings = Vec::with_capacity(quads.len());
+    let mut copied: HashSet<BlankNode> = HashSet::new();
+    for (annotation, target) in targets {
+        let mut described = Vec::new();
+        let made = copy(&target, &quads, &mut described);
+        let target = made[&target].clone();
+        copied.extend(made.into_keys());
+        let selector = record_selector(record, &mut findings)?;
+        for quad in described {
+            if quad.predicate.as_str() == OA_HAS_SELECTOR
+                && matches!(&quad.subject, NamedOrBlankNode::BlankNode(b) if *b == target)
+            {
+                findings.push(triple(selector.clone(), OA_REFINED_BY, quad.object)?);
+            } else {
+                findings.push(quad);
             }
-            Term::BlankNode(node) => {
-                let node = NamedOrBlankNode::from(node.clone());
-                (node.clone(), node)
-            }
-            Term::Literal(_) => continue,
-        };
-        let node = record_selector(record, &mut added)?;
-        added.push(triple(carries, OA_HAS_SELECTOR, node.clone())?);
-        refined.entry(target).or_default().push(node);
+        }
+        findings.push(triple(target.clone(), OA_HAS_SELECTOR, selector)?);
+        findings.push(triple(annotation, OA_HAS_TARGET, target)?);
     }
 
-    let mut findings = Vec::with_capacity(quads.len() + added.len());
     for quad in quads {
-        match refined.get(&quad.subject) {
-            Some(nodes) if quad.predicate.as_str() == OA_HAS_SELECTOR => {
-                for node in nodes {
-                    findings.push(triple(node.clone(), OA_REFINED_BY, quad.object.clone())?);
-                }
-            }
-            _ => findings.push(quad),
+        let moved = matches!(&quad.subject, NamedOrBlankNode::BlankNode(b) if copied.contains(b))
+            || (quad.predicate.as_str() == OA_HAS_TARGET && annotations.contains(&quad.subject));
+        if !moved {
+            findings.push(quad);
         }
     }
-    findings.extend(added);
     Ok(findings)
 }
 

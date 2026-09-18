@@ -3,7 +3,9 @@
 // moves the query's selector under the record's own position, so an adapter
 // says what inside a record a finding is about and the Bridge says which
 // record that was.
-use cascade_bridge::{convert, load_adapter, prepare, DirectoryResolver, Resolver, Source};
+use cascade_bridge::{
+    convert, load_adapter, prepare, Conversion, DirectoryResolver, Resolver, Source,
+};
 use oxrdf::{Quad, Term};
 use std::collections::BTreeSet;
 use std::path::PathBuf;
@@ -23,6 +25,10 @@ fn findings_for(input: &str) -> Vec<Quad> {
 }
 
 fn findings_through(resolver: &dyn Resolver, input: &str) -> Vec<Quad> {
+    conversion(resolver, input).expect("conversion").findings
+}
+
+fn conversion(resolver: &dyn Resolver, input: &str) -> cascade_bridge::Result<Conversion> {
     let adapter = load_adapter(resolver).expect("adapter");
     let prepared = prepare(&adapter, resolver).expect("prepared");
     let iri = format!("{}fixtures/in/{input}", resolver.root());
@@ -35,8 +41,6 @@ fn findings_through(resolver: &dyn Resolver, input: &str) -> Vec<Quad> {
             xml: &xml,
         },
     )
-    .expect("conversion")
-    .findings
 }
 
 /// Every object of a predicate, written as N-Triples writes it.
@@ -157,16 +161,16 @@ fn selects_the_record_itself_for_a_query_that_writes_no_selector() {
     assert_eq!(objects(&findings, &format!("{OA}hasSelector")).len(), 2);
 }
 
+const TARGET: &str = "[\n      oa:hasSource bridge:thisRecord ;\n      oa:hasSelector [ a oa:XPathSelector ; rdf:value \"note\" ]\n    ]";
+
 /// The tiny adapter with the findings query that builds a target of its own
-/// rewritten to name the record itself, which is the same node for every
-/// annotation of every record.
-struct RecordItself {
+/// rewritten to name the record itself, which the specification forbids: one
+/// name is one node for every finding the query produces.
+struct NamedTarget {
     directory: DirectoryResolver,
 }
 
-const TARGET: &str = "[\n      oa:hasSource bridge:thisRecord ;\n      oa:hasSelector [ a oa:XPathSelector ; rdf:value \"note\" ]\n    ]";
-
-impl Resolver for RecordItself {
+impl Resolver for NamedTarget {
     fn root(&self) -> &str {
         self.directory.root()
     }
@@ -186,8 +190,18 @@ impl Resolver for RecordItself {
 }
 
 #[test]
+fn refuses_a_findings_query_whose_target_is_a_name() {
+    let Err(refusal) = conversion(&NamedTarget { directory: tiny() }, "two.xml") else {
+        panic!("the named form is accepted");
+    };
+    let refusal = refusal.to_string();
+    assert!(refusal.contains("item-note-findings.rq"), "{refusal}");
+    assert!(refusal.contains("oa:hasTarget"), "{refusal}");
+}
+
+#[test]
 fn gives_an_annotation_targeting_the_record_itself_a_record_selector_of_its_own() {
-    let findings = findings_through(&RecordItself { directory: tiny() }, "order.xml");
+    let findings = findings_through(&WholeRecord { directory: tiny() }, "order.xml");
     assert_eq!(annotations(&findings), 4);
 
     let targets = objects(&findings, &format!("{OA}hasTarget"));
