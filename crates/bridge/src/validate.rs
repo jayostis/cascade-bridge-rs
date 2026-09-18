@@ -155,9 +155,13 @@ fn key(location: &str) -> String {
 }
 
 /// The document with its XML declaration replaced, since the characters no
-/// longer carry the encoding the document was written in.
+/// longer carry the encoding the document was written in. A target that merely
+/// begins with `xml` is another instruction's, and the document has none.
 fn utf8_declaration(xml: &str) -> String {
-    let body = match xml.strip_prefix("<?xml") {
+    let declaration = xml
+        .strip_prefix("<?xml")
+        .filter(|rest| rest.starts_with([' ', '\t', '\r', '\n', '?']));
+    let body = match declaration {
         Some(rest) => match rest.find("?>") {
             Some(end) => &rest[end + 2..],
             None => return format!("{UTF_8_DECLARATION}{xml}"),
@@ -222,6 +226,14 @@ mod tests {
         assert_eq!(
             utf8_declaration("<r/>"),
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?><r/>"
+        );
+    }
+
+    #[test]
+    fn keeps_a_leading_instruction_whose_target_only_begins_with_xml() {
+        assert_eq!(
+            utf8_declaration("<?xml-stylesheet href=\"s.xsl\"?><r/>"),
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?><?xml-stylesheet href=\"s.xsl\"?><r/>"
         );
     }
 }

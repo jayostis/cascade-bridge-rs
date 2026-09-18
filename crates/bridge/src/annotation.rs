@@ -13,7 +13,7 @@ use crate::rdf::{
     SH_VIOLATION,
 };
 use oxrdf::{BlankNode, GraphName, Literal, NamedNode, NamedOrBlankNode, Quad, Term};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Where a record stood: the document it was read from, and the XPath that
 /// selects it there.
@@ -68,6 +68,39 @@ fn record_selector(record: &Record, into: &mut Vec<Quad>) -> Result<BlankNode> {
         Literal::new_simple_literal(record.selector),
     )?);
     Ok(node)
+}
+
+/// A blank node's description made over as a node of its own: what the query
+/// hung on it, and on every blank node reached from it.
+fn copy(node: &BlankNode, from: &[Quad], into: &mut Vec<Quad>) -> BlankNode {
+    let made = BlankNode::default();
+    let mut over: HashMap<BlankNode, BlankNode> = HashMap::from([(node.clone(), made.clone())]);
+    let mut pending = vec![node.clone()];
+    while let Some(was) = pending.pop() {
+        let subject = over[&was].clone();
+        for quad in from {
+            if !matches!(&quad.subject, NamedOrBlankNode::BlankNode(b) if *b == was) {
+                continue;
+            }
+            let object = match &quad.object {
+                Term::BlankNode(reached) => {
+                    if !over.contains_key(reached) {
+                        over.insert(reached.clone(), BlankNode::default());
+                        pending.push(reached.clone());
+                    }
+                    Term::from(over[reached].clone())
+                }
+                other => other.clone(),
+            };
+            into.push(Quad::new(
+                subject.clone(),
+                quad.predicate.clone(),
+                object,
+                GraphName::DefaultGraph,
+            ));
+        }
+    }
+    made
 }
 
 /// The finding a Bridge stage made itself, about the record as a whole.
@@ -127,6 +160,25 @@ pub fn about(record: &Record, constructed: Vec<Quad>) -> Result<Vec<Quad>> {
         })
         .collect();
 
+    // A blank node the query minted for a target is given a selector where it
+    // stands, so the second annotation pointed at one is pointed at a copy.
+    let mut copies = Vec::new();
+    let mut targeted: HashSet<BlankNode> = HashSet::new();
+    for at in 0..quads.len() {
+        if quads[at].predicate.as_str() != OA_HAS_TARGET {
+            continue;
+        }
+        let Term::BlankNode(target) = quads[at].object.clone() else {
+            continue;
+        };
+        if targeted.insert(target.clone()) {
+            continue;
+        }
+        let copy = Term::from(copy(&target, &quads, &mut copies));
+        quads[at].object = copy;
+    }
+    quads.append(&mut copies);
+
     // A name is the same node for every annotation of every record, so a
     // target that is one becomes a specific resource of this annotation's own
     // and the record selector hangs there. Only a blank node the query minted
@@ -151,9 +203,6 @@ pub fn about(record: &Record, constructed: Vec<Quad>) -> Result<Vec<Quad>> {
             }
             Term::BlankNode(node) => {
                 let node = NamedOrBlankNode::from(node.clone());
-                if refined.contains_key(&node) {
-                    continue;
-                }
                 (node.clone(), node)
             }
             Term::Literal(_) => continue,

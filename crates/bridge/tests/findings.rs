@@ -221,3 +221,82 @@ fn gives_an_annotation_targeting_the_record_itself_a_record_selector_of_its_own(
         ]
     );
 }
+
+/// The tiny adapter with the findings query rewritten to construct two
+/// annotations about the one target node, which it mints once per solution.
+struct SharedTarget {
+    directory: DirectoryResolver,
+}
+
+const BOTH: &str = "_:note ;
+    oa:hasBody [ a oa:TextualBody ; rdf:value \"no term for a free-text note\" ] ;
+    sh:resultSeverity sh:Info .
+
+  [] a oa:Annotation ;
+    oa:hasTarget _:note ;
+    oa:hasBody [ a oa:TextualBody ; rdf:value \"a note is not a title\" ] ;
+    sh:resultSeverity sh:Info .
+
+  _:note
+    oa:hasSource bridge:thisRecord ;
+    oa:hasSelector [ a oa:XPathSelector ; rdf:value \"note\" ] .";
+
+impl Resolver for SharedTarget {
+    fn root(&self) -> &str {
+        self.directory.root()
+    }
+
+    fn read(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
+        let bytes = self.directory.read(iri)?;
+        if !iri.ends_with("mapping/item-note-findings.rq") {
+            return Ok(bytes);
+        }
+        let text = String::from_utf8(bytes).expect("utf-8");
+        let one = format!("{TARGET} ;\n    oa:hasBody [ a oa:TextualBody ; rdf:value \"no term for a free-text note\" ] ;\n    sh:resultSeverity sh:Info .");
+        assert!(text.contains(&one), "the query constructs one annotation");
+        Ok(text.replace(&one, BOTH).into_bytes())
+    }
+}
+
+#[test]
+fn gives_two_annotations_the_query_pointed_at_one_target_a_record_selector_each() {
+    let findings = findings_through(&SharedTarget { directory: tiny() }, "two.xml");
+    assert_eq!(
+        annotations(&findings),
+        3,
+        "two about the one note, one about the record with no title"
+    );
+
+    let targets = objects(&findings, &format!("{OA}hasTarget"));
+    assert_eq!(
+        targets.iter().collect::<BTreeSet<_>>().len(),
+        3,
+        "annotations share a target node: {targets:?}"
+    );
+
+    let selectors = objects(&findings, &format!("{OA}hasSelector"));
+    assert_eq!(selectors.len(), 3);
+    assert_eq!(
+        selectors.iter().collect::<BTreeSet<_>>().len(),
+        3,
+        "annotations share a record selector: {selectors:?}"
+    );
+
+    assert_eq!(objects(&findings, &format!("{OA}refinedBy")).len(), 2);
+    assert_eq!(
+        selector_values(&findings),
+        [
+            "\"/catalog/item[1]\"",
+            "\"/catalog/item[1]\"",
+            "\"/catalog/item[2]\"",
+            "\"note\"",
+            "\"note\""
+        ]
+    );
+
+    let sources = objects(&findings, &format!("{OA}hasSource"));
+    assert_eq!(sources.len(), 3);
+    for source in sources {
+        assert!(source.ends_with("fixtures/in/two.xml>"), "{source}");
+    }
+}
