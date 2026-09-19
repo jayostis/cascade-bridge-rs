@@ -166,6 +166,7 @@ struct Builder {
     rdf_type: NamedNode,
     fx_root: NamedNode,
     document_element: Option<String>,
+    document_step: Option<Step>,
     raw: String,
     unit_path: Vec<Step>,
 }
@@ -182,6 +183,7 @@ impl Builder {
             rdf_type: NamedNode::new(format!("{RDF}type"))?,
             fx_root: NamedNode::new(format!("{FX}root"))?,
             document_element: None,
+            document_step: None,
             raw: String::new(),
             unit_path: Vec::new(),
         })
@@ -304,6 +306,9 @@ impl Builder {
             namespace: element.namespace.map(str::to_owned),
             position,
         };
+        if self.stack.is_empty() {
+            self.document_step = Some(step.clone());
+        }
 
         if self.unit_name.as_deref() == Some(element.local) {
             self.unit_path = self
@@ -399,6 +404,15 @@ impl<R: BufRead> Lift<R> {
     /// The local name of the document's own element, once it has been read.
     pub fn document_element(&self) -> Option<&str> {
         self.builder.document_element.as_deref()
+    }
+
+    /// The XPath that selects the document element, which a finding about the
+    /// document rather than about a record carries.
+    pub fn document_selector(&self) -> Option<String> {
+        self.builder
+            .document_step
+            .as_ref()
+            .map(|step| format!("/{}", step.write(false)))
     }
 
     /// The whole document with every unit emptied: what a detect query reads.

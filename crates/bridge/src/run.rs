@@ -375,12 +375,11 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
     }
     let at = Instant::now();
     if let Some(schema) = envelope.and_then(|envelope| envelope.document_schema.as_ref()) {
-        let root_element = envelope
-            .and_then(|envelope| envelope.doc_root_element_name.as_deref())
-            .or_else(|| lift.document_element())
-            .unwrap_or(&prepared.unit)
-            .to_owned();
-        let selector = format!("/{root_element}");
+        // Validation reports and never refuses, so a document with no element
+        // at all is still addressed, by the only name there is for it.
+        let selector = lift
+            .document_selector()
+            .unwrap_or_else(|| format!("/{}", prepared.unit));
         let record = Record {
             source: source.iri,
             selector: &selector,
