@@ -1,9 +1,10 @@
-// The RDF plumbing every stage shares: the terms it names, and the one
-// canonical form graphs are compared in.
+// The RDF plumbing every stage shares: the terms it names, the one canonical
+// form graphs are compared in, and the text a produced graph is handed over as.
 use crate::error::Result;
 use oxrdf::dataset::{CanonicalizationAlgorithm, CanonicalizationHashAlgorithm};
-use oxrdf::{Dataset, Quad};
-use std::collections::BTreeSet;
+use oxrdf::{Dataset, NamedOrBlankNode, Quad, Term};
+use oxrdfio::{RdfFormat, RdfSerializer};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 macro_rules! terms {
     ($($name:ident = $namespace:expr, $local:expr;)*) => {
@@ -16,6 +17,19 @@ terms! {
     RDF_FIRST = "http://www.w3.org/1999/02/22-rdf-syntax-ns#", "first";
     RDF_REST = "http://www.w3.org/1999/02/22-rdf-syntax-ns#", "rest";
     RDF_NIL = "http://www.w3.org/1999/02/22-rdf-syntax-ns#", "nil";
+    RDF_VALUE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#", "value";
+
+    OA_ANNOTATION = "http://www.w3.org/ns/oa#", "Annotation";
+    OA_HAS_TARGET = "http://www.w3.org/ns/oa#", "hasTarget";
+    OA_HAS_SOURCE = "http://www.w3.org/ns/oa#", "hasSource";
+    OA_HAS_SELECTOR = "http://www.w3.org/ns/oa#", "hasSelector";
+    OA_HAS_BODY = "http://www.w3.org/ns/oa#", "hasBody";
+    OA_REFINED_BY = "http://www.w3.org/ns/oa#", "refinedBy";
+    OA_XPATH_SELECTOR = "http://www.w3.org/ns/oa#", "XPathSelector";
+    OA_TEXTUAL_BODY = "http://www.w3.org/ns/oa#", "TextualBody";
+
+    SH_RESULT_SEVERITY = "http://www.w3.org/ns/shacl#", "resultSeverity";
+    SH_VIOLATION = "http://www.w3.org/ns/shacl#", "Violation";
 
     SCHEMA_ABOUT = "http://schema.org/", "about";
     SCHEMA_NAME = "http://schema.org/", "name";
@@ -32,6 +46,9 @@ terms! {
     BRIDGE_TABLE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "table";
     BRIDGE_ENVELOPE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "envelope";
     BRIDGE_DOC_ROOT_ELEMENT_NAME = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "docRootElementName";
+    BRIDGE_SOURCE_SCHEMA = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "sourceSchema";
+    BRIDGE_DOCUMENT_SCHEMA = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "documentSchema";
+    BRIDGE_THIS_RECORD = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "thisRecord";
     BRIDGE_INPUT = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "input";
     BRIDGE_EXPECTED_GRAPH = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "expectedGraph";
     BRIDGE_EXPECTED_FINDINGS = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "expectedFindings";
@@ -58,4 +75,159 @@ pub fn canonical_lines(quads: impl IntoIterator<Item = Quad>) -> Result<BTreeSet
         hash_algorithm: CanonicalizationHashAlgorithm::Sha256,
     });
     Ok(dataset.iter().map(|quad| quad.to_string()).collect())
+}
+
+/// The blank nodes a graph holds, each joined to every other one a quad of the
+/// graph names beside it.
+#[derive(Default)]
+struct Joined(HashMap<String, String>);
+
+impl Joined {
+    fn root(&mut self, node: &str) -> String {
+        let mut at = node.to_owned();
+        while let Some(up) = self.0.get(&at) {
+            if up == &at {
+                break;
+            }
+            at = up.clone();
+        }
+        self.0.insert(node.to_owned(), at.clone());
+        at
+    }
+
+    fn join(&mut self, one: &str, two: &str) {
+        let (one, two) = (self.root(one), self.root(two));
+        if one != two {
+            self.0.insert(one, two);
+        }
+    }
+}
+
+/// The blank node a quad belongs to whatever else it names.
+fn blank_of(quad: &Quad) -> Option<&str> {
+    match (&quad.subject, &quad.object) {
+        (NamedOrBlankNode::BlankNode(node), _) => Some(node.as_str()),
+        (_, Term::BlankNode(node)) => Some(node.as_str()),
+        _ => None,
+    }
+}
+
+/// Each part of a graph no blank node reaches out of, canonicalised on its own
+/// and written as one line. A blank node bijection maps such a part onto such a
+/// part, so two graphs are isomorphic exactly when these multisets are equal —
+/// and what differs is then one whole part, rather than every line a
+/// relabelling moved.
+pub fn canonical_parts(quads: impl IntoIterator<Item = Quad>) -> Result<Vec<String>> {
+    let quads: HashSet<Quad> = quads.into_iter().collect();
+    let mut joined = Joined::default();
+    for quad in &quads {
+        if let (NamedOrBlankNode::BlankNode(subject), Term::BlankNode(object)) =
+            (&quad.subject, &quad.object)
+        {
+            joined.join(subject.as_str(), object.as_str());
+        }
+    }
+
+    let mut parts: HashMap<String, Vec<Quad>> = HashMap::new();
+    for quad in quads {
+        let key = match blank_of(&quad) {
+            Some(node) => format!("_:{}", joined.root(node)),
+            None => quad.to_string(),
+        };
+        parts.entry(key).or_default().push(quad);
+    }
+
+    let mut written: Vec<String> = Vec::with_capacity(parts.len());
+    for part in parts.into_values() {
+        written.push(
+            canonical_lines(part)?
+                .into_iter()
+                .collect::<Vec<String>>()
+                .join(" "),
+        );
+    }
+    written.sort();
+    Ok(written)
+}
+
+/// The syntax a produced graph is written in: one to read, one to pipe.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GraphFormat {
+    Turtle,
+    NTriples,
+}
+
+impl GraphFormat {
+    pub fn named(name: &str) -> Option<Self> {
+        match name {
+            "turtle" => Some(Self::Turtle),
+            "ntriples" => Some(Self::NTriples),
+            _ => None,
+        }
+    }
+
+    fn format(self) -> RdfFormat {
+        match self {
+            Self::Turtle => RdfFormat::Turtle,
+            Self::NTriples => RdfFormat::NTriples,
+        }
+    }
+}
+
+/// Every IRI a quad names, for deciding which of the offered prefixes the
+/// graph can be spelled with.
+fn iris(quad: &Quad) -> [Option<&str>; 3] {
+    [
+        match &quad.subject {
+            NamedOrBlankNode::NamedNode(n) => Some(n.as_str()),
+            NamedOrBlankNode::BlankNode(_) => None,
+        },
+        Some(quad.predicate.as_str()),
+        match &quad.object {
+            Term::NamedNode(n) => Some(n.as_str()),
+            Term::Literal(l) => Some(l.datatype().as_str()),
+            Term::BlankNode(_) => None,
+        },
+    ]
+}
+
+/// The namespace of every IRI in the graph: what stands before its "#", or
+/// before its last "/" where it has none. An IRI has the one namespace, so a
+/// name a path of it merely starts with is not one the graph uses.
+fn namespaces(quads: &[Quad]) -> HashSet<&str> {
+    let mut namespaces = HashSet::new();
+    for iri in quads.iter().flat_map(iris).flatten() {
+        if let Some(cut) = iri.rfind('#').or_else(|| iri.rfind('/')) {
+            namespaces.insert(&iri[..=cut]);
+        }
+    }
+    namespaces
+}
+
+/// The graph as text.
+///
+/// Each triple is written once: two mappings that construct the same triple,
+/// or one constructed for every record, describe the graph no more than once.
+/// A prefix is declared only where the graph uses it, so a mapping's lift
+/// namespaces do not reach output they never appear in.
+pub fn serialise(
+    quads: &[Quad],
+    format: GraphFormat,
+    prefixes: &[(String, String)],
+) -> Result<String> {
+    let namespaces = namespaces(quads);
+    let mut serializer = RdfSerializer::from_format(format.format());
+    for (prefix, namespace) in prefixes {
+        if namespaces.contains(namespace.as_str()) {
+            serializer = serializer.with_prefix(prefix, namespace)?;
+        }
+    }
+    let mut serializer = serializer.for_writer(Vec::new());
+    let mut written: HashSet<&Quad> = HashSet::new();
+    for quad in quads {
+        if written.insert(quad) {
+            serializer.serialize_quad(quad)?;
+        }
+    }
+    Ok(String::from_utf8(serializer.finish()?)?)
 }

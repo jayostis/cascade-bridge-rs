@@ -3,10 +3,10 @@
 // through the graph rather than a match on a file name.
 use crate::error::{Error, Result};
 use crate::rdf::{
-    BRIDGE_ADAPTER, BRIDGE_DETECT_QUERY, BRIDGE_DOC_ROOT_ELEMENT_NAME,
+    BRIDGE_ADAPTER, BRIDGE_DETECT_QUERY, BRIDGE_DOCUMENT_SCHEMA, BRIDGE_DOC_ROOT_ELEMENT_NAME,
     BRIDGE_ELEMENT_NAME_OF_EACH_RECORD, BRIDGE_ENVELOPE, BRIDGE_FINDINGS_QUERY, BRIDGE_MAPPING,
-    BRIDGE_REQUIRES_PROFILE, BRIDGE_TABLE, BRIDGE_TEST_MANIFEST, RDF_FIRST, RDF_NIL, RDF_REST,
-    RDF_TYPE, SCHEMA_ABOUT, SCHEMA_IDENTIFIER, SCHEMA_NAME,
+    BRIDGE_REQUIRES_PROFILE, BRIDGE_SOURCE_SCHEMA, BRIDGE_TABLE, BRIDGE_TEST_MANIFEST, RDF_FIRST,
+    RDF_NIL, RDF_REST, RDF_TYPE, SCHEMA_ABOUT, SCHEMA_IDENTIFIER, SCHEMA_NAME,
 };
 use crate::resolver::Resolver;
 use oxrdf::{Graph, NamedNode, NamedOrBlankNode, Term, Triple};
@@ -40,6 +40,7 @@ pub struct Envelope {
     pub iri: String,
     pub name: Option<String>,
     pub doc_root_element_name: Option<String>,
+    pub document_schema: Option<String>,
 }
 
 pub struct Adapter {
@@ -49,6 +50,7 @@ pub struct Adapter {
     pub graph: Graph,
     pub identifier: Option<String>,
     pub element_name_of_each_record: Option<String>,
+    pub source_schema: Option<String>,
     pub required_profiles: Vec<String>,
     pub mappings: Vec<String>,
     pub findings_queries: Vec<String>,
@@ -182,6 +184,7 @@ pub fn load_adapter(resolver: &dyn Resolver) -> Result<Adapter> {
         envelopes.push(Envelope {
             name: value(&graph, &s, SCHEMA_NAME)?,
             doc_root_element_name: value(&graph, &s, BRIDGE_DOC_ROOT_ELEMENT_NAME)?,
+            document_schema: value(&graph, &s, BRIDGE_DOCUMENT_SCHEMA)?,
             iri,
         });
     }
@@ -193,6 +196,7 @@ pub fn load_adapter(resolver: &dyn Resolver) -> Result<Adapter> {
             &root_subject,
             BRIDGE_ELEMENT_NAME_OF_EACH_RECORD,
         )?,
+        source_schema: value(&graph, &root_subject, BRIDGE_SOURCE_SCHEMA)?,
         required_profiles: values(&graph, &root_subject, BRIDGE_REQUIRES_PROFILE)?,
         mappings: values(&graph, &root_subject, BRIDGE_MAPPING)?,
         findings_queries: values(&graph, &root_subject, BRIDGE_FINDINGS_QUERY)?,

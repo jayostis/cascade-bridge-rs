@@ -15,6 +15,14 @@ pub trait Resolver {
     fn read(&self, iri: &str) -> Result<Vec<u8>>;
 }
 
+/// The IRI a file on this machine is named by, for a document a caller holds
+/// rather than one the adapter committed.
+pub fn file_iri(path: impl AsRef<Path>) -> Result<String> {
+    let resolved = fs::canonicalize(path.as_ref())
+        .map_err(|e| Error::msg(format!("{}: {e}", path.as_ref().display())))?;
+    Ok(path_to_file_iri(&resolved))
+}
+
 /// Resolve an adapter from a directory. Nothing outside it is readable.
 pub struct DirectoryResolver {
     root_iri: String,
