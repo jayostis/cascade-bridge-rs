@@ -365,7 +365,6 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
     // document schema below reads these characters rather than its own copy.
     let text = decode(source.xml)?;
     let mut lift = lift_text(Cow::Borrowed(&text), Some(&prepared.unit))?;
-    let mut envelope = named;
     loop {
         let at = Instant::now();
         let Some(unit) = lift.next_unit()? else {
@@ -373,9 +372,6 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
         };
         ms.lift += at.elapsed();
         units += 1;
-        if named.is_none() {
-            envelope = prepared.envelope_of(lift.document_element());
-        }
         let selector = unit.selector();
         let record = Record {
             source: source.iri,
@@ -412,9 +408,7 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
         ms.findings += at.elapsed();
     }
 
-    if named.is_none() {
-        envelope = prepared.envelope_of(lift.document_element());
-    }
+    let envelope = named.or_else(|| prepared.envelope_of(lift.document_element()));
     let at = Instant::now();
     if let Some((envelope, schema)) =
         envelope.and_then(|envelope| Some((envelope, envelope.document_schema.as_ref()?)))
