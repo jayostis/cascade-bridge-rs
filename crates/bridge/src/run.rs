@@ -459,7 +459,7 @@ mod tests {
         assert_eq!(
             document_selector(None, Some("catalog")),
             "/catalog",
-            "a finding about the document names the record element"
+            "a finding about the document selects the envelope's document root element"
         );
         assert_eq!(
             document_selector(Some("/other".to_owned()), Some("catalog")),
