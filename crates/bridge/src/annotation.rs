@@ -22,16 +22,6 @@ pub struct Record<'a> {
     pub selector: &'a str,
 }
 
-/// A record's selector is its position: the envelope's document root element,
-/// the record element, and the record's number among records of that name.
-pub fn selector(root_element: &str, record_element: &str, position: usize) -> String {
-    if root_element == record_element {
-        format!("/{root_element}[{position}]")
-    } else {
-        format!("/{root_element}/{record_element}[{position}]")
-    }
-}
-
 /// How many annotations a graph of findings holds.
 pub fn annotations(quads: &[Quad]) -> usize {
     quads
@@ -316,7 +306,7 @@ impl Minted {
 
 #[cfg(test)]
 mod tests {
-    use super::{selector, Minted};
+    use super::Minted;
     use oxrdf::{BlankNode, GraphName, Literal, NamedNode, Quad};
     use std::collections::BTreeSet;
 
@@ -327,12 +317,6 @@ mod tests {
             Literal::new_simple_literal("same"),
             GraphName::DefaultGraph,
         )
-    }
-
-    #[test]
-    fn writes_a_record_that_is_the_document_element_as_one_step() {
-        assert_eq!(selector("Record", "Record", 1), "/Record[1]");
-        assert_eq!(selector("Set", "Record", 3), "/Set/Record[3]");
     }
 
     #[test]

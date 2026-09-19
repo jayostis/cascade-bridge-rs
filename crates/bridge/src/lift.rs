@@ -23,6 +23,7 @@ use quick_xml::events::Event;
 use quick_xml::name::ResolveResult;
 use quick_xml::NsReader;
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::io::{BufRead, Cursor};
 
 const RDF: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
@@ -64,20 +65,58 @@ fn triple(subject: &BlankNode, predicate: NamedNode, object: impl Into<Term>) ->
     )
 }
 
+/// One step of the XPath from the document element to a record: an element,
+/// and its place among its siblings of the same name.
+#[derive(Clone)]
+struct Step {
+    local: String,
+    namespace: Option<String>,
+    position: usize,
+}
+
+impl Step {
+    /// An XPath carries no prefix bindings and a selector is read where nothing
+    /// can supply them, so a namespace is written out in full.
+    fn write(&self, indexed: bool) -> String {
+        let named = match &self.namespace {
+            Some(namespace) => format!(
+                "*[local-name()='{}' and namespace-uri()='{namespace}']",
+                self.local
+            ),
+            None => self.local.clone(),
+        };
+        match indexed {
+            true => format!("{named}[{}]", self.position),
+            false => named,
+        }
+    }
+}
+
 /// One record, lifted, with what a stage outside the lift needs to say where
 /// it stood and to hand its own parser the same characters.
 pub struct Unit {
     pub store: Store,
-    /// Its number among records of its name, from 1 in document order.
-    pub position: usize,
     pub xml: String,
-    pub is_document_element: bool,
+    path: Vec<Step>,
+}
+
+impl Unit {
+    /// The XPath from the document element to this record. The document
+    /// element takes no index, having no siblings to be one of.
+    pub fn selector(&self) -> String {
+        self.path
+            .iter()
+            .enumerate()
+            .map(|(depth, step)| format!("/{}", step.write(depth > 0)))
+            .collect()
+    }
 }
 
 /// An element as the parser read it: what the lift names it by, and what the
 /// document wrote it as.
 struct Element<'a> {
     local: &'a str,
+    namespace: Option<&'a str>,
     qname: &'a str,
     type_iri: NamedNode,
     attributes: Vec<(NamedNode, String)>,
@@ -92,6 +131,12 @@ struct Frame {
     unit: bool,
     qname: String,
     declarations: Vec<(String, String)>,
+    /// Its step, for an element the document element reaches without passing
+    /// through a record.
+    step: Option<Step>,
+    /// How many children of each name have been opened, the next one's place
+    /// among its siblings of that name being one more.
+    siblings: HashMap<(String, Option<String>), usize>,
 }
 
 /// A start tag as XML, its declarations written before its attributes.
@@ -121,9 +166,8 @@ struct Builder {
     rdf_type: NamedNode,
     fx_root: NamedNode,
     document_element: Option<String>,
-    units: usize,
     raw: String,
-    unit_is_document_element: bool,
+    unit_path: Vec<Step>,
 }
 
 impl Builder {
@@ -138,9 +182,8 @@ impl Builder {
             rdf_type: NamedNode::new(format!("{RDF}type"))?,
             fx_root: NamedNode::new(format!("{FX}root"))?,
             document_element: None,
-            units: 0,
             raw: String::new(),
-            unit_is_document_element: false,
+            unit_path: Vec::new(),
         })
     }
 
@@ -204,12 +247,14 @@ impl Builder {
         if self.stack.is_empty() {
             self.document_element = Some(element.local.to_owned());
         }
-        let frame = |id: BlankNode, unit: bool| Frame {
+        let frame = |id: BlankNode, unit: bool, step: Option<Step>| Frame {
             id,
             members: 0,
             unit,
             qname: element.qname.to_owned(),
             declarations: element.declarations.clone(),
+            step,
+            siblings: HashMap::new(),
         };
 
         if self.inside_unit() {
@@ -228,14 +273,22 @@ impl Builder {
                 self.unit
                     .push(triple(&id, predicate, Literal::new_simple_literal(value)));
             }
-            self.stack.push(frame(id, true));
+            self.stack.push(frame(id, true, None));
             return Ok(());
         }
 
         // Outside any unit: the element belongs to the skeleton.
         let id = self.fresh();
+        let name = (
+            element.local.to_owned(),
+            element.namespace.map(str::to_owned),
+        );
+        let mut position = 1;
         match self.stack.last_mut() {
             Some(top) => {
+                let seen = top.siblings.entry(name).or_default();
+                *seen += 1;
+                position = *seen;
                 top.members += 1;
                 let slot = triple(&top.id, member(top.members)?, id.clone());
                 self.skeleton.push(slot);
@@ -246,10 +299,19 @@ impl Builder {
         }
         self.skeleton
             .push(triple(&id, rdf_type.clone(), element.type_iri.clone()));
+        let step = Step {
+            local: element.local.to_owned(),
+            namespace: element.namespace.map(str::to_owned),
+            position,
+        };
 
         if self.unit_name.as_deref() == Some(element.local) {
-            self.units += 1;
-            self.unit_is_document_element = self.stack.is_empty();
+            self.unit_path = self
+                .stack
+                .iter()
+                .filter_map(|frame| frame.step.clone())
+                .chain([step.clone()])
+                .collect();
             self.raw.clear();
             self.raw.push_str(UTF_8_DECLARATION);
             let scope = self.in_scope(&element.declarations);
@@ -268,7 +330,7 @@ impl Builder {
                     Literal::new_simple_literal(value),
                 ));
             }
-            self.stack.push(frame(unit_id, true));
+            self.stack.push(frame(unit_id, true, Some(step)));
             return Ok(());
         }
 
@@ -276,7 +338,7 @@ impl Builder {
             self.skeleton
                 .push(triple(&id, predicate, Literal::new_simple_literal(value)));
         }
-        self.stack.push(frame(id, false));
+        self.stack.push(frame(id, false, Some(step)));
         Ok(())
     }
 
@@ -395,6 +457,7 @@ impl<R: BufRead> Lift<R> {
                     }
                     self.builder.open(Element {
                         local: &local,
+                        namespace: namespace.as_deref(),
                         qname: &qname,
                         type_iri,
                         attributes,
@@ -407,9 +470,8 @@ impl<R: BufRead> Lift<R> {
                         let quads = std::mem::take(&mut self.builder.unit);
                         return Ok(Some(Unit {
                             store: store_of(quads)?,
-                            position: self.builder.units,
                             xml: std::mem::take(&mut self.builder.raw),
-                            is_document_element: self.builder.unit_is_document_element,
+                            path: std::mem::take(&mut self.builder.unit_path),
                         }));
                     }
                 }

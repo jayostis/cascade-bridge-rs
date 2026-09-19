@@ -334,19 +334,7 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
         if named.is_none() {
             envelope = prepared.envelope_of(lift.document_element());
         }
-        let root_element = envelope
-            .and_then(|envelope| envelope.doc_root_element_name.as_deref())
-            .or_else(|| lift.document_element())
-            .ok_or_else(|| Error::msg("the document has no element to select a record in"))?;
-        let selector = annotation::selector(
-            root_element,
-            if unit.is_document_element {
-                root_element
-            } else {
-                &prepared.unit
-            },
-            unit.position,
-        );
+        let selector = unit.selector();
         let record = Record {
             source: source.iri,
             selector: &selector,
