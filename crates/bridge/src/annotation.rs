@@ -148,22 +148,40 @@ pub fn about(record: &Record, query: &str, constructed: Vec<Quad>) -> Result<Vec
         Term::NamedNode(n) if n == this_record => Term::from(source.clone()),
         other => other,
     };
+    // Read before the substitution below, so this names the term the query's
+    // author wrote rather than the document it became.
+    if let Some(named) = constructed
+        .iter()
+        .filter(|q| q.predicate.as_str() == RDF_TYPE)
+        .filter(|q| matches!(&q.object, Term::NamedNode(n) if n.as_str() == OA_ANNOTATION))
+        .find_map(|q| match &q.subject {
+            NamedOrBlankNode::NamedNode(node) => Some(node),
+            NamedOrBlankNode::BlankNode(_) => None,
+        })
+    {
+        return Err(Error::msg(format!(
+            "findings query {query} constructs {named} as an oa:Annotation; a finding is a blank \
+             node written for that one finding: one name is one node for every finding the query \
+             produces, and which target, body and severity standing on it belong to which finding \
+             is then unrecoverable"
+        )));
+    }
     // Every pass below is keyed on a node of this graph, and a query may name
     // the record where a node of its own would do, so the substitution comes
     // first: keyed on the constructed graph they would part company over the
     // node an annotation is.
     let quads: Vec<Quad> = constructed
-        .into_iter()
+        .iter()
         .map(|quad| {
-            let subject = match named_record(Term::from(quad.subject)) {
+            let subject = match named_record(Term::from(quad.subject.clone())) {
                 Term::NamedNode(n) => NamedOrBlankNode::from(n),
                 Term::BlankNode(b) => NamedOrBlankNode::from(b),
                 Term::Literal(_) => unreachable!("a literal is not a subject"),
             };
             Quad::new(
                 subject,
-                quad.predicate,
-                named_record(quad.object),
+                quad.predicate.clone(),
+                named_record(quad.object.clone()),
                 GraphName::DefaultGraph,
             )
         })
@@ -184,14 +202,16 @@ pub fn about(record: &Record, query: &str, constructed: Vec<Quad>) -> Result<Vec
         })
         .collect();
     let mut targets: Vec<(NamedOrBlankNode, BlankNode)> = Vec::new();
-    for quad in &quads {
+    for (quad, written) in quads.iter().zip(&constructed) {
         if quad.predicate.as_str() != OA_HAS_TARGET || !annotations.contains(&quad.subject) {
             continue;
         }
         let Term::BlankNode(target) = &quad.object else {
+            // The written term, not the substituted one: a query naming
+            // bridge:thisRecord here must read its own name back.
             return Err(Error::msg(format!(
                 "findings query {query} targets {}; a findings query's oa:hasTarget is a blank node",
-                quad.object
+                written.object
             )));
         };
         if !sourced.contains(target) {

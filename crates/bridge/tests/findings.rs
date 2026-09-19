@@ -197,6 +197,10 @@ fn refuses_a_findings_query_whose_target_is_a_name() {
     let refusal = refusal.to_string();
     assert!(refusal.contains("item-note-findings.rq"), "{refusal}");
     assert!(refusal.contains("oa:hasTarget"), "{refusal}");
+    assert!(
+        refusal.contains(THIS_RECORD),
+        "the refusal names the term the query wrote, not the document it became: {refusal}"
+    );
 }
 
 #[test]
@@ -416,25 +420,16 @@ fn gives_two_annotations_the_query_pointed_at_one_target_a_record_selector_each(
 const THIS_RECORD: &str = "https://ns.cascadeprotocol.org/bridge/v1-draft#thisRecord";
 
 #[test]
-fn retargets_an_annotation_the_query_named_by_this_record() {
-    let findings = findings_through(
-        &Rewritten::new(&[("[] a oa:Annotation", "bridge:thisRecord a oa:Annotation")]),
-        "two.xml",
-    );
-
+fn refuses_a_findings_query_that_names_the_annotation_it_constructs() {
+    let named = Rewritten::new(&[("[] a oa:Annotation", "bridge:thisRecord a oa:Annotation")]);
+    let Err(refusal) = conversion(&named, "two.xml") else {
+        panic!("the named form is accepted");
+    };
+    let refusal = refusal.to_string();
+    assert!(refusal.contains("item-note-findings.rq"), "{refusal}");
+    assert!(refusal.contains("oa:Annotation"), "{refusal}");
     assert!(
-        !findings.iter().any(|q| q.to_string().contains(THIS_RECORD)),
-        "the vocabulary's own name is in the findings graph: {findings:?}"
-    );
-
-    let targets = objects(&findings, &format!("{OA}hasTarget"));
-    assert_eq!(
-        targets.len(),
-        2,
-        "one target per annotation, the query's own replaced: {targets:?}"
-    );
-    assert_eq!(
-        selector_values(&findings),
-        ["\"/catalog/item[1]\"", "\"/catalog/item[2]\"", "\"note\""]
+        refusal.contains(THIS_RECORD),
+        "the refusal names the term the query wrote: {refusal}"
     );
 }
