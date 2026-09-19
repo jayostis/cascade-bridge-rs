@@ -236,6 +236,104 @@ fn gives_an_annotation_targeting_the_record_itself_a_record_selector_of_its_own(
     );
 }
 
+/// The tiny adapter with its findings query rewritten, each replacement
+/// asserted to have something to replace so a query that moved on cannot leave
+/// a test passing on the query it no longer has.
+struct Rewritten {
+    directory: DirectoryResolver,
+    replacements: Vec<(String, String)>,
+}
+
+impl Rewritten {
+    fn new(replacements: &[(&str, &str)]) -> Self {
+        Self {
+            directory: tiny(),
+            replacements: replacements
+                .iter()
+                .map(|(from, to)| ((*from).to_owned(), (*to).to_owned()))
+                .collect(),
+        }
+    }
+}
+
+impl Resolver for Rewritten {
+    fn root(&self) -> &str {
+        self.directory.root()
+    }
+
+    fn read(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
+        let bytes = self.directory.read(iri)?;
+        if !iri.ends_with("mapping/item-note-findings.rq") {
+            return Ok(bytes);
+        }
+        let mut text = String::from_utf8(bytes).expect("utf-8");
+        for (from, to) in &self.replacements {
+            assert!(text.contains(from), "the query holds {from:?}");
+            text = text.replace(from, to);
+        }
+        Ok(text.into_bytes())
+    }
+}
+
+const SOURCELESS: &str =
+    "[\n      oa:hasSelector [ a oa:XPathSelector ; rdf:value \"note\" ]\n    ]";
+
+#[test]
+fn refuses_a_findings_query_whose_target_names_no_document() {
+    let Err(refusal) = conversion(&Rewritten::new(&[(TARGET, SOURCELESS)]), "two.xml") else {
+        panic!("a finding about no document is accepted");
+    };
+    let refusal = refusal.to_string();
+    assert!(refusal.contains("item-note-findings.rq"), "{refusal}");
+    assert!(refusal.contains("oa:hasSource"), "{refusal}");
+}
+
+#[test]
+fn refuses_a_findings_query_whose_annotation_has_no_target() {
+    let targeting = format!("oa:hasTarget {TARGET} ;\n    ");
+    let Err(refusal) = conversion(&Rewritten::new(&[(&targeting, "")]), "two.xml") else {
+        panic!("an annotation about no document is accepted");
+    };
+    let refusal = refusal.to_string();
+    assert!(refusal.contains("item-note-findings.rq"), "{refusal}");
+    assert!(refusal.contains("oa:hasTarget"), "{refusal}");
+}
+
+const NOTE: &str = "urn:example:note";
+
+/// The selector inside the target, named from the annotation as well.
+const ALSO_NAMED: &str = "[
+      oa:hasSource bridge:thisRecord ;
+      oa:hasSelector _:sel
+    ] ;
+    <urn:example:note> _:sel";
+
+#[test]
+fn keeps_the_description_of_a_node_in_a_target_the_query_names_from_outside_it() {
+    let findings = findings_through(
+        &Rewritten::new(&[
+            (TARGET, ALSO_NAMED),
+            (
+                "sh:resultSeverity sh:Info .\n}",
+                "sh:resultSeverity sh:Info .\n\n  _:sel a oa:XPathSelector ; rdf:value \"note\" .\n}",
+            ),
+        ]),
+        "two.xml",
+    );
+
+    let named = objects(&findings, NOTE);
+    assert_eq!(named.len(), 1);
+    let described: Vec<String> = findings
+        .iter()
+        .filter(|q| named.contains(&q.subject.to_string()))
+        .map(|q| q.predicate.as_str().to_owned())
+        .collect();
+    assert!(
+        described.contains(&RDF_VALUE.to_owned()),
+        "the graph names a node with nothing on it: {described:?}"
+    );
+}
+
 /// The tiny adapter with the findings query rewritten to construct two
 /// annotations about the one target node, which it mints once per solution.
 struct SharedTarget {

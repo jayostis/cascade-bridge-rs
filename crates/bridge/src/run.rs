@@ -20,6 +20,7 @@ use oxigraph::model::{GraphName, Quad};
 use oxigraph::sparql::{PreparedSparqlQuery, QueryResults, SparqlEvaluator};
 use oxigraph::store::Store;
 use oxrdfio::{RdfFormat, RdfParser};
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
@@ -318,8 +319,10 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
         .envelope
         .map(|iri| prepared.named_envelope(iri))
         .transpose()?;
+    // Decoding is the one stage that holds the whole document at once, so the
+    // document schema below reads these characters rather than its own copy.
     let text = decode(source.xml)?;
-    let mut lift = lift_text(text, Some(&prepared.unit))?;
+    let mut lift = lift_text(Cow::Borrowed(&text), Some(&prepared.unit))?;
     let mut envelope = named;
     loop {
         let at = Instant::now();
@@ -394,7 +397,6 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
             source: source.iri,
             selector: &selector,
         };
-        let text = decode(source.xml)?;
         for reason in schema.errors(&text)? {
             findings.extend(annotation::violation(&record, &reason)?);
         }

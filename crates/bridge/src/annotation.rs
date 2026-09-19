@@ -70,19 +70,33 @@ fn record_selector(record: &Record, into: &mut Vec<Quad>) -> Result<BlankNode> {
     Ok(node)
 }
 
+/// What each blank node carries, by that node. A walk that instead scanned the
+/// graph per node it reached would cost the square of what one query produced
+/// for one record, and a record draws findings in the thousands.
+fn described(quads: &[Quad]) -> HashMap<&BlankNode, Vec<&Quad>> {
+    let mut description: HashMap<&BlankNode, Vec<&Quad>> = HashMap::new();
+    for quad in quads {
+        if let NamedOrBlankNode::BlankNode(node) = &quad.subject {
+            description.entry(node).or_default().push(quad);
+        }
+    }
+    description
+}
+
 /// A blank node's description made over as a node of its own: what the query
 /// hung on it, and on every blank node reached from it. Each node copied maps
 /// to the node standing for it.
-fn copy(node: &BlankNode, from: &[Quad], into: &mut Vec<Quad>) -> HashMap<BlankNode, BlankNode> {
+fn copy(
+    node: &BlankNode,
+    from: &HashMap<&BlankNode, Vec<&Quad>>,
+    into: &mut Vec<Quad>,
+) -> HashMap<BlankNode, BlankNode> {
     let mut made: HashMap<BlankNode, BlankNode> =
         HashMap::from([(node.clone(), BlankNode::default())]);
     let mut pending = vec![node.clone()];
     while let Some(was) = pending.pop() {
         let subject = made[&was].clone();
-        for quad in from {
-            if !matches!(&quad.subject, NamedOrBlankNode::BlankNode(b) if *b == was) {
-                continue;
-            }
+        for quad in from.get(&was).into_iter().flatten() {
             let object = match &quad.object {
                 Term::BlankNode(reached) => {
                     if !made.contains_key(reached) {
@@ -144,6 +158,14 @@ pub fn about(record: &Record, query: &str, constructed: Vec<Quad>) -> Result<Vec
         .filter(|q| matches!(&q.object, Term::NamedNode(n) if n.as_str() == OA_ANNOTATION))
         .map(|q| q.subject.clone())
         .collect();
+    let sourced: HashSet<&BlankNode> = constructed
+        .iter()
+        .filter(|q| q.predicate.as_str() == OA_HAS_SOURCE)
+        .filter_map(|q| match &q.subject {
+            NamedOrBlankNode::BlankNode(node) => Some(node),
+            NamedOrBlankNode::NamedNode(_) => None,
+        })
+        .collect();
     let mut targets: Vec<(NamedOrBlankNode, BlankNode)> = Vec::new();
     for quad in &constructed {
         if quad.predicate.as_str() != OA_HAS_TARGET || !annotations.contains(&quad.subject) {
@@ -155,7 +177,21 @@ pub fn about(record: &Record, query: &str, constructed: Vec<Quad>) -> Result<Vec
                 quad.object
             )));
         };
+        if !sourced.contains(target) {
+            return Err(Error::msg(format!(
+                "findings query {query} targets a node with no oa:hasSource; a finding names the \
+                 document it is about, by targeting [ oa:hasSource bridge:thisRecord ]"
+            )));
+        }
         targets.push((quad.subject.clone(), target.clone()));
+    }
+    let targeted: HashSet<&NamedOrBlankNode> =
+        targets.iter().map(|(annotation, _)| annotation).collect();
+    if !annotations.iter().all(|a| targeted.contains(a)) {
+        return Err(Error::msg(format!(
+            "findings query {query} constructs an annotation with no oa:hasTarget; a finding names \
+             the document it is about, by targeting [ oa:hasSource bridge:thisRecord ]"
+        )));
     }
 
     let source = NamedNode::new(record.source)?;
@@ -181,15 +217,16 @@ pub fn about(record: &Record, query: &str, constructed: Vec<Quad>) -> Result<Vec
         })
         .collect();
 
+    let description = described(&quads);
     let mut findings = Vec::with_capacity(quads.len());
     let mut copied: HashSet<BlankNode> = HashSet::new();
     for (annotation, target) in targets {
-        let mut described = Vec::new();
-        let made = copy(&target, &quads, &mut described);
+        let mut made_over = Vec::new();
+        let made = copy(&target, &description, &mut made_over);
         let target = made[&target].clone();
         copied.extend(made.into_keys());
         let selector = record_selector(record, &mut findings)?;
-        for quad in described {
+        for quad in made_over {
             if quad.predicate.as_str() == OA_HAS_SELECTOR
                 && matches!(&quad.subject, NamedOrBlankNode::BlankNode(b) if *b == target)
             {
@@ -202,14 +239,50 @@ pub fn about(record: &Record, query: &str, constructed: Vec<Quad>) -> Result<Vec
         findings.push(triple(annotation, OA_HAS_TARGET, target)?);
     }
 
+    let retargeted = |quad: &Quad| {
+        quad.predicate.as_str() == OA_HAS_TARGET && annotations.contains(&quad.subject)
+    };
+    // The copy of a node inside a target is a node nothing outside that target
+    // names, so dropping the original leaves every other pointer at it on a
+    // node with nothing on it.
+    let mut kept: HashSet<BlankNode> = HashSet::new();
+    let mut pending: Vec<BlankNode> = Vec::new();
+    for quad in &quads {
+        let inside =
+            matches!(&quad.subject, NamedOrBlankNode::BlankNode(node) if copied.contains(node));
+        if !inside && !retargeted(quad) {
+            keep(quad, &copied, &mut kept, &mut pending);
+        }
+    }
+    while let Some(node) = pending.pop() {
+        for quad in description.get(&node).into_iter().flatten() {
+            keep(quad, &copied, &mut kept, &mut pending);
+        }
+    }
+
     for quad in quads {
-        let moved = matches!(&quad.subject, NamedOrBlankNode::BlankNode(b) if copied.contains(b))
-            || (quad.predicate.as_str() == OA_HAS_TARGET && annotations.contains(&quad.subject));
+        let moved = matches!(&quad.subject, NamedOrBlankNode::BlankNode(node)
+            if copied.contains(node) && !kept.contains(node))
+            || retargeted(&quad);
         if !moved {
             findings.push(quad);
         }
     }
     Ok(findings)
+}
+
+/// A copied node this quad names, noted as one whose own description stays.
+fn keep(
+    quad: &Quad,
+    copied: &HashSet<BlankNode>,
+    kept: &mut HashSet<BlankNode>,
+    pending: &mut Vec<BlankNode>,
+) {
+    if let Term::BlankNode(node) = &quad.object {
+        if copied.contains(node) && kept.insert(node.clone()) {
+            pending.push(node.clone());
+        }
+    }
 }
 
 /// Blank nodes minted by one query execution, kept apart from every other
