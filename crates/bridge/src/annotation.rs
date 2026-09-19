@@ -142,13 +142,40 @@ pub fn violation(record: &Record, reason: &str) -> Result<Vec<Quad>> {
 /// becomes the document, and each annotation's target becomes a node of its own
 /// carrying a record selector, the query's selector under it.
 pub fn about(record: &Record, query: &str, constructed: Vec<Quad>) -> Result<Vec<Quad>> {
-    let annotations: HashSet<NamedOrBlankNode> = constructed
+    let source = NamedNode::new(record.source)?;
+    let this_record = NamedNode::new(BRIDGE_THIS_RECORD)?;
+    let named_record = |term: Term| match term {
+        Term::NamedNode(n) if n == this_record => Term::from(source.clone()),
+        other => other,
+    };
+    // Every pass below is keyed on a node of this graph, and a query may name
+    // the record where a node of its own would do, so the substitution comes
+    // first: keyed on the constructed graph they would part company over the
+    // node an annotation is.
+    let quads: Vec<Quad> = constructed
+        .into_iter()
+        .map(|quad| {
+            let subject = match named_record(Term::from(quad.subject)) {
+                Term::NamedNode(n) => NamedOrBlankNode::from(n),
+                Term::BlankNode(b) => NamedOrBlankNode::from(b),
+                Term::Literal(_) => unreachable!("a literal is not a subject"),
+            };
+            Quad::new(
+                subject,
+                quad.predicate,
+                named_record(quad.object),
+                GraphName::DefaultGraph,
+            )
+        })
+        .collect();
+
+    let annotations: HashSet<NamedOrBlankNode> = quads
         .iter()
         .filter(|q| q.predicate.as_str() == RDF_TYPE)
         .filter(|q| matches!(&q.object, Term::NamedNode(n) if n.as_str() == OA_ANNOTATION))
         .map(|q| q.subject.clone())
         .collect();
-    let sourced: HashSet<&BlankNode> = constructed
+    let sourced: HashSet<&BlankNode> = quads
         .iter()
         .filter(|q| q.predicate.as_str() == OA_HAS_SOURCE)
         .filter_map(|q| match &q.subject {
@@ -157,7 +184,7 @@ pub fn about(record: &Record, query: &str, constructed: Vec<Quad>) -> Result<Vec
         })
         .collect();
     let mut targets: Vec<(NamedOrBlankNode, BlankNode)> = Vec::new();
-    for quad in &constructed {
+    for quad in &quads {
         if quad.predicate.as_str() != OA_HAS_TARGET || !annotations.contains(&quad.subject) {
             continue;
         }
@@ -183,29 +210,6 @@ pub fn about(record: &Record, query: &str, constructed: Vec<Quad>) -> Result<Vec
              the document it is about, by targeting [ oa:hasSource bridge:thisRecord ]"
         )));
     }
-
-    let source = NamedNode::new(record.source)?;
-    let this_record = NamedNode::new(BRIDGE_THIS_RECORD)?;
-    let named_record = |term: Term| match term {
-        Term::NamedNode(n) if n == this_record => Term::from(source.clone()),
-        other => other,
-    };
-    let quads: Vec<Quad> = constructed
-        .into_iter()
-        .map(|quad| {
-            let subject = match named_record(Term::from(quad.subject)) {
-                Term::NamedNode(n) => NamedOrBlankNode::from(n),
-                Term::BlankNode(b) => NamedOrBlankNode::from(b),
-                Term::Literal(_) => unreachable!("a literal is not a subject"),
-            };
-            Quad::new(
-                subject,
-                quad.predicate,
-                named_record(quad.object),
-                GraphName::DefaultGraph,
-            )
-        })
-        .collect();
 
     let description = described(&quads);
     let mut findings = Vec::with_capacity(quads.len());

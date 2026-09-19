@@ -57,9 +57,15 @@ fn says_what_differed_in_the_words_of_the_comparison() {
     };
     assert!(described("graph-fail").contains("graph differs: 1 missing, 1 extra"));
     assert!(
-        described("findings-fail")
-            .contains("findings differ: 4 annotation(s) produced, 3 expected"),
+        described("findings-fail").contains(
+            "findings differ: 4 annotation(s) produced, 3 expected; 0 finding(s) missing, 1 extra"
+        ),
         "{}",
+        described("findings-fail")
+    );
+    assert!(
+        described("findings-fail").contains("no term for a free-text note"),
+        "the finding that differs is not in what the comparison reported: {}",
         described("findings-fail")
     );
     assert!(!described("pass").contains("detect query is false"));

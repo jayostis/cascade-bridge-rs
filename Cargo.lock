@@ -113,7 +113,6 @@ dependencies = [
  "oxrdfio",
  "oxsdatatypes",
  "quick-xml 0.37.5",
- "serde_json",
  "spargebra",
  "xsd-schema",
 ]

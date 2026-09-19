@@ -131,9 +131,8 @@ crates/bridge-cli/            the cascade-bridge command
 Exact versions, `Cargo.lock` committed, all open source: `oxigraph` 0.5.11 with
 `oxrdf` 0.3.4, `oxrdfio` 0.2.6, `oxsdatatypes` 0.2.3 and `spargebra` 0.4.7, the
 versions it pins itself (MIT OR Apache-2.0); `quick-xml` 0.37.5 (MIT);
-`encoding_rs` 0.8.35 (Apache-2.0 OR MIT OR BSD-3-Clause); `serde_json` 1.0.151,
-`oxiri` 0.2.11 and `xsd-schema` 0.2.0 (MIT OR Apache-2.0). The bundled RO-Crate
-1.2 context is CC0.
+`encoding_rs` 0.8.35 (Apache-2.0 OR MIT OR BSD-3-Clause); `oxiri` 0.2.11 and
+`xsd-schema` 0.2.0 (MIT OR Apache-2.0). The bundled RO-Crate 1.2 context is CC0.
 
 `oxrdf` carries the RDFC-1.0 canonicalisation the isomorphism comparison needs,
 and `oxrdfio` the JSON-LD parser the crate is read with, so neither is a second

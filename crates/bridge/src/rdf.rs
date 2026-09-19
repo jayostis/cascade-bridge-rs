@@ -4,7 +4,7 @@ use crate::error::Result;
 use oxrdf::dataset::{CanonicalizationAlgorithm, CanonicalizationHashAlgorithm};
 use oxrdf::{Dataset, NamedOrBlankNode, Quad, Term};
 use oxrdfio::{RdfFormat, RdfSerializer};
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 macro_rules! terms {
     ($($name:ident = $namespace:expr, $local:expr;)*) => {
@@ -75,6 +75,79 @@ pub fn canonical_lines(quads: impl IntoIterator<Item = Quad>) -> Result<BTreeSet
         hash_algorithm: CanonicalizationHashAlgorithm::Sha256,
     });
     Ok(dataset.iter().map(|quad| quad.to_string()).collect())
+}
+
+/// The blank nodes a graph holds, each joined to every other one a quad of the
+/// graph names beside it.
+#[derive(Default)]
+struct Joined(HashMap<String, String>);
+
+impl Joined {
+    fn root(&mut self, node: &str) -> String {
+        let mut at = node.to_owned();
+        while let Some(up) = self.0.get(&at) {
+            if up == &at {
+                break;
+            }
+            at = up.clone();
+        }
+        self.0.insert(node.to_owned(), at.clone());
+        at
+    }
+
+    fn join(&mut self, one: &str, two: &str) {
+        let (one, two) = (self.root(one), self.root(two));
+        if one != two {
+            self.0.insert(one, two);
+        }
+    }
+}
+
+/// The blank node a quad belongs to whatever else it names.
+fn blank_of(quad: &Quad) -> Option<&str> {
+    match (&quad.subject, &quad.object) {
+        (NamedOrBlankNode::BlankNode(node), _) => Some(node.as_str()),
+        (_, Term::BlankNode(node)) => Some(node.as_str()),
+        _ => None,
+    }
+}
+
+/// Each part of a graph no blank node reaches out of, canonicalised on its own
+/// and written as one line. A blank node bijection maps such a part onto such a
+/// part, so two graphs are isomorphic exactly when these multisets are equal —
+/// and what differs is then one whole part, rather than every line a
+/// relabelling moved.
+pub fn canonical_parts(quads: impl IntoIterator<Item = Quad>) -> Result<Vec<String>> {
+    let quads: HashSet<Quad> = quads.into_iter().collect();
+    let mut joined = Joined::default();
+    for quad in &quads {
+        if let (NamedOrBlankNode::BlankNode(subject), Term::BlankNode(object)) =
+            (&quad.subject, &quad.object)
+        {
+            joined.join(subject.as_str(), object.as_str());
+        }
+    }
+
+    let mut parts: HashMap<String, Vec<Quad>> = HashMap::new();
+    for quad in quads {
+        let key = match blank_of(&quad) {
+            Some(node) => format!("_:{}", joined.root(node)),
+            None => quad.to_string(),
+        };
+        parts.entry(key).or_default().push(quad);
+    }
+
+    let mut written: Vec<String> = Vec::with_capacity(parts.len());
+    for part in parts.into_values() {
+        written.push(
+            canonical_lines(part)?
+                .into_iter()
+                .collect::<Vec<String>>()
+                .join(" "),
+        );
+    }
+    written.sort();
+    Ok(written)
 }
 
 /// The syntax a produced graph is written in: one to read, one to pipe.

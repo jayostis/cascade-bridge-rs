@@ -174,35 +174,77 @@ pub struct Source<'a> {
     pub xml: &'a [u8],
 }
 
+/// Whitespace and comments, which stand between any two tokens of a prologue.
+fn between(text: &str) -> &str {
+    let mut rest = text.trim_start();
+    while let Some(comment) = rest.strip_prefix('#') {
+        rest = comment
+            .find('\n')
+            .map_or("", |end| &comment[end..])
+            .trim_start();
+    }
+    rest
+}
+
+/// What follows the keyword, where the text begins with it.
+fn keyword<'a>(text: &'a str, word: &str) -> Option<&'a str> {
+    let rest = text.get(word.len()..)?;
+    (text[..word.len()].eq_ignore_ascii_case(word)
+        && rest.starts_with(|c: char| c.is_whitespace() || c == '#' || c == '<'))
+    .then_some(rest)
+}
+
+/// A declaration's name, up to the colon that ends it, and what follows.
+fn declared_name(text: &str) -> Option<(&str, &str)> {
+    let (name, rest) = text.split_once(':')?;
+    (!name.contains(char::is_whitespace)).then_some((name, rest))
+}
+
+/// The IRI the angle brackets hold, and what follows.
+fn iri_ref(text: &str) -> Option<(&str, &str)> {
+    let rest = text.strip_prefix('<')?;
+    let end = rest.find('>')?;
+    Some((&rest[..end], &rest[end + 1..]))
+}
+
 /// The prologue's PREFIX declarations. SPARQL keeps them out of the algebra a
 /// parser returns, and they are the only names for these namespaces anyone has
-/// written down.
+/// written down. It is read as SPARQL writes it — a run of BASE and PREFIX
+/// declarations, laid out however the author laid them out, ending where the
+/// query form begins.
 fn prologue_prefixes(text: &str) -> Vec<(String, String)> {
     let mut prefixes = Vec::new();
-    for line in text.lines() {
-        let line = line.trim_start();
-        if !line
-            .get(..6)
-            .is_some_and(|keyword| keyword.eq_ignore_ascii_case("PREFIX"))
-        {
-            continue;
-        }
-        let rest = &line[6..];
-        if !rest.starts_with(char::is_whitespace) {
-            continue;
-        }
-        let Some((name, namespace)) = rest.trim_start().split_once(':') else {
-            continue;
-        };
-        if let Some(namespace) = namespace
-            .trim()
-            .strip_prefix('<')
-            .and_then(|n| n.strip_suffix('>'))
-        {
+    let mut rest = between(text);
+    loop {
+        if let Some(after) = keyword(rest, "BASE") {
+            let Some((_, after)) = iri_ref(between(after)) else {
+                break;
+            };
+            rest = between(after);
+        } else if let Some(after) = keyword(rest, "PREFIX") {
+            let Some((name, after)) = declared_name(between(after)) else {
+                break;
+            };
+            let Some((namespace, after)) = iri_ref(between(after)) else {
+                break;
+            };
             prefixes.push((name.to_owned(), namespace.to_owned()));
+            rest = between(after);
+        } else {
+            break;
         }
     }
     prefixes
+}
+
+/// What a finding about the document selects: the document's own element, or,
+/// where the document has none, the element its envelope describes. Validation
+/// reports and never refuses, so a document with no element at all is still
+/// addressed, by whatever name there is for the element it was to have.
+fn document_selector(document: Option<String>, described: Option<&str>) -> String {
+    document
+        .or_else(|| described.map(|element| format!("/{element}")))
+        .unwrap_or_else(|| "/*".to_owned())
 }
 
 fn query(resolver: &dyn Resolver, iri: &str, expected: Form, what: &str) -> Result<Query> {
@@ -374,12 +416,13 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
         envelope = prepared.envelope_of(lift.document_element());
     }
     let at = Instant::now();
-    if let Some(schema) = envelope.and_then(|envelope| envelope.document_schema.as_ref()) {
-        // Validation reports and never refuses, so a document with no element
-        // at all is still addressed, by the only name there is for it.
-        let selector = lift
-            .document_selector()
-            .unwrap_or_else(|| format!("/{}", prepared.unit));
+    if let Some((envelope, schema)) =
+        envelope.and_then(|envelope| Some((envelope, envelope.document_schema.as_ref()?)))
+    {
+        let selector = document_selector(
+            lift.document_selector(),
+            envelope.doc_root_element_name.as_deref(),
+        );
         let record = Record {
             source: source.iri,
             selector: &selector,
@@ -415,7 +458,21 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
 
 #[cfg(test)]
 mod tests {
-    use super::prologue_prefixes;
+    use super::{document_selector, prologue_prefixes};
+
+    #[test]
+    fn selects_the_element_the_envelope_describes_where_the_document_has_none() {
+        assert_eq!(
+            document_selector(None, Some("catalog")),
+            "/catalog",
+            "a finding about the document names the record element"
+        );
+        assert_eq!(
+            document_selector(Some("/other".to_owned()), Some("catalog")),
+            "/other"
+        );
+        assert_eq!(document_selector(None, None), "/*");
+    }
 
     #[test]
     fn reads_a_prologue_however_its_keyword_and_spacing_are_written() {
@@ -427,6 +484,29 @@ mod tests {
                 ("ex".to_owned(), "urn:example:catalog#".to_owned()),
                 ("g".to_owned(), "https://ns.example.org/g/v1#".to_owned()),
             ]
+        );
+    }
+
+    #[test]
+    fn reads_both_declarations_a_prologue_writes_on_one_line() {
+        assert_eq!(
+            prologue_prefixes(
+                "PREFIX ex: <urn:example:catalog#> PREFIX v1: <https://ns.example.org/v1#>\nCONSTRUCT { }"
+            ),
+            [
+                ("ex".to_owned(), "urn:example:catalog#".to_owned()),
+                ("v1".to_owned(), "https://ns.example.org/v1#".to_owned()),
+            ]
+        );
+    }
+
+    #[test]
+    fn reads_a_prefix_a_base_and_a_comment_stand_before() {
+        assert_eq!(
+            prologue_prefixes(
+                "BASE <urn:example:> # where the names begin\nPREFIX ex: <urn:example:catalog#>\nCONSTRUCT { }"
+            ),
+            [("ex".to_owned(), "urn:example:catalog#".to_owned())]
         );
     }
 

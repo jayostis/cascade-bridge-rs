@@ -412,3 +412,29 @@ fn gives_two_annotations_the_query_pointed_at_one_target_a_record_selector_each(
         assert!(source.ends_with("fixtures/in/two.xml>"), "{source}");
     }
 }
+
+const THIS_RECORD: &str = "https://ns.cascadeprotocol.org/bridge/v1-draft#thisRecord";
+
+#[test]
+fn retargets_an_annotation_the_query_named_by_this_record() {
+    let findings = findings_through(
+        &Rewritten::new(&[("[] a oa:Annotation", "bridge:thisRecord a oa:Annotation")]),
+        "two.xml",
+    );
+
+    assert!(
+        !findings.iter().any(|q| q.to_string().contains(THIS_RECORD)),
+        "the vocabulary's own name is in the findings graph: {findings:?}"
+    );
+
+    let targets = objects(&findings, &format!("{OA}hasTarget"));
+    assert_eq!(
+        targets.len(),
+        2,
+        "one target per annotation, the query's own replaced: {targets:?}"
+    );
+    assert_eq!(
+        selector_values(&findings),
+        ["\"/catalog/item[1]\"", "\"/catalog/item[2]\"", "\"note\""]
+    );
+}
