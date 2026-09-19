@@ -48,8 +48,15 @@ fn prints_a_line_per_entry_and_exits_non_zero_when_an_entry_fails() {
     let run = cascade_bridge(&["test", &tiny().to_string_lossy()]);
     let stdout = String::from_utf8(run.stdout).expect("utf-8");
     assert_eq!(run.status.code(), Some(1), "{stdout}");
-    assert!(stdout.contains("passed       pass "), "{stdout}");
-    assert!(stdout.contains("failed       graph-fail"), "{stdout}");
+    let outcomes: Vec<(&str, &str)> = stdout
+        .lines()
+        .filter_map(|line| {
+            let mut fields = line.split_whitespace();
+            Some((fields.next()?, fields.next()?))
+        })
+        .collect();
+    assert!(outcomes.contains(&("passed", "pass")), "{stdout}");
+    assert!(outcomes.contains(&("failed", "graph-fail")), "{stdout}");
     assert!(
         stdout.contains("2 passed, 2 failed, 1 cantTell, 1 untested"),
         "{stdout}"
@@ -136,7 +143,7 @@ fn reports_a_standard_output_that_has_gone_away_rather_than_panicking() {
 #[test]
 fn writes_the_same_graph_as_n_triples_and_to_the_file_out_names() {
     let document = tiny().join("fixtures/in/two.xml");
-    let written = std::env::temp_dir().join("cascade-bridge-convert-out.nt");
+    let written = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("cascade-bridge-convert-out.nt");
     let run = cascade_bridge(&[
         "convert",
         &tiny().to_string_lossy(),
