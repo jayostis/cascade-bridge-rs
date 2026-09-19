@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <catalog>
-  <item id="1"><title>First</title></item>
+  <item id="1"><title>First</title><note>a note the mapping has no term for</note></item>
   <item id="2"/>
 </catalog>

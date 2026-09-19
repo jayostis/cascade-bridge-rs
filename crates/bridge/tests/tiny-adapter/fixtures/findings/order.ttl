@@ -1,0 +1,47 @@
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix sh:  <http://www.w3.org/ns/shacl#> .
+@prefix oa:  <http://www.w3.org/ns/oa#> .
+
+[] a oa:Annotation ;
+  oa:hasTarget [
+    oa:hasSource <../in/order.xml> ;
+    oa:hasSelector [
+      a oa:XPathSelector ;
+      rdf:value "/catalog/item[1]" ;
+      oa:refinedBy [ a oa:XPathSelector ; rdf:value "note" ]
+    ]
+  ] ;
+  oa:hasBody [ a oa:TextualBody ; rdf:value "no term for a free-text note" ] ;
+  sh:resultSeverity sh:Info .
+
+[] a oa:Annotation ;
+  oa:hasTarget [
+    oa:hasSource <../in/order.xml> ;
+    oa:hasSelector [
+      a oa:XPathSelector ;
+      rdf:value "/catalog/item[1]" ;
+      oa:refinedBy [ a oa:XPathSelector ; rdf:value "note" ]
+    ]
+  ] ;
+  oa:hasBody [ a oa:TextualBody ; rdf:value "no term for a free-text note" ] ;
+  sh:resultSeverity sh:Info .
+
+[] a oa:Annotation ;
+  oa:hasTarget [
+    oa:hasSource <../in/order.xml> ;
+    oa:hasSelector [ a oa:XPathSelector ; rdf:value "/catalog/item[1]" ]
+  ] ;
+  oa:hasBody [ a oa:TextualBody ; rdf:value "the item has no title" ] ;
+  sh:resultSeverity sh:Warning .
+
+[] a oa:Annotation ;
+  oa:hasTarget [
+    oa:hasSource <../in/order.xml> ;
+    oa:hasSelector [
+      a oa:XPathSelector ;
+      rdf:value "/catalog/item[2]" ;
+      oa:refinedBy [ a oa:XPathSelector ; rdf:value "note" ]
+    ]
+  ] ;
+  oa:hasBody [ a oa:TextualBody ; rdf:value "no term for a free-text note" ] ;
+  sh:resultSeverity sh:Info .

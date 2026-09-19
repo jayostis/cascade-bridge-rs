@@ -7,31 +7,32 @@
 <> a mf:Manifest ;
   bridge:adapter <../> ;
   bridge:stampPredicate prov:generatedAtTime ;
-  mf:entries ( <#pass> <#graph-fail> <#findings-fail> <#multiset-order> <#input-only> <#dataset> ) .
+  mf:entries ( <#pass> <#graph-fail> <#findings-fail> <#findings-repeated> <#input-only> <#dataset> ) .
 
 # Passes only if the stamp in the expected graph is ignored.
 <#pass> a bridge:IsomorphicConversionTest ;
   mf:name "pass" ;
   mf:action [ bridge:input <in/two.xml> ; bridge:envelope <../ro-crate-metadata.json#envelope-catalog> ] ;
-  mf:result [ bridge:expectedGraph <expected/two.ttl> ; bridge:expectedFindings <findings/two.json> ] .
+  mf:result [ bridge:expectedGraph <expected/two.ttl> ; bridge:expectedFindings <findings/two.ttl> ] .
 
 # One literal differs.
 <#graph-fail> a bridge:IsomorphicConversionTest ;
   mf:name "graph-fail" ;
   mf:action [ bridge:input <in/two.xml> ; bridge:envelope <../ro-crate-metadata.json#envelope-catalog> ] ;
-  mf:result [ bridge:expectedGraph <expected/two-wrong.ttl> ; bridge:expectedFindings <findings/two.json> ] .
+  mf:result [ bridge:expectedGraph <expected/two-wrong.ttl> ; bridge:expectedFindings <findings/two.ttl> ] .
 
-# A duplicate finding is missing: multiplicity is compared.
+# One of two findings a record produces twice is missing: a finding produced
+# twice is two blank nodes and counts twice.
 <#findings-fail> a bridge:IsomorphicConversionTest ;
   mf:name "findings-fail" ;
   mf:action [ bridge:input <in/order.xml> ; bridge:envelope <../ro-crate-metadata.json#envelope-catalog> ] ;
-  mf:result [ bridge:expectedGraph <expected/order.ttl> ; bridge:expectedFindings <findings/order-missing-duplicate.json> ] .
+  mf:result [ bridge:expectedGraph <expected/order.ttl> ; bridge:expectedFindings <findings/order-missing-duplicate.ttl> ] .
 
-# The same findings, duplicate included, in another order: order is not compared.
-<#multiset-order> a bridge:IsomorphicConversionTest ;
-  mf:name "multiset-order" ;
+# The same findings, the repeated one included.
+<#findings-repeated> a bridge:IsomorphicConversionTest ;
+  mf:name "findings-repeated" ;
   mf:action [ bridge:input <in/order.xml> ; bridge:envelope <../ro-crate-metadata.json#envelope-catalog> ] ;
-  mf:result [ bridge:expectedGraph <expected/order.ttl> ; bridge:expectedFindings <findings/order.json> ] .
+  mf:result [ bridge:expectedGraph <expected/order.ttl> ; bridge:expectedFindings <findings/order.ttl> ] .
 
 <#input-only> a bridge:InputOnlyTest ;
   mf:name "input-only" ;

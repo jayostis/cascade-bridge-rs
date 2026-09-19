@@ -1,6 +1,6 @@
 [package]
 name = "cascade-bridge-cli"
-description = "The cascade-bridge command: runs an adapter's test manifest and reports in EARL."
+description = "The cascade-bridge command: converts a document with an adapter, and runs an adapter's test manifest."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -13,3 +13,7 @@ path = "src/main.rs"
 
 [dependencies]
 cascade-bridge = { path = "../bridge", version = "=0.1.0" }
+
+[dev-dependencies]
+# The tests read the graph the command wrote back, rather than matching its text.
+oxrdfio = "=0.2.6"

@@ -36,7 +36,6 @@ from_error!(
     std::io::Error,
     std::str::Utf8Error,
     std::string::FromUtf8Error,
-    serde_json::Error,
     quick_xml::Error,
     quick_xml::escape::EscapeError,
     quick_xml::encoding::EncodingError,

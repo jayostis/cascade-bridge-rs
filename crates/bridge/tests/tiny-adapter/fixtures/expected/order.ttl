@@ -2,4 +2,3 @@
 
 <urn:example:item:a> a ex:Item .
 <urn:example:item:b> a ex:Item ; ex:title "B" .
-<urn:example:item:c> a ex:Item .
