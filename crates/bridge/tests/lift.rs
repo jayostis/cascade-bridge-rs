@@ -11,7 +11,7 @@ use oxrdfio::{RdfFormat, RdfParser};
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-const VECTORS: [&str; 7] = [
+const VECTORS: [&str; 8] = [
     "attributes",
     "mixed-content",
     "whitespace",
@@ -19,6 +19,7 @@ const VECTORS: [&str; 7] = [
     "dropped",
     "namespaces",
     "no-break-space",
+    "non-ascii",
 ];
 
 /// Each skeleton vector with the bridge:elementNameOfEachRecord its manifest

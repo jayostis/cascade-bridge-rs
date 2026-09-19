@@ -35,18 +35,35 @@ pub const XYZ: &str = "http://sparql.xyz/facade-x/data/";
 /// document arrived as.
 pub(crate) const UTF_8_DECLARATION: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>";
 
-/// A name that is not a valid IRI character sequence is percent-encoded, so an
-/// odd local name costs a readable IRI and never a parse failure. The
-/// specification leaves the IRI of a name outside ASCII unspecified.
+/// What RFC 3987 calls `iunreserved`: the characters an IRI carries as
+/// themselves. Almost every XML name character is one, so almost every name
+/// reads in an IRI as it read in the document.
+fn iunreserved(character: char) -> bool {
+    matches!(character,
+        'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '.' | '_' | '~'
+        | '\u{A0}'..='\u{D7FF}' | '\u{F900}'..='\u{FDCF}' | '\u{FDF0}'..='\u{FFEF}'
+        | '\u{10000}'..='\u{1FFFD}' | '\u{20000}'..='\u{2FFFD}' | '\u{30000}'..='\u{3FFFD}'
+        | '\u{40000}'..='\u{4FFFD}' | '\u{50000}'..='\u{5FFFD}' | '\u{60000}'..='\u{6FFFD}'
+        | '\u{70000}'..='\u{7FFFD}' | '\u{80000}'..='\u{8FFFD}' | '\u{90000}'..='\u{9FFFD}'
+        | '\u{A0000}'..='\u{AFFFD}' | '\u{B0000}'..='\u{BFFFD}' | '\u{C0000}'..='\u{CFFFD}'
+        | '\u{D0000}'..='\u{DFFFD}' | '\u{E1000}'..='\u{EFFFD}')
+}
+
+/// Anything else is percent-encoded as its UTF-8 octets, which is what
+/// percent-encoding is defined over, so an odd name costs a readable IRI and
+/// never a parse failure. `%` is no XML name character, so no name can spell
+/// another name's encoding and two names never land on one IRI.
 fn name(namespace: &str, local: &str) -> Result<NamedNode> {
     let mut iri = String::with_capacity(namespace.len() + local.len());
     iri.push_str(namespace);
-    for unit in local.encode_utf16() {
-        match u8::try_from(unit) {
-            Ok(b @ (b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'_' | b'.' | b'-')) => {
-                iri.push(char::from(b))
-            }
-            _ => iri.push_str(&format!("%{unit:02X}")),
+    for character in local.chars() {
+        if iunreserved(character) {
+            iri.push(character);
+            continue;
+        }
+        let mut octets = [0; 4];
+        for octet in character.encode_utf8(&mut octets).as_bytes() {
+            iri.push_str(&format!("%{octet:02X}"));
         }
     }
     Ok(NamedNode::new(iri)?)
