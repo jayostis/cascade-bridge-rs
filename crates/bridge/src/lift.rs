@@ -29,9 +29,10 @@ const RDF: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
 pub const FX: &str = "http://sparql.xyz/facade-x/ns/";
 pub const XYZ: &str = "http://sparql.xyz/facade-x/data/";
 
-/// The declaration a unit is written out under: by the time a unit is written
-/// its characters are characters, whatever bytes the document arrived as.
-const UTF_8_DECLARATION: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>";
+/// The declaration a unit is written out under, and validated under: by the
+/// time a unit is written its characters are characters, whatever bytes the
+/// document arrived as.
+pub(crate) const UTF_8_DECLARATION: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>";
 
 /// A name that is not a valid IRI character sequence is percent-encoded, so an
 /// odd local name costs a readable IRI and never a parse failure. The

@@ -7,6 +7,7 @@
 // validator is given answers out of what was read and can reach nothing else,
 // so an xs:include the host refuses is refused here and nothing is fetched.
 use crate::error::{Error, Result};
+use crate::lift::UTF_8_DECLARATION;
 use crate::resolver::Resolver;
 use oxiri::Iri;
 use quick_xml::events::Event;
@@ -20,11 +21,6 @@ use xsd_schema::{SchemaLoader, SchemaSet, SchemaSetBuilder};
 
 const XSD: &str = "http://www.w3.org/2001/XMLSchema";
 const DIRECTIVES: [&[u8]; 4] = [b"include", b"import", b"redefine", b"override"];
-
-/// The XML declaration a re-serialised record carries, and the one every
-/// document is handed to the validator under: the bytes are already characters
-/// by the time they reach here, whatever the document said they were.
-const UTF_8_DECLARATION: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>";
 
 pub struct Schema {
     set: SchemaSet,
