@@ -138,8 +138,14 @@ versions it pins itself (MIT OR Apache-2.0); `quick-xml` 0.37.5 (MIT);
 and `oxrdfio` the JSON-LD parser the crate is read with, so neither is a second
 implementation of something Oxigraph already has.
 
-`xsd-schema` carries its own `quick-xml` 0.41 beside the 0.37.5 the lift uses.
-No `quick-xml` type crosses between them, so the two versions coexist.
+`xsd-schema` is the widest of these. It carries its own `quick-xml` 0.41 beside
+the 0.37.5 the lift uses -- no `quick-xml` type crosses between them, so the two
+versions coexist -- and, at its own defaults, `chrono`, `rust_decimal` and
+`roxmltree`, which is a third XML parser and which bring `serde_json` and a
+system timezone read with them. It exposes no feature that drops any of them:
+its only default feature is `unicode-normalization`, which XSD string
+normalisation needs, and `chrono` and `rust_decimal` are unconditional. Holding
+a dependency to this crate's own promise is [#18](https://github.com/jayostis/cascade-bridge-rs/issues/18).
 
 ## Licence
 
