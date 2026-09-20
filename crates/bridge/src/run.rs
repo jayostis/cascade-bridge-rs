@@ -13,7 +13,7 @@ use crate::decode::decode;
 use crate::error::{Error, Result};
 use crate::lift::lift_text;
 use crate::load::{subject, value, Adapter};
-use crate::rdf::{BRIDGE_SOURCE_PATH, SCHEMA_ENCODING_FORMAT};
+use crate::rdf::{BRIDGE_PATH_ENTRY, BRIDGE_SOURCE_PATH, RDF_TYPE, SCHEMA_ENCODING_FORMAT};
 use crate::resolver::Resolver;
 use crate::validate::{self, Schema};
 use oxigraph::model::{GraphName, Quad, Term};
@@ -250,25 +250,37 @@ fn document_selector(document: Option<String>, described: Option<&str>) -> Strin
         .unwrap_or_else(|| "/*".to_owned())
 }
 
-/// The paths an accounting carries. A crate that names one and cannot show it
-/// is refused here, where a crate that names none is never asked.
+/// The paths an accounting carries, each the object of a `bridge:PathEntry`'s
+/// `bridge:sourcePath`. A crate that names an accounting and cannot show it is
+/// refused here, where a crate that names none is never asked.
 fn accounted(resolver: &dyn Resolver, iri: &str) -> Result<HashSet<String>> {
     let bytes = resolver
         .read(iri)
         .map_err(|e| Error::msg(format!("{iri}: {e}")))?;
-    let mut paths = HashSet::new();
+    let mut entries = HashSet::new();
+    let mut named = Vec::new();
     for quad in RdfParser::from_format(RdfFormat::Turtle)
         .with_base_iri(iri)?
         .for_slice(&bytes)
     {
         let quad = quad.map_err(|e| Error::msg(format!("{iri}: {e}")))?;
+        if quad.predicate.as_str() == RDF_TYPE
+            && matches!(&quad.object, Term::NamedNode(entry) if entry.as_str() == BRIDGE_PATH_ENTRY)
+        {
+            entries.insert(quad.subject.to_string());
+        }
         if quad.predicate.as_str() == BRIDGE_SOURCE_PATH {
-            if let Term::Literal(path) = &quad.object {
-                paths.insert(path.value().to_owned());
-            }
+            let Term::Literal(path) = &quad.object else {
+                return Err(Error::msg(format!("{iri}: {} is no path", quad.object)));
+            };
+            named.push((quad.subject.to_string(), path.value().to_owned()));
         }
     }
-    Ok(paths)
+    Ok(named
+        .into_iter()
+        .filter(|(subject, _)| entries.contains(subject))
+        .map(|(_, path)| path)
+        .collect())
 }
 
 fn query(resolver: &dyn Resolver, iri: &str, expected: Form, what: &str) -> Result<Query> {
