@@ -593,6 +593,44 @@ fn accounts_for_no_path_with_an_empty_accounting_where_an_absent_one_accounts_fo
     );
 }
 
+/// A path hung on a node that says nothing about what it is. Whether such a
+/// file is well formed is the accounting's shapes' to say, and a Bridge reads
+/// what it is handed.
+const NO_PATH_ENTRY: &str = r#"@prefix bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+[] bridge:sourcePath "/item/@id" ;
+   bridge:verdict bridge:carried .
+"#;
+
+/// An entry whose path is a name rather than a string, which no path of a
+/// record can equal.
+const A_PATH_THAT_IS_NO_LITERAL: &str = r#"@prefix bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+[] a bridge:PathEntry ;
+   bridge:sourcePath <urn:example:catalog#id> ;
+   bridge:verdict bridge:carried .
+"#;
+
+#[test]
+fn accounts_for_no_path_by_a_source_path_hung_on_a_node_that_is_no_path_entry() {
+    assert_eq!(
+        paths(&findings(&Accounting::of(NO_PATH_ENTRY), "two.xml"))
+            .into_iter()
+            .collect::<Vec<String>>(),
+        ["/item/@id", "/item/note", "/item/title"],
+        "the path the file names is the one it would have silenced"
+    );
+}
+
+#[test]
+fn refuses_a_source_path_that_is_no_literal_where_dropping_it_would_report_the_path() {
+    let Err(refusal) = conversion(&Accounting::of(A_PATH_THAT_IS_NO_LITERAL), "two.xml") else {
+        panic!("a path that is not a string is read past in silence");
+    };
+    let refusal = refusal.to_string();
+    assert!(refusal.contains(ACCOUNTING), "{refusal}");
+}
+
 #[test]
 fn names_the_census_body_the_specification_fixed_and_no_other() {
     let findings = findings(&tiny(), "unaccounted-child.xml");
