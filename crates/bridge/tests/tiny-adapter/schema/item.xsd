@@ -6,9 +6,15 @@
   <xs:complexType name="itemType">
     <xs:sequence>
       <xs:element name="title" type="xs:string" minOccurs="0"/>
+      <xs:element name="supersededTitle" type="xs:string" minOccurs="0"/>
+      <xs:element name="summary" type="xs:string" minOccurs="0"/>
+      <xs:element name="checked" type="xs:string" minOccurs="0"/>
       <xs:element name="note" type="xs:string" minOccurs="0" maxOccurs="unbounded"/>
+      <xs:element name="novelty" type="xs:string" minOccurs="0" maxOccurs="unbounded"/>
     </xs:sequence>
     <xs:attribute name="id" type="xs:string" use="required"/>
+    <xs:attribute name="internal" type="xs:string"/>
+    <xs:attribute name="colour" type="xs:string"/>
   </xs:complexType>
 
 </xs:schema>

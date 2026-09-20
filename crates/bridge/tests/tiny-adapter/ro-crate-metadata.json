@@ -10,6 +10,7 @@
       "bridge:docRootElementName": "bridge:docRootElementName",
       "bridge:documentSchema": "bridge:documentSchema",
       "bridge:gapScheme": "bridge:gapScheme",
+      "bridge:sourceAccounting": "bridge:sourceAccounting",
       "bridge:mapping": "bridge:mapping",
       "bridge:findingsQuery": "bridge:findingsQuery",
       "bridge:detectQuery": "bridge:detectQuery",
@@ -32,6 +33,7 @@
       "bridge:elementNameOfEachRecord": "item",
       "bridge:sourceSchema": { "@id": "schema/item.xsd" },
       "bridge:gapScheme": { "@id": "vocab/catalog-gaps.ttl" },
+      "bridge:sourceAccounting": { "@id": "vocab/catalog-accounting.ttl" },
       "bridge:envelope": { "@id": "#envelope-catalog" },
       "bridge:mapping": { "@id": "mapping/item.rq" },
       "bridge:findingsQuery": [
@@ -47,6 +49,12 @@
       "name": "catalog",
       "bridge:docRootElementName": "catalog",
       "bridge:documentSchema": { "@id": "schema/catalog.xsd" }
+    },
+    {
+      "@id": "vocab/catalog-accounting.ttl",
+      "@type": "File",
+      "name": "what the catalog adapter does with each path of a record",
+      "encodingFormat": "text/turtle"
     },
     {
       "@id": "bridge:sparql-1.1",

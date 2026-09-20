@@ -1,0 +1,49 @@
+# What this adapter does with each path of a record, one entry per path.
+# An item's novelty and its colour are accounted for nowhere, which is what a
+# census reports.
+@prefix bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+@prefix ex:     <urn:example:catalog#> .
+
+[] a bridge:PathEntry ;
+   bridge:sourcePath "/catalog/item" ;
+   bridge:verdict bridge:carried .
+
+[] a bridge:PathEntry ;
+   bridge:sourcePath "/catalog/item/@id" ;
+   bridge:verdict bridge:carried .
+
+[] a bridge:PathEntry ;
+   bridge:sourcePath "/catalog/item/@internal" ;
+   bridge:verdict bridge:ignored ;
+   bridge:because "An exporter's own marker is not data about the item." .
+
+[] a bridge:PathEntry ;
+   bridge:sourcePath "/catalog/item/title" ;
+   bridge:verdict bridge:carried .
+
+[] a bridge:PathEntry ;
+   bridge:sourcePath "/catalog/item/supersededTitle" ;
+   bridge:verdict bridge:redundantWith ;
+   bridge:sameFactAs "/catalog/item/title" .
+
+[] a bridge:PathEntry ;
+   bridge:sourcePath "/catalog/item/summary" ;
+   bridge:verdict bridge:carriedInPart ;
+   bridge:namesGap ex:summaryLosesItsMarkup .
+
+[] a bridge:PathEntry ;
+   bridge:sourcePath "/catalog/item/checked" ;
+   bridge:verdict bridge:consumed .
+
+[] a bridge:PathEntry ;
+   bridge:sourcePath "/catalog/item/note" ;
+   bridge:verdict bridge:noHome ;
+   bridge:namesGap ex:noteHasNoTerm .
+
+[] a bridge:PathEntry ;
+   bridge:sourcePath "/*[local-name()='catalog' and namespace-uri()='urn:example:catalog']/*[local-name()='item' and namespace-uri()='urn:example:catalog']" ;
+   bridge:verdict bridge:carried .
+
+[] a bridge:PathEntry ;
+   bridge:sourcePath "/*[local-name()='catalog' and namespace-uri()='urn:example:catalog']/*[local-name()='item' and namespace-uri()='urn:example:catalog']/@id" ;
+   bridge:verdict bridge:carried .

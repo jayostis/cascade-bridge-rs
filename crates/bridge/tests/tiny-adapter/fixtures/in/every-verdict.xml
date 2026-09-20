@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<catalog>
+  <item id="1" internal="the exporter's own marker">
+    <title>First</title>
+    <supersededTitle>First</supersededTitle>
+    <summary>the first item, summarised</summary>
+    <checked>2026-01-01</checked>
+    <note>a note the mapping has no term for</note>
+  </item>
+</catalog>
