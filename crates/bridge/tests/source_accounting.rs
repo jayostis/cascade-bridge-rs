@@ -135,6 +135,32 @@ fn refinements(findings: &[Quad], annotation: &str) -> usize {
         .count()
 }
 
+/// Where a finding is addressed, as one path: the record's own selector, and
+/// the steps below it the finding is refined onto.
+fn address(findings: &[Quad], annotation: &str) -> String {
+    let target = node(findings, annotation, &format!("{OA}hasTarget"));
+    let selector = node(findings, &target, &format!("{OA}hasSelector"));
+    let refinement = node(findings, &selector, &format!("{OA}refinedBy"));
+    let record = says(findings, &selector, RDF_VALUE);
+    match says(findings, &refinement, RDF_VALUE) {
+        below if below.is_empty() => record,
+        below => format!("{record}/{below}"),
+    }
+}
+
+/// Where each schema violation is addressed, the record's schema and the
+/// document's alike.
+fn violations(findings: &[Quad]) -> BTreeSet<String> {
+    findings
+        .iter()
+        .filter(|q| q.predicate.as_str() == format!("{SH}resultSeverity"))
+        .filter(
+            |q| matches!(&q.object, Term::NamedNode(n) if n.as_str() == format!("{SH}Violation")),
+        )
+        .map(|q| address(findings, &q.subject.to_string()))
+        .collect()
+}
+
 /// The paths a census named, each once however many records named it.
 fn paths(findings: &[Quad]) -> BTreeSet<String> {
     census(findings)
@@ -420,6 +446,27 @@ fn refines_onto_every_step_below_the_record_down_to_the_one_the_path_ends_at() {
             )
         ],
         "a label the record carries twice stands between the record and the path"
+    );
+}
+
+#[test]
+fn gives_an_element_the_one_position_in_a_schema_finding_and_in_a_census_finding() {
+    let found = findings(&tiny(), "unaccounted-under-a-repeated-parent.xml");
+    let label = "/catalog/item[1]/label[2]";
+    assert_eq!(
+        violations(&found).into_iter().collect::<Vec<String>>(),
+        [label],
+        "the label carrying the unaccounted element breaks the schema the record is read by"
+    );
+
+    let deep = censuses(&found)
+        .into_iter()
+        .find(|annotation| says(&found, annotation, &format!("{SH}value")) == "/item/label/deep")
+        .expect("a census about the element that label carries");
+    assert_eq!(
+        address(&found, &deep),
+        format!("{label}/deep[1]"),
+        "a schema finding and a census finding count a record's elements in walks of their own"
     );
 }
 
