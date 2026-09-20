@@ -26,7 +26,8 @@ terms! {
     OA_HAS_BODY = "http://www.w3.org/ns/oa#", "hasBody";
     OA_REFINED_BY = "http://www.w3.org/ns/oa#", "refinedBy";
     OA_XPATH_SELECTOR = "http://www.w3.org/ns/oa#", "XPathSelector";
-    OA_TEXTUAL_BODY = "http://www.w3.org/ns/oa#", "TextualBody";
+    OA_MOTIVATED_BY = "http://www.w3.org/ns/oa#", "motivatedBy";
+    OA_CLASSIFYING = "http://www.w3.org/ns/oa#", "classifying";
 
     SH_RESULT_SEVERITY = "http://www.w3.org/ns/shacl#", "resultSeverity";
     SH_VIOLATION = "http://www.w3.org/ns/shacl#", "Violation";
@@ -49,6 +50,7 @@ terms! {
     BRIDGE_SOURCE_SCHEMA = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "sourceSchema";
     BRIDGE_DOCUMENT_SCHEMA = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "documentSchema";
     BRIDGE_THIS_RECORD = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "thisRecord";
+    BRIDGE_SCHEMA_RULE_UNNAMED = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "schemaRuleUnnamed";
     BRIDGE_INPUT = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "input";
     BRIDGE_EXPECTED_GRAPH = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "expectedGraph";
     BRIDGE_EXPECTED_FINDINGS = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "expectedFindings";

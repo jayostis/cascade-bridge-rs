@@ -8,9 +8,9 @@
 // would claim to be alternatives of each other.
 use crate::error::{Error, Result};
 use crate::rdf::{
-    BRIDGE_THIS_RECORD, OA_ANNOTATION, OA_HAS_BODY, OA_HAS_SELECTOR, OA_HAS_SOURCE, OA_HAS_TARGET,
-    OA_REFINED_BY, OA_TEXTUAL_BODY, OA_XPATH_SELECTOR, RDF_TYPE, RDF_VALUE, SH_RESULT_SEVERITY,
-    SH_VIOLATION,
+    BRIDGE_THIS_RECORD, OA_ANNOTATION, OA_CLASSIFYING, OA_HAS_BODY, OA_HAS_SELECTOR, OA_HAS_SOURCE,
+    OA_HAS_TARGET, OA_MOTIVATED_BY, OA_REFINED_BY, OA_XPATH_SELECTOR, RDF_TYPE, RDF_VALUE,
+    SH_RESULT_SEVERITY, SH_VIOLATION,
 };
 use oxrdf::{BlankNode, GraphName, Literal, NamedNode, NamedOrBlankNode, Quad, Term};
 use std::collections::{HashMap, HashSet};
@@ -108,13 +108,28 @@ fn copy(
     made
 }
 
-/// The finding a Bridge stage made itself, about the record as a whole.
-pub fn violation(record: &Record, reason: &str) -> Result<Vec<Quad>> {
+/// The finding a Bridge stage made itself: the rule it names as its body, and
+/// the element inside the record the rule was broken on, where that is not the
+/// record itself.
+pub fn violation(record: &Record, body: &str, within: Option<&str>) -> Result<Vec<Quad>> {
     let mut quads = Vec::new();
     let annotation = BlankNode::default();
     let target = BlankNode::default();
-    let body = BlankNode::default();
     let selector = record_selector(record, &mut quads)?;
+    if let Some(within) = within {
+        let refinement = BlankNode::default();
+        quads.push(triple(
+            refinement.clone(),
+            RDF_TYPE,
+            named(OA_XPATH_SELECTOR)?,
+        )?);
+        quads.push(triple(
+            refinement.clone(),
+            RDF_VALUE,
+            Literal::new_simple_literal(within),
+        )?);
+        quads.push(triple(selector.clone(), OA_REFINED_BY, refinement)?);
+    }
     quads.push(triple(annotation.clone(), RDF_TYPE, named(OA_ANNOTATION)?)?);
     quads.push(triple(annotation.clone(), OA_HAS_TARGET, target.clone())?);
     quads.push(triple(
@@ -123,12 +138,11 @@ pub fn violation(record: &Record, reason: &str) -> Result<Vec<Quad>> {
         named(record.source)?,
     )?);
     quads.push(triple(target, OA_HAS_SELECTOR, selector)?);
-    quads.push(triple(annotation.clone(), OA_HAS_BODY, body.clone())?);
-    quads.push(triple(body.clone(), RDF_TYPE, named(OA_TEXTUAL_BODY)?)?);
+    quads.push(triple(annotation.clone(), OA_HAS_BODY, named(body)?)?);
     quads.push(triple(
-        body,
-        RDF_VALUE,
-        Literal::new_simple_literal(reason),
+        annotation.clone(),
+        OA_MOTIVATED_BY,
+        named(OA_CLASSIFYING)?,
     )?);
     quads.push(triple(
         annotation,
