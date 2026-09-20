@@ -11,7 +11,7 @@
 use crate::annotation::{self, Minted, Record};
 use crate::decode::decode;
 use crate::error::{Error, Result};
-use crate::lift::lift_text;
+use crate::lift::{lift_text, Paths};
 use crate::load::{subject, value, Adapter};
 use crate::rdf::{BRIDGE_PATH_ENTRY, BRIDGE_SOURCE_PATH, RDF_TYPE, SCHEMA_ENCODING_FORMAT};
 use crate::resolver::Resolver;
@@ -113,8 +113,6 @@ pub struct Prepared {
     pub prefixes: Vec<(String, String)>,
     envelopes: Vec<Envelope>,
     source_schema: Option<Schema>,
-    /// Every path the adapter accounts for, read once rather than once per
-    /// document. A crate naming no accounting has none, and draws no census.
     accounted: Option<HashSet<String>>,
 }
 
@@ -405,7 +403,11 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
     // Decoding is the one stage that holds the whole document at once, so the
     // document schema below reads these characters rather than its own copy.
     let text = decode(source.xml)?;
-    let mut lift = lift_text(Cow::Borrowed(&text), Some(&prepared.unit))?;
+    let paths = match prepared.accounted {
+        Some(_) => Paths::Kept,
+        None => Paths::Dropped,
+    };
+    let mut lift = lift_text(Cow::Borrowed(&text), Some(&prepared.unit), paths)?;
     loop {
         let at = Instant::now();
         let Some(unit) = lift.next_unit()? else {

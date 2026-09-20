@@ -119,6 +119,13 @@ pub(crate) struct Occurrence {
     pub(crate) within: Option<String>,
 }
 
+/// Whether the paths of each record are kept as it is lifted.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Paths {
+    Kept,
+    Dropped,
+}
+
 /// The distinct paths of one record, each kept at its first occurrence.
 #[derive(Default)]
 struct Census {
@@ -264,13 +271,15 @@ struct Builder {
     document_step: Option<Step>,
     raw: String,
     unit_path: Vec<Step>,
+    paths: Paths,
     census: Option<Census>,
 }
 
 impl Builder {
-    fn new(unit_name: Option<String>) -> Result<Self> {
+    fn new(unit_name: Option<String>, paths: Paths) -> Result<Self> {
         Ok(Self {
             unit_name,
+            paths,
             stack: Vec::new(),
             text: String::new(),
             next: 0,
@@ -422,7 +431,10 @@ impl Builder {
                 .filter_map(|frame| frame.step.clone())
                 .chain([step.clone()])
                 .collect();
-            self.census = Some(Census::of(&step, &element.attribute_names));
+            self.census = match self.paths {
+                Paths::Kept => Some(Census::of(&step, &element.attribute_names)),
+                Paths::Dropped => None,
+            };
             self.raw.clear();
             self.raw.push_str(UTF_8_DECLARATION);
             let scope = self.in_scope(&element.declarations);
@@ -482,30 +494,31 @@ pub struct Lift<R: BufRead> {
 /// becomes its own lifted unit and an empty container in the skeleton; without
 /// it, the skeleton is the whole document lifted and there are no units.
 pub fn lift_slice<'a>(bytes: &'a [u8], unit: Option<&str>) -> Result<Lift<Box<dyn BufRead + 'a>>> {
-    lift_text(decode(bytes)?, unit)
+    lift_text(decode(bytes)?, unit, Paths::Dropped)
 }
 
 /// Lift a document already read as characters.
 pub fn lift_text<'a>(
     text: Cow<'a, str>,
     unit: Option<&str>,
+    paths: Paths,
 ) -> Result<Lift<Box<dyn BufRead + 'a>>> {
     let reader: Box<dyn BufRead + 'a> = match text {
         Cow::Borrowed(text) => Box::new(Cursor::new(text.as_bytes())),
         Cow::Owned(text) => Box::new(Cursor::new(text.into_bytes())),
     };
-    Lift::new(reader, unit)
+    Lift::new(reader, unit, paths)
 }
 
 impl<R: BufRead> Lift<R> {
-    pub fn new(reader: R, unit: Option<&str>) -> Result<Self> {
+    pub fn new(reader: R, unit: Option<&str>, paths: Paths) -> Result<Self> {
         let mut reader = NsReader::from_reader(reader);
         // An empty element is an element: <e/> and <e></e> lift alike.
         reader.config_mut().expand_empty_elements = true;
         Ok(Self {
             reader,
             buffer: Vec::new(),
-            builder: Builder::new(unit.map(str::to_owned))?,
+            builder: Builder::new(unit.map(str::to_owned), paths)?,
             done: false,
         })
     }
