@@ -14,9 +14,46 @@ const OA: &str = "http://www.w3.org/ns/oa#";
 const RDF_TYPE: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
 const RDF_VALUE: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#value";
 
-fn tiny() -> DirectoryResolver {
-    DirectoryResolver::new(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/tiny-adapter"))
-        .expect("resolver")
+const SOURCE_ACCOUNTING: &str = "bridge:sourceAccounting";
+
+/// The tiny adapter with its accounting struck out of its crate. A census
+/// finding and the finding an entry reports are neither of them a query's,
+/// and what a findings query says is what this file is about.
+struct Queries {
+    directory: DirectoryResolver,
+}
+
+impl Resolver for Queries {
+    fn root(&self) -> &str {
+        self.directory.root()
+    }
+
+    fn read(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
+        let bytes = self.directory.read(iri)?;
+        if !iri.ends_with("ro-crate-metadata.json") {
+            return Ok(bytes);
+        }
+        let text = String::from_utf8(bytes).expect("utf-8");
+        let kept: Vec<&str> = text
+            .lines()
+            .filter(|line| !line.contains(SOURCE_ACCOUNTING))
+            .collect();
+        assert_eq!(
+            text.lines().count() - kept.len(),
+            2,
+            "the crate names an accounting, in its context and on its root entity"
+        );
+        Ok(kept.join("\n").into_bytes())
+    }
+}
+
+fn tiny() -> Queries {
+    Queries {
+        directory: DirectoryResolver::new(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/tiny-adapter"),
+        )
+        .expect("resolver"),
+    }
 }
 
 /// The tiny adapter's findings for one of its committed inputs.
@@ -132,7 +169,7 @@ fn counts_a_finding_a_record_produced_twice_twice() {
 /// The tiny adapter with the findings query that names a node inside the
 /// record rewritten to name none.
 struct WholeRecord {
-    directory: DirectoryResolver,
+    directory: Queries,
 }
 
 const SELECTOR: &str = " ;\n      oa:hasSelector [ a oa:XPathSelector ; rdf:value \"note\" ]";
@@ -167,7 +204,7 @@ const TARGET: &str = "[\n      oa:hasSource bridge:thisRecord ;\n      oa:hasSel
 /// rewritten to name the record itself, which the specification forbids: one
 /// name is one node for every finding the query produces.
 struct NamedTarget {
-    directory: DirectoryResolver,
+    directory: Queries,
 }
 
 impl Resolver for NamedTarget {
@@ -244,7 +281,7 @@ fn gives_an_annotation_targeting_the_record_itself_a_record_selector_of_its_own(
 /// asserted to have something to replace so a query that moved on cannot leave
 /// a test passing on the query it no longer has.
 struct Rewritten {
-    directory: DirectoryResolver,
+    directory: Queries,
     replacements: Vec<(String, String)>,
 }
 
@@ -341,7 +378,7 @@ fn keeps_the_description_of_a_node_in_a_target_the_query_names_from_outside_it()
 /// The tiny adapter with the findings query rewritten to construct two
 /// annotations about the one target node, which it mints once per solution.
 struct SharedTarget {
-    directory: DirectoryResolver,
+    directory: Queries,
 }
 
 const BOTH: &str = "_:note ;

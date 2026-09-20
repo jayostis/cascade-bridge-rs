@@ -24,3 +24,17 @@
   oa:hasBody ex:itemHasNoTitle ;
   oa:motivatedBy oa:classifying ;
   sh:resultSeverity sh:Warning .
+
+[] a oa:Annotation ;
+  oa:hasTarget [
+    oa:hasSource <../in/two.xml> ;
+    oa:hasSelector [
+      a oa:XPathSelector ;
+      rdf:value "/catalog/item[1]" ;
+      oa:refinedBy [ a oa:XPathSelector ; rdf:value "note[1]" ]
+    ]
+  ] ;
+  oa:hasBody ex:noteHasNoTerm ;
+  oa:motivatedBy oa:classifying ;
+  sh:value "/item/note" ;
+  sh:resultSeverity sh:Info .

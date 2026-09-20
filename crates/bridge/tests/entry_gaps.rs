@@ -1,0 +1,661 @@
+// An accounting entry whose verdict names a gap reports that gap, once per
+// distinct path per record, addressed at that path's first occurrence — the
+// address a census finding is written at, carrying the gap as its body, the
+// path as its sh:value and, where the path stands at more than one node of the
+// record, how many.
+//
+// Which kinds report is the gap concept's own skos:broader: a gap true of the
+// path reports, and one true of a value at the path does not, because an entry
+// cannot say which of a path's values it is true of.
+//
+// A crate naming no accounting is untouched by all of it, as it was in wave 1.
+use cascade_bridge::{
+    convert, load_adapter, prepare, Conversion, DirectoryResolver, Resolver, Source,
+};
+use oxrdf::{Quad, Term};
+use std::path::PathBuf;
+
+const OA: &str = "http://www.w3.org/ns/oa#";
+const SH: &str = "http://www.w3.org/ns/shacl#";
+const XSD_INTEGER: &str = "http://www.w3.org/2001/XMLSchema#integer";
+const RDF_TYPE: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
+const RDF_VALUE: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#value";
+const BRIDGE: &str = "https://ns.cascadeprotocol.org/bridge/v1-draft#";
+
+/// The census body, which is the one finding carrying a path that no entry
+/// reported.
+const PATH_NOT_ACCOUNTED: &str = "https://ns.cascadeprotocol.org/bridge/v1-draft#pathNotAccounted";
+
+/// The gaps the tiny adapter's committed gap scheme declares, and the crate
+/// terms that name the two files a gap is read from.
+const NOTE_GAP: &str = "urn:example:catalog#noteHasNoTerm";
+const SUMMARY_GAP: &str = "urn:example:catalog#summaryLosesItsMarkup";
+const ACCOUNTING: &str = "vocab/catalog-accounting.ttl";
+const GAP_SCHEME: &str = "vocab/catalog-gaps.ttl";
+const SOURCE_ACCOUNTING: &str = "bridge:sourceAccounting";
+
+/// The namespace the namespaced fixture is written in.
+const CATALOG: &str = "urn:example:catalog";
+
+fn tiny() -> DirectoryResolver {
+    DirectoryResolver::new(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/tiny-adapter"))
+        .expect("resolver")
+}
+
+/// The whole run, from the crate to the findings, as a result: a gap scheme
+/// may be refused at any stage of it, and which stage is not this crate's to
+/// say.
+fn conversion(resolver: &dyn Resolver, input: &str) -> cascade_bridge::Result<Conversion> {
+    let adapter = load_adapter(resolver)?;
+    let prepared = prepare(&adapter, resolver)?;
+    let iri = format!("{}fixtures/in/{input}", resolver.root());
+    let xml = resolver.read(&iri)?;
+    convert(
+        &prepared,
+        Source {
+            iri: &iri,
+            envelope: None,
+            xml: &xml,
+        },
+    )
+}
+
+fn findings(resolver: &dyn Resolver, input: &str) -> Vec<Quad> {
+    conversion(resolver, input).expect("conversion").findings
+}
+
+/// The one object this subject carries for this predicate, where it carries
+/// exactly one.
+fn one(quads: &[Quad], subject: &str, predicate: &str) -> Option<Term> {
+    let mut objects = quads
+        .iter()
+        .filter(|q| q.subject.to_string() == subject && q.predicate.as_str() == predicate)
+        .map(|q| q.object.clone());
+    let first = objects.next()?;
+    match objects.next() {
+        None => Some(first),
+        Some(_) => None,
+    }
+}
+
+fn node(quads: &[Quad], subject: &str, predicate: &str) -> String {
+    one(quads, subject, predicate)
+        .map(|term| term.to_string())
+        .unwrap_or_default()
+}
+
+/// A term as an address or a body is read: an IRI or a literal by what it
+/// says, anything else by how N-Triples writes it.
+fn says(quads: &[Quad], subject: &str, predicate: &str) -> String {
+    match one(quads, subject, predicate) {
+        Some(Term::NamedNode(named)) => named.as_str().to_owned(),
+        Some(Term::Literal(literal)) => literal.value().to_owned(),
+        Some(other) => other.to_string(),
+        None => String::new(),
+    }
+}
+
+/// Every annotation an entry reported, by the node it is: a finding about a
+/// path, bodied at the gap the entry names rather than at the census's own
+/// term.
+fn reporters(findings: &[Quad]) -> Vec<String> {
+    findings
+        .iter()
+        .filter(|q| q.predicate.as_str() == format!("{SH}value"))
+        .map(|q| q.subject.to_string())
+        .filter(|annotation| {
+            says(findings, annotation, &format!("{OA}hasBody")) != PATH_NOT_ACCOUNTED
+        })
+        .collect()
+}
+
+/// Each reported gap as what it says and where it says it: the gap it bodies,
+/// the path it names, the record it is about, and the occurrence inside that
+/// record it is addressed at.
+fn reported(findings: &[Quad]) -> Vec<(String, String, String, String)> {
+    let mut rows: Vec<(String, String, String, String)> = reporters(findings)
+        .iter()
+        .map(|annotation| {
+            let target = node(findings, annotation, &format!("{OA}hasTarget"));
+            let selector = node(findings, &target, &format!("{OA}hasSelector"));
+            let refinement = node(findings, &selector, &format!("{OA}refinedBy"));
+            (
+                says(findings, annotation, &format!("{OA}hasBody")),
+                says(findings, annotation, &format!("{SH}value")),
+                says(findings, &selector, RDF_VALUE),
+                says(findings, &refinement, RDF_VALUE),
+            )
+        })
+        .collect();
+    rows.sort();
+    rows
+}
+
+/// A row of `reported`, spelled as a test writes one.
+fn row(gap: &str, path: &str, record: &str, within: &str) -> (String, String, String, String) {
+    (
+        gap.to_owned(),
+        path.to_owned(),
+        record.to_owned(),
+        within.to_owned(),
+    )
+}
+
+/// How many nodes of the record this finding stands for, where it says.
+fn count(findings: &[Quad], annotation: &str) -> Option<String> {
+    match one(findings, annotation, &format!("{BRIDGE}occurrences"))? {
+        Term::Literal(literal) => Some(literal.value().to_owned()),
+        other => Some(other.to_string()),
+    }
+}
+
+/// Each reported gap as the record it is about and the count it carries.
+fn counted(findings: &[Quad]) -> Vec<(String, Option<String>)> {
+    let mut rows: Vec<(String, Option<String>)> = reporters(findings)
+        .iter()
+        .map(|annotation| {
+            let target = node(findings, annotation, &format!("{OA}hasTarget"));
+            let selector = node(findings, &target, &format!("{OA}hasSelector"));
+            (
+                says(findings, &selector, RDF_VALUE),
+                count(findings, annotation),
+            )
+        })
+        .collect();
+    rows.sort();
+    rows
+}
+
+/// The one annotation an entry reported about this path.
+fn about(findings: &[Quad], path: &str) -> String {
+    let mut found = reporters(findings)
+        .into_iter()
+        .filter(|annotation| says(findings, annotation, &format!("{SH}value")) == path);
+    let first = found.next();
+    assert!(first.is_some(), "no finding reports a gap at {path}");
+    assert!(found.next().is_none(), "more than one finding about {path}");
+    first.expect("checked above")
+}
+
+/// Every annotation a run produced, by the node it is.
+fn annotations(findings: &[Quad]) -> Vec<String> {
+    findings
+        .iter()
+        .filter(|q| q.predicate.as_str() == RDF_TYPE)
+        .filter(
+            |q| matches!(&q.object, Term::NamedNode(n) if n.as_str() == format!("{OA}Annotation")),
+        )
+        .map(|q| q.subject.to_string())
+        .collect()
+}
+
+/// The tiny adapter with its accounting, its gap scheme, or both replaced, so
+/// a verdict, a kind and a severity can each be varied without any of them
+/// being committed.
+struct Adapted {
+    directory: DirectoryResolver,
+    accounting: Option<String>,
+    gaps: Option<String>,
+}
+
+impl Adapted {
+    fn accounting(body: &str) -> Self {
+        Self {
+            directory: tiny(),
+            accounting: Some(body.to_owned()),
+            gaps: None,
+        }
+    }
+
+    fn gaps(body: &str) -> Self {
+        Self {
+            directory: tiny(),
+            accounting: None,
+            gaps: Some(body.to_owned()),
+        }
+    }
+}
+
+impl Resolver for Adapted {
+    fn root(&self) -> &str {
+        self.directory.root()
+    }
+
+    fn read(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
+        if let (true, Some(body)) = (iri.ends_with(ACCOUNTING), &self.accounting) {
+            return Ok(body.as_bytes().to_vec());
+        }
+        if let (true, Some(body)) = (iri.ends_with(GAP_SCHEME), &self.gaps) {
+            return Ok(body.as_bytes().to_vec());
+        }
+        self.directory.read(iri)
+    }
+}
+
+/// The tiny adapter with the accounting struck out of its crate, which is
+/// every adapter that exists.
+struct Unaccounted {
+    directory: DirectoryResolver,
+}
+
+impl Resolver for Unaccounted {
+    fn root(&self) -> &str {
+        self.directory.root()
+    }
+
+    fn read(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
+        let bytes = self.directory.read(iri)?;
+        if !iri.ends_with("ro-crate-metadata.json") {
+            return Ok(bytes);
+        }
+        let text = String::from_utf8(bytes).expect("utf-8");
+        let kept: Vec<&str> = text
+            .lines()
+            .filter(|line| !line.contains(SOURCE_ACCOUNTING))
+            .collect();
+        assert_eq!(
+            text.lines().count() - kept.len(),
+            2,
+            "the crate names an accounting, in its context and on its root entity"
+        );
+        Ok(kept.join("\n").into_bytes())
+    }
+}
+
+/// The tiny adapter naming a gap scheme no file answers to, which is a crate
+/// that says what it does not carry and cannot show it.
+struct MissingGapScheme {
+    directory: DirectoryResolver,
+}
+
+const UNWRITTEN: &str = "vocab/gaps-nobody-wrote.ttl";
+
+impl Resolver for MissingGapScheme {
+    fn root(&self) -> &str {
+        self.directory.root()
+    }
+
+    fn read(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
+        let bytes = self.directory.read(iri)?;
+        if !iri.ends_with("ro-crate-metadata.json") {
+            return Ok(bytes);
+        }
+        let text = String::from_utf8(bytes).expect("utf-8");
+        assert_eq!(
+            text.matches(GAP_SCHEME).count(),
+            1,
+            "the crate names a gap scheme"
+        );
+        Ok(text.replace(GAP_SCHEME, UNWRITTEN).into_bytes())
+    }
+}
+
+const ACCOUNTING_PREAMBLE: &str = "@prefix bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#> .\n@prefix ex:     <urn:example:catalog#> .\n";
+
+const GAPS_PREAMBLE: &str = "@prefix skos:   <http://www.w3.org/2004/02/skos/core#> .\n@prefix sh:     <http://www.w3.org/ns/shacl#> .\n@prefix bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#> .\n@prefix ex:     <urn:example:catalog#> .\n";
+
+/// One entry, spelled as an accounting spells it.
+fn entry(path: &str, verdict: &str, gap: Option<&str>) -> String {
+    let names = match gap {
+        Some(gap) => format!(" ;\n   bridge:namesGap {gap}"),
+        None => String::new(),
+    };
+    format!("\n[] a bridge:PathEntry ;\n   bridge:sourcePath \"{path}\" ;\n   bridge:verdict bridge:{verdict}{names} .\n")
+}
+
+fn accounting(entries: &[String]) -> String {
+    format!("{ACCOUNTING_PREAMBLE}{}", entries.concat())
+}
+
+/// One gap concept, under the kind and at the severity a case turns on.
+fn concept(name: &str, kind: &str, severity: Option<&str>) -> String {
+    let declared = match severity {
+        Some(severity) => format!(" ;\n  sh:resultSeverity sh:{severity}"),
+        None => String::new(),
+    };
+    format!("\nex:{name} a skos:Concept ;\n  skos:inScheme ex:gaps ;\n  skos:broader bridge:{kind}{declared} .\n")
+}
+
+fn gap_scheme(concepts: &[String]) -> String {
+    format!(
+        "{GAPS_PREAMBLE}\nex:gaps a skos:ConceptScheme .\n{}",
+        concepts.concat()
+    )
+}
+
+#[test]
+fn reports_a_path_a_record_carries_three_times_once_at_the_first_counting_three() {
+    let found = findings(&tiny(), "gap-three-times.xml");
+    assert_eq!(
+        reported(&found),
+        [row(NOTE_GAP, "/item/note", "/catalog/item[1]", "note[1]")],
+        "one finding stands for every node at the path"
+    );
+    assert_eq!(
+        count(&found, &about(&found, "/item/note")),
+        Some("3".to_owned())
+    );
+}
+
+#[test]
+fn carries_no_count_on_a_finding_for_a_path_the_record_carries_once() {
+    let found = findings(&tiny(), "two.xml");
+    assert_eq!(
+        reported(&found),
+        [row(NOTE_GAP, "/item/note", "/catalog/item[1]", "note[1]")]
+    );
+    assert_eq!(
+        count(&found, &about(&found, "/item/note")),
+        None,
+        "a count of one is what its absence says"
+    );
+}
+
+#[test]
+fn counts_only_its_own_record_s_nodes_where_two_records_carry_the_path() {
+    let found = findings(&tiny(), "order.xml");
+    assert_eq!(
+        reported(&found),
+        [
+            row(NOTE_GAP, "/item/note", "/catalog/item[1]", "note[1]"),
+            row(NOTE_GAP, "/item/note", "/catalog/item[2]", "note[1]")
+        ]
+    );
+    assert_eq!(
+        counted(&found),
+        [
+            ("/catalog/item[1]".to_owned(), Some("2".to_owned())),
+            ("/catalog/item[2]".to_owned(), None)
+        ],
+        "the record with two notes counts two, the record with one counts nothing"
+    );
+}
+
+#[test]
+fn writes_the_count_as_an_xsd_integer() {
+    let found = findings(&tiny(), "gap-three-times.xml");
+    let occurrences = one(
+        &found,
+        &about(&found, "/item/note"),
+        &format!("{BRIDGE}occurrences"),
+    )
+    .expect("a count");
+    let Term::Literal(literal) = occurrences else {
+        panic!("a count is a literal: {occurrences}");
+    };
+    assert_eq!(literal.datatype().as_str(), XSD_INTEGER);
+}
+
+/// The paths of `unaccounted-attribute.xml`'s record, the two attributes of it
+/// named as gaps: one on a child element, one on the record element itself.
+fn attribute_gaps() -> Adapted {
+    Adapted::accounting(&accounting(&[
+        entry("/item/@id", "noHome", Some("ex:noteHasNoTerm")),
+        entry("/item/title", "carried", None),
+        entry("/item/label", "carried", None),
+        entry("/item/label/@colour", "noHome", Some("ex:noteHasNoTerm")),
+    ]))
+}
+
+#[test]
+fn addresses_an_attribute_s_finding_at_the_element_it_stands_on() {
+    assert_eq!(
+        reported(&findings(&attribute_gaps(), "unaccounted-attribute.xml")),
+        [
+            row(NOTE_GAP, "/item/@id", "/catalog/item[1]", ""),
+            row(
+                NOTE_GAP,
+                "/item/label/@colour",
+                "/catalog/item[1]",
+                "label[1]"
+            )
+        ],
+        "an XPath selector has no form for an attribute, and the lift writes elements"
+    );
+}
+
+#[test]
+fn refines_an_attribute_of_the_record_element_no_further() {
+    let found = findings(&attribute_gaps(), "unaccounted-attribute.xml");
+    let annotation = about(&found, "/item/@id");
+    let target = node(&found, &annotation, &format!("{OA}hasTarget"));
+    let selector = node(&found, &target, &format!("{OA}hasSelector"));
+    assert_eq!(
+        found
+            .iter()
+            .filter(|q| q.subject.to_string() == selector)
+            .filter(|q| q.predicate.as_str() == format!("{OA}refinedBy"))
+            .count(),
+        0,
+        "the target's selector already names the element the attribute stands on"
+    );
+}
+
+/// A step of a path in the namespaced fixture's namespace, as the lift writes
+/// one where no prefix can be bound.
+fn step(local: &str) -> String {
+    format!("*[local-name()='{local}' and namespace-uri()='{CATALOG}']")
+}
+
+#[test]
+fn writes_a_namespaced_path_as_the_census_writes_it_for_the_same_node() {
+    let item = step("item");
+    let bogus = step("bogus");
+    let path = format!("/{item}/{bogus}");
+    let namespaced = Adapted::accounting(&accounting(&[
+        entry(&format!("/{item}/@id"), "carried", None),
+        entry(&path, "noHome", Some("ex:noteHasNoTerm")),
+        entry(&format!("{path}/@colour"), "carried", None),
+        entry(&format!("{path}/@{}", step("colour")), "carried", None),
+    ]));
+    assert_eq!(
+        reported(&findings(&namespaced, "namespaced.xml")),
+        [row(
+            NOTE_GAP,
+            &path,
+            &format!("/{}/{item}[1]", step("catalog")),
+            &format!("{bogus}[1]")
+        )],
+        "a step a census would write, written by an entry's finding for the same node"
+    );
+}
+
+#[test]
+fn takes_the_severity_the_gap_declares_and_sh_info_where_it_declares_none() {
+    let declared = Adapted::gaps(&gap_scheme(&[
+        concept("noteHasNoTerm", "noPredicate", Some("Warning")),
+        concept("summaryLosesItsMarkup", "carriedWithLoss", None),
+    ]));
+    let found = findings(&declared, "every-verdict.xml");
+    assert_eq!(
+        says(
+            &found,
+            &about(&found, "/item/note"),
+            &format!("{SH}resultSeverity")
+        ),
+        format!("{SH}Warning"),
+        "severity is a property of the kind of problem, not of one occurrence of it"
+    );
+    assert_eq!(
+        says(
+            &found,
+            &about(&found, "/item/summary"),
+            &format!("{SH}resultSeverity")
+        ),
+        format!("{SH}Info")
+    );
+}
+
+#[test]
+fn names_the_path_as_sh_value_the_same_string_the_entry_s_source_path_carries() {
+    let found = findings(&tiny(), "every-verdict.xml");
+    let mut paths: Vec<String> = reported(&found)
+        .into_iter()
+        .map(|(_, path, ..)| path)
+        .collect();
+    paths.sort();
+    assert_eq!(
+        paths,
+        ["/item/note", "/item/summary"],
+        "one finding stands for every node at the path, and one node's value would drop the rest"
+    );
+}
+
+#[test]
+fn bodies_a_reported_gap_at_the_gap_the_entry_names_and_motivates_it_by_classifying() {
+    let found = findings(&tiny(), "every-verdict.xml");
+    assert_eq!(
+        reported(&found),
+        [
+            row(NOTE_GAP, "/item/note", "/catalog/item[1]", "note[1]"),
+            row(
+                SUMMARY_GAP,
+                "/item/summary",
+                "/catalog/item[1]",
+                "summary[1]"
+            )
+        ]
+    );
+    for annotation in reporters(&found) {
+        assert_eq!(
+            says(&found, &annotation, &format!("{OA}motivatedBy")),
+            format!("{OA}classifying")
+        );
+        let target = node(&found, &annotation, &format!("{OA}hasTarget"));
+        assert!(
+            says(&found, &target, &format!("{OA}hasSource"))
+                .ends_with("fixtures/in/every-verdict.xml"),
+            "{found:?}"
+        );
+    }
+}
+
+#[test]
+fn reports_a_gap_of_every_kind_that_is_true_of_the_path() {
+    for kind in ["noPredicate", "sourceLacksRequired", "carriedWithLoss"] {
+        let declared = Adapted::gaps(&gap_scheme(&[
+            concept("noteHasNoTerm", kind, None),
+            concept("summaryLosesItsMarkup", "carriedWithLoss", None),
+        ]));
+        let found = findings(&declared, "two.xml");
+        assert_eq!(
+            reported(&found),
+            [row(NOTE_GAP, "/item/note", "/catalog/item[1]", "note[1]")],
+            "a gap of kind {kind} is true of the path"
+        );
+    }
+}
+
+#[test]
+fn emits_nothing_for_a_gap_of_kind_value_not_mapped_or_schema_rule_unnamed() {
+    for kind in ["valueNotMapped", "schemaRuleUnnamed"] {
+        let declared = Adapted::gaps(&gap_scheme(&[
+            concept("noteHasNoTerm", kind, None),
+            concept("summaryLosesItsMarkup", kind, None),
+        ]));
+        assert_eq!(
+            reported(&findings(&declared, "every-verdict.xml")),
+            Vec::new(),
+            "only some of a path's values are {kind}, and an entry cannot say which"
+        );
+    }
+}
+
+#[test]
+fn emits_nothing_for_a_verdict_that_names_no_gap() {
+    let no_gap = Adapted::accounting(&accounting(&[
+        entry("/item/@id", "carried", Some("ex:noteHasNoTerm")),
+        entry("/item/@internal", "ignored", Some("ex:noteHasNoTerm")),
+        entry("/item/title", "carried", Some("ex:noteHasNoTerm")),
+        entry(
+            "/item/supersededTitle",
+            "redundantWith",
+            Some("ex:noteHasNoTerm"),
+        ),
+        entry("/item/summary", "consumed", Some("ex:noteHasNoTerm")),
+        entry("/item/checked", "consumed", Some("ex:noteHasNoTerm")),
+        entry("/item/note", "carried", Some("ex:noteHasNoTerm")),
+    ]));
+    assert_eq!(
+        reported(&findings(&no_gap, "every-verdict.xml")),
+        Vec::new(),
+        "the verdict is what decides whether an entry names a gap at all"
+    );
+}
+
+#[test]
+fn leaves_a_crate_that_names_no_accounting_every_finding_it_has_today() {
+    let unaccounted = Unaccounted { directory: tiny() };
+    for input in ["two.xml", "every-verdict.xml", "gap-three-times.xml"] {
+        assert_eq!(
+            reported(&findings(&unaccounted, input)),
+            Vec::new(),
+            "{input} through a crate naming no accounting"
+        );
+    }
+    assert_eq!(
+        annotations(&findings(&unaccounted, "every-verdict.xml")).len(),
+        1,
+        "the record's one note draws the one finding the adapter's queries construct"
+    );
+}
+
+#[test]
+fn leaves_a_crate_whose_entries_name_no_gaps_the_findings_it_has_today() {
+    let silent = Adapted::accounting(&accounting(&[
+        entry("/item/@id", "carried", None),
+        entry("/item/title", "carried", None),
+        entry("/item/note", "carried", None),
+    ]));
+    let found = findings(&silent, "two.xml");
+    assert_eq!(reported(&found), Vec::new());
+    assert_eq!(
+        annotations(&found).len(),
+        2,
+        "the two findings the adapter's queries construct, and nothing else"
+    );
+}
+
+#[test]
+fn stands_a_reported_gap_beside_the_finding_a_query_constructs_at_the_same_node() {
+    let found = findings(&tiny(), "two.xml");
+    let noted: Vec<String> = found
+        .iter()
+        .filter(|q| q.predicate.as_str() == format!("{OA}hasBody"))
+        .filter(|q| matches!(&q.object, Term::NamedNode(n) if n.as_str() == NOTE_GAP))
+        .map(|q| q.subject.to_string())
+        .collect();
+    assert_eq!(
+        noted.len(),
+        2,
+        "the query's finding and the entry's both stand; retiring the query is the adapter's job"
+    );
+    let valued: Vec<String> = noted
+        .iter()
+        .map(|annotation| says(&found, annotation, &format!("{SH}value")))
+        .collect();
+    assert!(
+        valued.contains(&"/item/note".to_owned()) && valued.contains(&String::new()),
+        "one names the path and one does not: {valued:?}"
+    );
+}
+
+/// Neither Turtle nor anything else: a gap scheme that cannot be read at all.
+const UNPARSEABLE: &str = "@prefix skos: <http://www.w3.org/2004/02/skos/core#\n";
+
+#[test]
+fn refuses_an_unparseable_gap_scheme() {
+    let Err(refusal) = conversion(&Adapted::gaps(UNPARSEABLE), "two.xml") else {
+        panic!("a gap scheme that is not Turtle is read as a scheme declaring nothing");
+    };
+    let refusal = refusal.to_string();
+    assert!(refusal.contains(GAP_SCHEME), "{refusal}");
+}
+
+#[test]
+fn refuses_a_gap_scheme_the_crate_names_and_nothing_answers_to() {
+    let missing = MissingGapScheme { directory: tiny() };
+    if conversion(&missing, "two.xml").is_ok() {
+        panic!("a crate that says what it does not carry and cannot show it is read in silence");
+    }
+}
