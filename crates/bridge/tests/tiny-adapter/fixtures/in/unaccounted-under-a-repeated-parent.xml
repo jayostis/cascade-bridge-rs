@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<catalog>
+  <item id="1"><label colour="a">one</label><label colour="b"><deep>x</deep><deep>y</deep></label></item>
+</catalog>

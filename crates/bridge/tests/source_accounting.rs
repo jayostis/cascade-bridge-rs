@@ -400,6 +400,29 @@ fn ends_an_attribute_s_path_in_its_own_name_and_refines_onto_the_element_it_stan
     );
 }
 
+#[test]
+fn refines_onto_every_step_below_the_record_down_to_the_one_the_path_ends_at() {
+    assert_eq!(
+        census(&findings(
+            &tiny(),
+            "unaccounted-under-a-repeated-parent.xml"
+        )),
+        [
+            (
+                "/item/label/@colour".to_owned(),
+                "/catalog/item[1]".to_owned(),
+                "label[1]".to_owned()
+            ),
+            (
+                "/item/label/deep".to_owned(),
+                "/catalog/item[1]".to_owned(),
+                "label[2]/deep[1]".to_owned()
+            )
+        ],
+        "a label the record carries twice stands between the record and the path"
+    );
+}
+
 /// A step of a path in the namespaced fixture's namespace, as the lift writes
 /// one where no prefix can be bound.
 fn step(local: &str) -> String {
