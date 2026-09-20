@@ -7,7 +7,7 @@
 <> a mf:Manifest ;
   bridge:adapter <../> ;
   bridge:stampPredicate prov:generatedAtTime ;
-  mf:entries ( <#pass> <#graph-fail> <#findings-fail> <#findings-repeated> <#input-only> <#dataset> ) .
+  mf:entries ( <#pass> <#graph-fail> <#findings-fail> <#findings-repeated> <#census> <#input-only> <#dataset> ) .
 
 # Passes only if the stamp in the expected graph is ignored.
 <#pass> a bridge:IsomorphicConversionTest ;
@@ -33,6 +33,13 @@
   mf:name "findings-repeated" ;
   mf:action [ bridge:input <in/order.xml> ; bridge:envelope <../ro-crate-metadata.json#envelope-catalog> ] ;
   mf:result [ bridge:expectedGraph <expected/order.ttl> ; bridge:expectedFindings <findings/order.ttl> ] .
+
+# The accounting says nothing about this input's novelty, and the census is
+# the finding that says so.
+<#census> a bridge:IsomorphicConversionTest ;
+  mf:name "census" ;
+  mf:action [ bridge:input <in/unaccounted-child.xml> ; bridge:envelope <../ro-crate-metadata.json#envelope-catalog> ] ;
+  mf:result [ bridge:expectedGraph <expected/unaccounted-child.ttl> ; bridge:expectedFindings <findings/unaccounted-child.ttl> ] .
 
 <#input-only> a bridge:InputOnlyTest ;
   mf:name "input-only" ;
