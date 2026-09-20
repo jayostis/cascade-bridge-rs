@@ -65,13 +65,13 @@ const DEFINED_BY_DATATYPES: [&str; 13] = [
     "cvc-totalDigits-valid",
 ];
 
-pub struct Schema {
+pub(crate) struct Schema {
     set: SchemaSet,
 }
 
 /// One XSD error: W3C's code for the rule it broke, and where the instance
 /// broke it.
-pub struct SchemaFinding {
+pub(crate) struct SchemaFinding {
     constraint: &'static str,
     within: Option<String>,
 }
@@ -79,7 +79,7 @@ pub struct SchemaFinding {
 impl SchemaFinding {
     /// The anchor of the rule, read from the code up to its first dot: a rule
     /// and not one of its clauses.
-    pub fn body(&self) -> String {
+    pub(crate) fn body(&self) -> String {
         let rule = self
             .constraint
             .split_once('.')
@@ -95,7 +95,7 @@ impl SchemaFinding {
 
     /// The element the rule was broken on, relative to the element validated,
     /// and nothing where it is that element itself.
-    pub fn within(&self) -> Option<&str> {
+    pub(crate) fn within(&self) -> Option<&str> {
         self.within.as_deref()
     }
 }
@@ -184,7 +184,7 @@ impl ValidationSink for Reported {
 
 impl Schema {
     /// Every XSD error the instance draws, empty when it is valid.
-    pub fn errors(&self, xml: &str) -> Result<Vec<SchemaFinding>> {
+    pub(crate) fn errors(&self, xml: &str) -> Result<Vec<SchemaFinding>> {
         let document = utf8_declaration(xml);
         let validator = SchemaValidator::new(
             &self.set,
@@ -213,7 +213,7 @@ impl Schema {
 }
 
 /// Read a schema and everything it names, then compile it.
-pub fn compile(iri: &str, resolver: &dyn Resolver) -> Result<Schema> {
+pub(crate) fn compile(iri: &str, resolver: &dyn Resolver) -> Result<Schema> {
     let mut read: HashMap<String, String> = HashMap::new();
     let mut pending = vec![iri.to_owned()];
     while let Some(location) = pending.pop() {
