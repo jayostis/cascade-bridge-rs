@@ -10,8 +10,7 @@ ex:gaps a skos:ConceptScheme ;
 ex:itemHasNoTitle a skos:Concept ;
   skos:prefLabel "an item with no title" ;
   skos:inScheme ex:gaps ;
-  skos:broader bridge:sourceLacksRequired ;
-  bridge:closedBy ex:title .
+  skos:broader bridge:sourceLacksRequired .
 
 ex:noteHasNoTerm a skos:Concept ;
   skos:prefLabel "a free-text note" ;
