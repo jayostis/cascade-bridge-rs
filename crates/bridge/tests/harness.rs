@@ -63,9 +63,17 @@ fn says_what_differed_in_the_words_of_the_comparison() {
         "{}",
         described("findings-fail")
     );
+    // A finding carries no sentence, so what the comparison reports names it
+    // by the two things it does carry: its body, an IRI, and its address.
     assert!(
-        described("findings-fail").contains("no term for a free-text note"),
-        "the finding that differs is not in what the comparison reported: {}",
+        described("findings-fail")
+            .contains("<http://www.w3.org/ns/oa#hasBody> <urn:example:catalog#noteHasNoTerm>"),
+        "the finding that differs is not named by its body: {}",
+        described("findings-fail")
+    );
+    assert!(
+        described("findings-fail").contains("\"/catalog/item[1]\""),
+        "the finding that differs is not placed by its address: {}",
         described("findings-fail")
     );
     assert!(!described("pass").contains("detect query is false"));

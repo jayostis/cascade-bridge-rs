@@ -380,8 +380,12 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
 
         let at = Instant::now();
         if let Some(schema) = &prepared.source_schema {
-            for reason in schema.errors(&unit.xml)? {
-                findings.extend(annotation::violation(&record, &reason)?);
+            for broken in schema.errors(&unit.xml)? {
+                findings.extend(annotation::violation(
+                    &record,
+                    &broken.body(),
+                    broken.within(),
+                )?);
             }
         }
         ms.validation += at.elapsed();
@@ -421,8 +425,12 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
             source: source.iri,
             selector: &selector,
         };
-        for reason in schema.errors(&text)? {
-            findings.extend(annotation::violation(&record, &reason)?);
+        for broken in schema.errors(&text)? {
+            findings.extend(annotation::violation(
+                &record,
+                &broken.body(),
+                broken.within(),
+            )?);
         }
     }
     ms.validation += at.elapsed();

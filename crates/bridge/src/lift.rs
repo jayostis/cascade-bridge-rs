@@ -82,19 +82,21 @@ fn triple(subject: &BlankNode, predicate: NamedNode, object: impl Into<Term>) ->
     )
 }
 
-/// One step of the XPath from the document element to a record: an element,
-/// and its place among its siblings of the same name.
+/// One step of an XPath: an element, and its place among its siblings of the
+/// same name. Every address this crate writes is written of these, so the
+/// record a finding stood in and the element a schema rule was broken on are
+/// spelled the one way.
 #[derive(Clone)]
-struct Step {
-    local: String,
-    namespace: Option<String>,
-    position: usize,
+pub(crate) struct Step {
+    pub(crate) local: String,
+    pub(crate) namespace: Option<String>,
+    pub(crate) position: usize,
 }
 
 impl Step {
     /// An XPath carries no prefix bindings and a selector is read where nothing
     /// can supply them, so a namespace is written out in full.
-    fn write(&self, indexed: bool) -> String {
+    pub(crate) fn write(&self, indexed: bool) -> String {
         let named = match &self.namespace {
             Some(namespace) => format!(
                 "*[local-name()='{}' and namespace-uri()='{namespace}']",

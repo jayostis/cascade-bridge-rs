@@ -345,12 +345,14 @@ struct SharedTarget {
 }
 
 const BOTH: &str = "_:note ;
-    oa:hasBody [ a oa:TextualBody ; rdf:value \"no term for a free-text note\" ] ;
+    oa:hasBody ex:noteHasNoTerm ;
+    oa:motivatedBy oa:classifying ;
     sh:resultSeverity sh:Info .
 
   [] a oa:Annotation ;
     oa:hasTarget _:note ;
-    oa:hasBody [ a oa:TextualBody ; rdf:value \"a note is not a title\" ] ;
+    oa:hasBody ex:noteIsNotATitle ;
+    oa:motivatedBy oa:classifying ;
     sh:resultSeverity sh:Info .
 
   _:note
@@ -368,7 +370,9 @@ impl Resolver for SharedTarget {
             return Ok(bytes);
         }
         let text = String::from_utf8(bytes).expect("utf-8");
-        let one = format!("{TARGET} ;\n    oa:hasBody [ a oa:TextualBody ; rdf:value \"no term for a free-text note\" ] ;\n    sh:resultSeverity sh:Info .");
+        let one = format!(
+            "{TARGET} ;\n    oa:hasBody ex:noteHasNoTerm ;\n    oa:motivatedBy oa:classifying ;\n    sh:resultSeverity sh:Info ."
+        );
         assert!(text.contains(&one), "the query constructs one annotation");
         Ok(text.replace(&one, BOTH).into_bytes())
     }

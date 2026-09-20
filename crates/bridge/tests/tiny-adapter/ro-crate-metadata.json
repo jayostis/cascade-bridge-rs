@@ -9,6 +9,7 @@
       "bridge:envelope": "bridge:envelope",
       "bridge:docRootElementName": "bridge:docRootElementName",
       "bridge:documentSchema": "bridge:documentSchema",
+      "bridge:gapScheme": "bridge:gapScheme",
       "bridge:mapping": "bridge:mapping",
       "bridge:findingsQuery": "bridge:findingsQuery",
       "bridge:detectQuery": "bridge:detectQuery",
@@ -30,6 +31,7 @@
       "bridge:requiresProfile": { "@id": "bridge:sparql-1.1" },
       "bridge:elementNameOfEachRecord": "item",
       "bridge:sourceSchema": { "@id": "schema/item.xsd" },
+      "bridge:gapScheme": { "@id": "vocab/catalog-gaps.ttl" },
       "bridge:envelope": { "@id": "#envelope-catalog" },
       "bridge:mapping": { "@id": "mapping/item.rq" },
       "bridge:findingsQuery": [
