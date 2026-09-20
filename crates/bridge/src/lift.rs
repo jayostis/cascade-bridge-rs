@@ -23,7 +23,7 @@ use quick_xml::events::Event;
 use quick_xml::name::ResolveResult;
 use quick_xml::NsReader;
 use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::io::{BufRead, Cursor};
 
 const RDF: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
@@ -111,12 +111,13 @@ impl Step {
     }
 }
 
-/// One path a record carries, written from the record element, and the steps
-/// below the record that reach the first occurrence of it. An attribute of
-/// the record element stands below nothing.
+/// One path a record carries, written from the record element, the steps below
+/// the record that reach the first occurrence of it, and how many nodes of the
+/// record stand at it. An attribute of the record element stands below nothing.
 pub(crate) struct Occurrence {
     pub(crate) path: String,
     pub(crate) within: Option<String>,
+    pub(crate) count: usize,
 }
 
 /// Whether the paths of each record are kept as it is lifted.
@@ -126,12 +127,13 @@ pub enum Paths {
     Dropped,
 }
 
-/// The distinct paths of one record, each kept at its first occurrence.
+/// The distinct paths of one record, each kept at its first occurrence and
+/// counted at every one.
 #[derive(Default)]
 struct Census {
     record: String,
     below: Vec<Step>,
-    seen: HashSet<String>,
+    seen: HashMap<String, usize>,
     occurrences: Vec<Occurrence>,
 }
 
@@ -177,11 +179,16 @@ impl Census {
     }
 
     fn add(&mut self, path: String, within: Option<&str>) {
-        if self.seen.insert(path.clone()) {
-            self.occurrences.push(Occurrence {
-                path,
-                within: within.map(str::to_owned),
-            });
+        match self.seen.get(&path) {
+            Some(&first) => self.occurrences[first].count += 1,
+            None => {
+                self.seen.insert(path.clone(), self.occurrences.len());
+                self.occurrences.push(Occurrence {
+                    path,
+                    within: within.map(str::to_owned),
+                    count: 1,
+                });
+            }
         }
     }
 }

@@ -34,6 +34,8 @@ terms! {
     SH_VIOLATION = "http://www.w3.org/ns/shacl#", "Violation";
     SH_INFO = "http://www.w3.org/ns/shacl#", "Info";
 
+    SKOS_BROADER = "http://www.w3.org/2004/02/skos/core#", "broader";
+
     SCHEMA_ABOUT = "http://schema.org/", "about";
     SCHEMA_NAME = "http://schema.org/", "name";
     SCHEMA_IDENTIFIER = "http://schema.org/", "identifier";
@@ -56,6 +58,15 @@ terms! {
     BRIDGE_SOURCE_ACCOUNTING = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "sourceAccounting";
     BRIDGE_PATH_ENTRY = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "PathEntry";
     BRIDGE_SOURCE_PATH = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "sourcePath";
+    BRIDGE_GAP_SCHEME = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "gapScheme";
+    BRIDGE_VERDICT = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "verdict";
+    BRIDGE_NAMES_GAP = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "namesGap";
+    BRIDGE_NO_HOME = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "noHome";
+    BRIDGE_CARRIED_IN_PART = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "carriedInPart";
+    BRIDGE_NO_PREDICATE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "noPredicate";
+    BRIDGE_SOURCE_LACKS_REQUIRED = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "sourceLacksRequired";
+    BRIDGE_CARRIED_WITH_LOSS = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "carriedWithLoss";
+    BRIDGE_OCCURRENCES = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "occurrences";
     BRIDGE_PATH_NOT_ACCOUNTED = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "pathNotAccounted";
     BRIDGE_INPUT = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "input";
     BRIDGE_EXPECTED_GRAPH = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "expectedGraph";
