@@ -169,3 +169,138 @@ fn writes_the_same_graph_as_n_triples_and_to_the_file_out_names() {
         expected()
     );
 }
+
+/// The findings a text holds, canonicalised, so an oracle and a run are
+/// compared as graphs and a finding produced twice still counts twice.
+fn findings(bytes: &[u8], format: RdfFormat, base: &str) -> BTreeSet<String> {
+    cascade_bridge::canonical_lines(
+        RdfParser::from_format(format)
+            .with_base_iri(base)
+            .expect("base")
+            .for_slice(bytes)
+            .map(|quad| quad.expect("a parsed graph")),
+    )
+    .expect("the findings as one canonical graph")
+}
+
+/// The oracle the tiny adapter commits for the document, read against its own
+/// IRI so the document it names relatively is the document the entry names.
+fn expected_findings() -> BTreeSet<String> {
+    let path = tiny().join("fixtures/findings/two.ttl");
+    findings(
+        &std::fs::read(&path).expect("the expected findings"),
+        RdfFormat::Turtle,
+        &cascade_bridge::file_iri(&path).expect("the fixture's IRI"),
+    )
+}
+
+/// The one that matters: the oracle a Bridge writes is the oracle a Bridge
+/// judges.
+#[test]
+fn writes_the_findings_the_adapter_expects_of_the_document_where_findings_names() {
+    let document = tiny().join("fixtures/in/two.xml");
+    let written = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("cascade-bridge-findings.ttl");
+    let run = cascade_bridge(&[
+        "convert",
+        &tiny().to_string_lossy(),
+        &document.to_string_lossy(),
+        "--findings",
+        &written.to_string_lossy(),
+    ]);
+    assert_eq!(
+        run.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let produced = std::fs::read(&written).expect("the written findings");
+    assert_eq!(
+        findings(&produced, RdfFormat::Turtle, BASE),
+        expected_findings(),
+        "{}",
+        String::from_utf8_lossy(&produced)
+    );
+}
+
+#[test]
+fn leaves_standard_output_byte_for_byte_what_it_is_without_the_flag() {
+    let document = tiny().join("fixtures/in/two.xml");
+    let written =
+        PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("cascade-bridge-findings-beside.ttl");
+    let bare = cascade_bridge(&[
+        "convert",
+        &tiny().to_string_lossy(),
+        &document.to_string_lossy(),
+    ]);
+    let beside = cascade_bridge(&[
+        "convert",
+        &tiny().to_string_lossy(),
+        &document.to_string_lossy(),
+        "--findings",
+        &written.to_string_lossy(),
+    ]);
+    assert_eq!(beside.stdout, bare.stdout);
+    assert_eq!(beside.status.code(), bare.status.code());
+}
+
+#[test]
+fn writes_both_files_as_n_triples_and_neither_to_standard_output() {
+    let document = tiny().join("fixtures/in/two.xml");
+    let graph = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("cascade-bridge-both-graph.nt");
+    let found = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("cascade-bridge-both-findings.nt");
+    let run = cascade_bridge(&[
+        "convert",
+        &tiny().to_string_lossy(),
+        &document.to_string_lossy(),
+        "--out",
+        &graph.to_string_lossy(),
+        "--findings",
+        &found.to_string_lossy(),
+        "--format",
+        "ntriples",
+    ]);
+    assert_eq!(
+        run.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert!(run.stdout.is_empty());
+    assert_eq!(
+        triples(
+            &std::fs::read(&graph).expect("the written graph"),
+            RdfFormat::NTriples,
+            BASE,
+        ),
+        expected()
+    );
+    assert_eq!(
+        findings(
+            &std::fs::read(&found).expect("the written findings"),
+            RdfFormat::NTriples,
+            BASE,
+        ),
+        expected_findings()
+    );
+}
+
+#[test]
+fn exits_non_zero_and_writes_no_graph_when_the_findings_file_cannot_be_written() {
+    let document = tiny().join("fixtures/in/two.xml");
+    let absent = PathBuf::from(env!("CARGO_TARGET_TMPDIR"))
+        .join("cascade-bridge-no-such-directory/findings.ttl");
+    let run = cascade_bridge(&[
+        "convert",
+        &tiny().to_string_lossy(),
+        &document.to_string_lossy(),
+        "--findings",
+        &absent.to_string_lossy(),
+    ]);
+    assert_ne!(run.status.code(), Some(0));
+    assert!(run.stdout.is_empty());
+    // The path it could not write, rather than the usage line an unknown flag
+    // earns: the failure has to be the one this case is about.
+    let stderr = String::from_utf8_lossy(&run.stderr);
+    assert!(stderr.contains("findings.ttl"), "{stderr}");
+    assert!(!stderr.contains("usage:"), "{stderr}");
+}
