@@ -408,13 +408,28 @@ fn step(local: &str) -> String {
 
 #[test]
 fn writes_a_namespaced_path_as_the_lift_writes_a_step_of_a_record_s_own_address() {
+    let record = format!("/{}/{}[1]", step("catalog"), step("item"));
+    let bogus = format!("/{}/{}", step("item"), step("bogus"));
+    let within = format!("{}[1]", step("bogus"));
     assert_eq!(
         census(&findings(&tiny(), "namespaced.xml")),
-        [(
-            format!("/{}/{}", step("item"), step("bogus")),
-            format!("/{}/{}[1]", step("catalog"), step("item")),
-            format!("{}[1]", step("bogus"))
-        )]
+        [(bogus.clone(), record.clone(), within.clone())],
+        "the accounting names both colours of the element, and neither is reported"
+    );
+
+    // The element carries a namespaced colour and an unnamespaced one. A last
+    // step of "@colour" would make them one path, and the entry left standing
+    // would silence the one struck out.
+    let namespaced = format!("{bogus}/@{}", step("colour"));
+    assert_eq!(
+        census(&findings(
+            &Accounting::without(&namespaced),
+            "namespaced.xml"
+        )),
+        [
+            (bogus, record.clone(), within.clone()),
+            (namespaced, record, within)
+        ]
     );
 }
 

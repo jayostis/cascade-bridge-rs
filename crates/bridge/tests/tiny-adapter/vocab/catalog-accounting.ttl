@@ -43,3 +43,11 @@
 [] a bridge:PathEntry ;
    bridge:sourcePath "/*[local-name()='item' and namespace-uri()='urn:example:catalog']/@id" ;
    bridge:verdict bridge:carried .
+
+[] a bridge:PathEntry ;
+   bridge:sourcePath "/*[local-name()='item' and namespace-uri()='urn:example:catalog']/*[local-name()='bogus' and namespace-uri()='urn:example:catalog']/@colour" ;
+   bridge:verdict bridge:carried .
+
+[] a bridge:PathEntry ;
+   bridge:sourcePath "/*[local-name()='item' and namespace-uri()='urn:example:catalog']/*[local-name()='bogus' and namespace-uri()='urn:example:catalog']/@*[local-name()='colour' and namespace-uri()='urn:example:catalog']" ;
+   bridge:verdict bridge:carried .
