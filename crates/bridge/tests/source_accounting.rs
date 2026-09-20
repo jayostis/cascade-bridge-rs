@@ -503,10 +503,10 @@ fn writes_a_namespaced_path_as_the_lift_writes_a_step_of_a_record_s_own_address(
     );
 }
 
-/// The paths of `every-verdict.xml`'s record, one per verdict the accounting
-/// can give, each with the step below the record a finding about it selects.
-/// An attribute of the record element selects nothing below the record: the
-/// target's selector already names the element it stands on.
+/// The paths of `every-verdict.xml`'s record, each with the step below the
+/// record a finding about it selects. An attribute of the record element
+/// selects nothing below the record: the target's selector already names the
+/// element it stands on.
 const EVERY_VERDICT: [(&str, &str); 7] = [
     ("/item/@id", ""),
     ("/item/@internal", ""),
