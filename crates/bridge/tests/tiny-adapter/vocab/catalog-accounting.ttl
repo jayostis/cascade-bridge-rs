@@ -1,49 +1,45 @@
-# What this adapter does with each path of a record, one entry per path.
-# An item's novelty and its colour are accounted for nowhere, which is what a
-# census reports.
+# What this adapter does with each path of a record, one entry per path, each
+# path from the record element. A label's colour and an item's novelty are
+# accounted for nowhere, which is what a census reports.
 @prefix bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
 @prefix ex:     <urn:example:catalog#> .
 
 [] a bridge:PathEntry ;
-   bridge:sourcePath "/catalog/item" ;
+   bridge:sourcePath "/item/@id" ;
    bridge:verdict bridge:carried .
 
 [] a bridge:PathEntry ;
-   bridge:sourcePath "/catalog/item/@id" ;
-   bridge:verdict bridge:carried .
-
-[] a bridge:PathEntry ;
-   bridge:sourcePath "/catalog/item/@internal" ;
+   bridge:sourcePath "/item/@internal" ;
    bridge:verdict bridge:ignored ;
    bridge:because "An exporter's own marker is not data about the item." .
 
 [] a bridge:PathEntry ;
-   bridge:sourcePath "/catalog/item/title" ;
+   bridge:sourcePath "/item/title" ;
    bridge:verdict bridge:carried .
 
 [] a bridge:PathEntry ;
-   bridge:sourcePath "/catalog/item/supersededTitle" ;
-   bridge:verdict bridge:redundantWith ;
-   bridge:sameFactAs "/catalog/item/title" .
+   bridge:sourcePath "/item/label" ;
+   bridge:verdict bridge:carried .
 
 [] a bridge:PathEntry ;
-   bridge:sourcePath "/catalog/item/summary" ;
+   bridge:sourcePath "/item/supersededTitle" ;
+   bridge:verdict bridge:redundantWith ;
+   bridge:sameFactAs "/item/title" .
+
+[] a bridge:PathEntry ;
+   bridge:sourcePath "/item/summary" ;
    bridge:verdict bridge:carriedInPart ;
    bridge:namesGap ex:summaryLosesItsMarkup .
 
 [] a bridge:PathEntry ;
-   bridge:sourcePath "/catalog/item/checked" ;
+   bridge:sourcePath "/item/checked" ;
    bridge:verdict bridge:consumed .
 
 [] a bridge:PathEntry ;
-   bridge:sourcePath "/catalog/item/note" ;
+   bridge:sourcePath "/item/note" ;
    bridge:verdict bridge:noHome ;
    bridge:namesGap ex:noteHasNoTerm .
 
 [] a bridge:PathEntry ;
-   bridge:sourcePath "/*[local-name()='catalog' and namespace-uri()='urn:example:catalog']/*[local-name()='item' and namespace-uri()='urn:example:catalog']" ;
-   bridge:verdict bridge:carried .
-
-[] a bridge:PathEntry ;
-   bridge:sourcePath "/*[local-name()='catalog' and namespace-uri()='urn:example:catalog']/*[local-name()='item' and namespace-uri()='urn:example:catalog']/@id" ;
+   bridge:sourcePath "/*[local-name()='item' and namespace-uri()='urn:example:catalog']/@id" ;
    bridge:verdict bridge:carried .

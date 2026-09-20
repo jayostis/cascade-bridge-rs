@@ -6,6 +6,15 @@
   <xs:complexType name="itemType">
     <xs:sequence>
       <xs:element name="title" type="xs:string" minOccurs="0"/>
+      <xs:element name="label" minOccurs="0">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:string">
+              <xs:attribute name="colour" type="xs:string"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
       <xs:element name="supersededTitle" type="xs:string" minOccurs="0"/>
       <xs:element name="summary" type="xs:string" minOccurs="0"/>
       <xs:element name="checked" type="xs:string" minOccurs="0"/>
@@ -14,7 +23,6 @@
     </xs:sequence>
     <xs:attribute name="id" type="xs:string" use="required"/>
     <xs:attribute name="internal" type="xs:string"/>
-    <xs:attribute name="colour" type="xs:string"/>
   </xs:complexType>
 
 </xs:schema>

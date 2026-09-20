@@ -14,5 +14,5 @@
   ] ;
   oa:hasBody bridge:pathNotAccounted ;
   oa:motivatedBy oa:classifying ;
-  sh:value "/catalog/item/novelty" ;
+  sh:value "/item/novelty" ;
   sh:resultSeverity sh:Info .

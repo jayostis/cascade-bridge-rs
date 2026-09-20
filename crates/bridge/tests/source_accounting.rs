@@ -256,6 +256,34 @@ impl Resolver for Accounting {
     }
 }
 
+/// The tiny adapter naming an accounting no file answers to, which is a crate
+/// that says what it accounts for and cannot show it.
+struct Missing {
+    directory: DirectoryResolver,
+}
+
+const UNWRITTEN: &str = "vocab/an-accounting-nobody-wrote.ttl";
+
+impl Resolver for Missing {
+    fn root(&self) -> &str {
+        self.directory.root()
+    }
+
+    fn read(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
+        let bytes = self.directory.read(iri)?;
+        if !iri.ends_with("ro-crate-metadata.json") {
+            return Ok(bytes);
+        }
+        let text = String::from_utf8(bytes).expect("utf-8");
+        assert_eq!(
+            text.matches(ACCOUNTING).count(),
+            2,
+            "the crate names an accounting, and gives the file its media type"
+        );
+        Ok(text.replace(ACCOUNTING, UNWRITTEN).into_bytes())
+    }
+}
+
 #[test]
 fn leaves_a_crate_that_names_no_accounting_the_findings_it_has_today() {
     let unaccounted = Unaccounted::new();
@@ -276,7 +304,7 @@ fn leaves_a_crate_that_names_no_accounting_the_findings_it_has_today() {
         paths(&findings(&tiny(), "unaccounted-child.xml"))
             .into_iter()
             .collect::<Vec<String>>(),
-        ["/catalog/item/novelty"],
+        ["/item/novelty"],
         "the accounting is what the census is read from"
     );
 }
@@ -287,7 +315,7 @@ fn reports_a_path_the_accounting_omits_at_its_first_occurrence_in_the_record() {
     assert_eq!(
         census(&findings),
         [(
-            "/catalog/item/novelty".to_owned(),
+            "/item/novelty".to_owned(),
             "/catalog/item[1]".to_owned(),
             "novelty[1]".to_owned()
         )]
@@ -320,7 +348,7 @@ fn reports_a_path_a_record_carries_five_times_once_addressed_at_the_first() {
     assert_eq!(
         census(&findings(&tiny(), "unaccounted-five-times.xml")),
         [(
-            "/catalog/item/novelty".to_owned(),
+            "/item/novelty".to_owned(),
             "/catalog/item[1]".to_owned(),
             "novelty[1]".to_owned()
         )]
@@ -333,12 +361,12 @@ fn reports_a_path_two_records_carry_once_in_each() {
         census(&findings(&tiny(), "unaccounted-in-each-record.xml")),
         [
             (
-                "/catalog/item/novelty".to_owned(),
+                "/item/novelty".to_owned(),
                 "/catalog/item[1]".to_owned(),
                 "novelty[1]".to_owned()
             ),
             (
-                "/catalog/item/novelty".to_owned(),
+                "/item/novelty".to_owned(),
                 "/catalog/item[2]".to_owned(),
                 "novelty[1]".to_owned()
             )
@@ -347,12 +375,16 @@ fn reports_a_path_two_records_carry_once_in_each() {
 }
 
 #[test]
-fn ends_an_attribute_s_path_in_the_attribute_s_own_name() {
-    let findings = findings(&tiny(), "unaccounted-attribute.xml");
-    let rows = census(&findings);
-    assert_eq!(rows.len(), 1, "{rows:?}");
-    assert_eq!(rows[0].0, "/catalog/item/@colour");
-    assert_eq!(rows[0].1, "/catalog/item[1]");
+fn ends_an_attribute_s_path_in_its_own_name_and_refines_onto_the_element_it_stands_on() {
+    assert_eq!(
+        census(&findings(&tiny(), "unaccounted-attribute.xml")),
+        [(
+            "/item/label/@colour".to_owned(),
+            "/catalog/item[1]".to_owned(),
+            "label[1]".to_owned()
+        )],
+        "an XPath selector has no form for an attribute, and the lift writes elements"
+    );
 }
 
 /// A step of a path in the namespaced fixture's namespace, as the lift writes
@@ -363,28 +395,26 @@ fn step(local: &str) -> String {
 
 #[test]
 fn writes_a_namespaced_path_as_the_lift_writes_a_step_of_a_record_s_own_address() {
-    let record = format!("/{}/{}", step("catalog"), step("item"));
     assert_eq!(
         census(&findings(&tiny(), "namespaced.xml")),
         [(
-            format!("{record}/{}", step("bogus")),
-            format!("{record}[1]"),
+            format!("/{}/{}", step("item"), step("bogus")),
+            format!("/{}/{}[1]", step("catalog"), step("item")),
             format!("{}[1]", step("bogus"))
         )]
     );
 }
 
 /// The paths of `every-verdict.xml`'s record, one per verdict the accounting
-/// can give. The record's own path is left out: whether a record carries its
-/// own path is the specification's to settle.
+/// can give.
 const EVERY_VERDICT: [&str; 7] = [
-    "/catalog/item/@id",
-    "/catalog/item/@internal",
-    "/catalog/item/title",
-    "/catalog/item/supersededTitle",
-    "/catalog/item/summary",
-    "/catalog/item/checked",
-    "/catalog/item/note",
+    "/item/@id",
+    "/item/@internal",
+    "/item/title",
+    "/item/supersededTitle",
+    "/item/summary",
+    "/item/checked",
+    "/item/note",
 ];
 
 #[test]
@@ -423,31 +453,35 @@ fn refuses_an_unparseable_accounting_where_an_absent_one_is_read_in_silence() {
 }
 
 #[test]
+fn refuses_an_accounting_the_crate_names_and_nothing_answers_to() {
+    assert_eq!(
+        census(&findings(&Unaccounted::new(), "two.xml")),
+        Vec::new()
+    );
+
+    let missing = Missing { directory: tiny() };
+    if conversion(&missing, "two.xml").is_ok() {
+        panic!("a crate that says what it accounts for and cannot show it is read in silence");
+    }
+}
+
+#[test]
 fn accounts_for_no_path_with_an_empty_accounting_where_an_absent_one_accounts_for_every_path() {
     assert_eq!(
         census(&findings(&Unaccounted::new(), "two.xml")),
         Vec::new()
     );
 
-    let reported = paths(&findings(&Accounting::of(NOTHING_ACCOUNTED), "two.xml"));
-    for path in [
-        "/catalog/item/@id",
-        "/catalog/item/title",
-        "/catalog/item/note",
-    ] {
-        assert!(
-            reported.contains(path),
-            "an accounting of nothing accounts for {path}: {reported:?}"
-        );
-    }
-    // The record's own path is the specification's to settle, so it is neither
-    // required here nor refused.
-    for path in &reported {
-        assert!(
-            path == "/catalog/item" || path.starts_with("/catalog/item/"),
-            "a path the record does not carry: {reported:?}"
-        );
-    }
+    let reported = findings(&Accounting::of(NOTHING_ACCOUNTED), "two.xml");
+    assert_eq!(
+        paths(&reported).into_iter().collect::<Vec<String>>(),
+        ["/item/@id", "/item/note", "/item/title"]
+    );
+    assert_eq!(
+        census(&reported).len(),
+        4,
+        "three paths of the record with a title and a note, one of the record without"
+    );
 }
 
 #[test]
