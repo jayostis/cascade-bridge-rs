@@ -122,6 +122,19 @@ fn census(findings: &[Quad]) -> Vec<(String, String, String)> {
     rows
 }
 
+/// How many nodes below the record this finding's record selector is refined
+/// onto, where an empty refinement in a row above could as well have been a
+/// selector carrying two.
+fn refinements(findings: &[Quad], annotation: &str) -> usize {
+    let target = node(findings, annotation, &format!("{OA}hasTarget"));
+    let selector = node(findings, &target, &format!("{OA}hasSelector"));
+    findings
+        .iter()
+        .filter(|q| q.subject.to_string() == selector)
+        .filter(|q| q.predicate.as_str() == format!("{OA}refinedBy"))
+        .count()
+}
+
 /// The paths a census named, each once however many records named it.
 fn paths(findings: &[Quad]) -> BTreeSet<String> {
     census(findings)
@@ -406,28 +419,39 @@ fn writes_a_namespaced_path_as_the_lift_writes_a_step_of_a_record_s_own_address(
 }
 
 /// The paths of `every-verdict.xml`'s record, one per verdict the accounting
-/// can give.
-const EVERY_VERDICT: [&str; 7] = [
-    "/item/@id",
-    "/item/@internal",
-    "/item/title",
-    "/item/supersededTitle",
-    "/item/summary",
-    "/item/checked",
-    "/item/note",
+/// can give, each with the step below the record a finding about it selects.
+/// An attribute of the record element selects nothing below the record: the
+/// target's selector already names the element it stands on.
+const EVERY_VERDICT: [(&str, &str); 7] = [
+    ("/item/@id", ""),
+    ("/item/@internal", ""),
+    ("/item/title", "title[1]"),
+    ("/item/supersededTitle", "supersededTitle[1]"),
+    ("/item/summary", "summary[1]"),
+    ("/item/checked", "checked[1]"),
+    ("/item/note", "note[1]"),
 ];
 
 #[test]
 fn reports_nothing_for_a_record_every_path_of_which_has_an_entry_whatever_its_verdict() {
     assert_eq!(census(&findings(&tiny(), "every-verdict.xml")), Vec::new());
 
-    for path in EVERY_VERDICT {
+    for (path, within) in EVERY_VERDICT {
+        let found = findings(&Accounting::without(path), "every-verdict.xml");
         assert_eq!(
-            paths(&findings(&Accounting::without(path), "every-verdict.xml"))
-                .into_iter()
-                .collect::<Vec<String>>(),
-            [path.to_owned()],
+            census(&found),
+            [(
+                path.to_owned(),
+                "/catalog/item[1]".to_owned(),
+                within.to_owned()
+            )],
             "the entry for {path} is what silences it"
+        );
+        let annotation = censuses(&found).first().expect("a census").clone();
+        assert_eq!(
+            refinements(&found, &annotation),
+            usize::from(!within.is_empty()),
+            "what a finding about {path} selects below the record"
         );
     }
 }
