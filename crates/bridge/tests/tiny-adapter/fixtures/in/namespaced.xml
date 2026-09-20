@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<c:catalog xmlns:c="urn:example:catalog">
+  <c:item id="1"><c:bogus/></c:item>
+</c:catalog>
