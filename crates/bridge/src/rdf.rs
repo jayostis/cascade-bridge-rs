@@ -30,7 +30,9 @@ terms! {
     OA_CLASSIFYING = "http://www.w3.org/ns/oa#", "classifying";
 
     SH_RESULT_SEVERITY = "http://www.w3.org/ns/shacl#", "resultSeverity";
+    SH_VALUE = "http://www.w3.org/ns/shacl#", "value";
     SH_VIOLATION = "http://www.w3.org/ns/shacl#", "Violation";
+    SH_INFO = "http://www.w3.org/ns/shacl#", "Info";
 
     SCHEMA_ABOUT = "http://schema.org/", "about";
     SCHEMA_NAME = "http://schema.org/", "name";
@@ -51,6 +53,10 @@ terms! {
     BRIDGE_DOCUMENT_SCHEMA = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "documentSchema";
     BRIDGE_THIS_RECORD = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "thisRecord";
     BRIDGE_SCHEMA_RULE_UNNAMED = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "schemaRuleUnnamed";
+    BRIDGE_SOURCE_ACCOUNTING = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "sourceAccounting";
+    BRIDGE_PATH_ENTRY = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "PathEntry";
+    BRIDGE_SOURCE_PATH = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "sourcePath";
+    BRIDGE_PATH_NOT_ACCOUNTED = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "pathNotAccounted";
     BRIDGE_INPUT = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "input";
     BRIDGE_EXPECTED_GRAPH = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "expectedGraph";
     BRIDGE_EXPECTED_FINDINGS = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "expectedFindings";

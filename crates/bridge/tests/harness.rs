@@ -39,6 +39,7 @@ fn reaches_every_outcome_and_fails_exactly_the_entries_built_to_fail() {
             ("graph-fail", "failed"),
             ("findings-fail", "failed"),
             ("findings-repeated", "passed"),
+            ("census", "passed"),
             ("input-only", "cantTell"),
             ("dataset", "untested"),
         ])

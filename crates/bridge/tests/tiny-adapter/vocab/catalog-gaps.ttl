@@ -12,6 +12,11 @@ ex:itemHasNoTitle a skos:Concept ;
   skos:inScheme ex:gaps ;
   skos:broader bridge:sourceLacksRequired .
 
+ex:summaryLosesItsMarkup a skos:Concept ;
+  skos:prefLabel "a summary without its markup" ;
+  skos:inScheme ex:gaps ;
+  skos:broader bridge:carriedWithLoss .
+
 ex:noteHasNoTerm a skos:Concept ;
   skos:prefLabel "a free-text note" ;
   skos:inScheme ex:gaps ;

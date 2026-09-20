@@ -11,12 +11,12 @@
 use crate::annotation::{self, Minted, Record};
 use crate::decode::decode;
 use crate::error::{Error, Result};
-use crate::lift::lift_text;
+use crate::lift::{lift_text, Paths};
 use crate::load::{subject, value, Adapter};
-use crate::rdf::SCHEMA_ENCODING_FORMAT;
+use crate::rdf::{BRIDGE_PATH_ENTRY, BRIDGE_SOURCE_PATH, RDF_TYPE, SCHEMA_ENCODING_FORMAT};
 use crate::resolver::Resolver;
 use crate::validate::{self, Schema};
-use oxigraph::model::{GraphName, Quad};
+use oxigraph::model::{GraphName, Quad, Term};
 use oxigraph::sparql::{PreparedSparqlQuery, QueryResults, SparqlEvaluator};
 use oxigraph::store::Store;
 use oxrdfio::{RdfFormat, RdfParser};
@@ -113,6 +113,7 @@ pub struct Prepared {
     pub prefixes: Vec<(String, String)>,
     envelopes: Vec<Envelope>,
     source_schema: Option<Schema>,
+    accounted: Option<HashSet<String>>,
 }
 
 impl Prepared {
@@ -247,6 +248,39 @@ fn document_selector(document: Option<String>, described: Option<&str>) -> Strin
         .unwrap_or_else(|| "/*".to_owned())
 }
 
+/// The paths an accounting carries, each the object of a `bridge:PathEntry`'s
+/// `bridge:sourcePath`. A crate that names an accounting and cannot show it is
+/// refused here, where a crate that names none is never asked.
+fn accounted(resolver: &dyn Resolver, iri: &str) -> Result<HashSet<String>> {
+    let bytes = resolver
+        .read(iri)
+        .map_err(|e| Error::msg(format!("{iri}: {e}")))?;
+    let mut entries = HashSet::new();
+    let mut named = Vec::new();
+    for quad in RdfParser::from_format(RdfFormat::Turtle)
+        .with_base_iri(iri)?
+        .for_slice(&bytes)
+    {
+        let quad = quad.map_err(|e| Error::msg(format!("{iri}: {e}")))?;
+        if quad.predicate.as_str() == RDF_TYPE
+            && matches!(&quad.object, Term::NamedNode(entry) if entry.as_str() == BRIDGE_PATH_ENTRY)
+        {
+            entries.insert(quad.subject.to_string());
+        }
+        if quad.predicate.as_str() == BRIDGE_SOURCE_PATH {
+            let Term::Literal(path) = &quad.object else {
+                return Err(Error::msg(format!("{iri}: {} is no path", quad.object)));
+            };
+            named.push((quad.subject.to_string(), path.value().to_owned()));
+        }
+    }
+    Ok(named
+        .into_iter()
+        .filter(|(subject, _)| entries.contains(subject))
+        .map(|(_, path)| path)
+        .collect())
+}
+
 fn query(resolver: &dyn Resolver, iri: &str, expected: Form, what: &str) -> Result<Query> {
     let text = String::from_utf8(resolver.read(iri)?)?;
     let parsed = spargebra::SparqlParser::new()
@@ -348,6 +382,11 @@ pub fn prepare(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prepared> {
         prefixes,
         envelopes,
         source_schema,
+        accounted: adapter
+            .source_accounting
+            .as_deref()
+            .map(|iri| accounted(resolver, iri))
+            .transpose()?,
     })
 }
 
@@ -364,7 +403,11 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
     // Decoding is the one stage that holds the whole document at once, so the
     // document schema below reads these characters rather than its own copy.
     let text = decode(source.xml)?;
-    let mut lift = lift_text(Cow::Borrowed(&text), Some(&prepared.unit))?;
+    let paths = match prepared.accounted {
+        Some(_) => Paths::Kept,
+        None => Paths::Dropped,
+    };
+    let mut lift = lift_text(Cow::Borrowed(&text), Some(&prepared.unit), paths)?;
     loop {
         let at = Instant::now();
         let Some(unit) = lift.next_unit()? else {
@@ -389,6 +432,21 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
             }
         }
         ms.validation += at.elapsed();
+
+        let at = Instant::now();
+        if let Some(accounted) = &prepared.accounted {
+            for occurrence in unit.occurrences() {
+                if accounted.contains(&occurrence.path) {
+                    continue;
+                }
+                findings.extend(annotation::unaccounted(
+                    &record,
+                    &occurrence.path,
+                    occurrence.within.as_deref(),
+                )?);
+            }
+        }
+        ms.findings += at.elapsed();
 
         let at = Instant::now();
         unit.store.extend(prepared.tables.iter().cloned())?;

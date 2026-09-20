@@ -58,7 +58,7 @@ fn prints_a_line_per_entry_and_exits_non_zero_when_an_entry_fails() {
     assert!(outcomes.contains(&("passed", "pass")), "{stdout}");
     assert!(outcomes.contains(&("failed", "graph-fail")), "{stdout}");
     assert!(
-        stdout.contains("2 passed, 2 failed, 1 cantTell, 1 untested"),
+        stdout.contains("3 passed, 2 failed, 1 cantTell, 1 untested"),
         "{stdout}"
     );
 }

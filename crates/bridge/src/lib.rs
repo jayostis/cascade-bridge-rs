@@ -21,7 +21,7 @@ mod validate;
 pub use earl::{earl_report, earl_report_at, ReportSubject};
 pub use error::{Error, Result};
 pub use harness::{run_manifest, EntryResult, Outcome, RunOptions, OFFERED_PROFILES};
-pub use lift::{lift_slice, lift_text, Lift, Unit, FX, XYZ};
+pub use lift::{lift_slice, lift_text, Lift, Paths, Unit, FX, XYZ};
 pub use load::{load_adapter, Adapter, Envelope};
 pub use rdf::{serialise, GraphFormat};
 pub use resolver::{file_iri, DirectoryResolver, Resolver};
