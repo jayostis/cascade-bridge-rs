@@ -4,11 +4,13 @@ PREFIX oa:     <http://www.w3.org/ns/oa#>
 PREFIX fx:     <http://sparql.xyz/facade-x/ns/>
 PREFIX xyz:    <http://sparql.xyz/facade-x/data/>
 PREFIX bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#>
+PREFIX ex:     <urn:example:catalog#>
 
 CONSTRUCT {
   [] a oa:Annotation ;
     oa:hasTarget [ oa:hasSource bridge:thisRecord ] ;
-    oa:hasBody [ a oa:TextualBody ; rdf:value "the item has no title" ] ;
+    oa:hasBody ex:itemHasNoTitle ;
+    oa:motivatedBy oa:classifying ;
     sh:resultSeverity sh:Warning .
 }
 WHERE {

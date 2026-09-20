@@ -1,0 +1,19 @@
+# What this adapter does not carry, each gap under one of the kinds the
+# specification fixes.
+@prefix skos:   <http://www.w3.org/2004/02/skos/core#> .
+@prefix bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+@prefix ex:     <urn:example:catalog#> .
+
+ex:gaps a skos:ConceptScheme ;
+  skos:prefLabel "the catalog adapter's gaps" .
+
+ex:itemHasNoTitle a skos:Concept ;
+  skos:prefLabel "an item with no title" ;
+  skos:inScheme ex:gaps ;
+  skos:broader bridge:sourceLacksRequired ;
+  bridge:closedBy ex:title .
+
+ex:noteHasNoTerm a skos:Concept ;
+  skos:prefLabel "a free-text note" ;
+  skos:inScheme ex:gaps ;
+  skos:broader bridge:noPredicate .
