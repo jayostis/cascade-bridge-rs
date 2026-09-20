@@ -8,9 +8,9 @@
 // would claim to be alternatives of each other.
 use crate::error::{Error, Result};
 use crate::rdf::{
-    BRIDGE_THIS_RECORD, OA_ANNOTATION, OA_CLASSIFYING, OA_HAS_BODY, OA_HAS_SELECTOR, OA_HAS_SOURCE,
-    OA_HAS_TARGET, OA_MOTIVATED_BY, OA_REFINED_BY, OA_XPATH_SELECTOR, RDF_TYPE, RDF_VALUE,
-    SH_RESULT_SEVERITY, SH_VIOLATION,
+    BRIDGE_PATH_NOT_ACCOUNTED, BRIDGE_THIS_RECORD, OA_ANNOTATION, OA_CLASSIFYING, OA_HAS_BODY,
+    OA_HAS_SELECTOR, OA_HAS_SOURCE, OA_HAS_TARGET, OA_MOTIVATED_BY, OA_REFINED_BY,
+    OA_XPATH_SELECTOR, RDF_TYPE, RDF_VALUE, SH_INFO, SH_RESULT_SEVERITY, SH_VALUE, SH_VIOLATION,
 };
 use oxrdf::{BlankNode, GraphName, Literal, NamedNode, NamedOrBlankNode, Quad, Term};
 use std::collections::{HashMap, HashSet};
@@ -108,10 +108,16 @@ fn copy(
     made
 }
 
-/// The finding a Bridge stage made itself: the rule it names as its body, and
-/// the element inside the record the rule was broken on, where that is not the
-/// record itself.
-pub fn violation(record: &Record, body: &str, within: Option<&str>) -> Result<Vec<Quad>> {
+/// The finding a Bridge stage made itself: what it names as its body, the node
+/// inside the record it is addressed at where that is not the record itself,
+/// its severity, and what its body alone cannot say.
+fn finding(
+    record: &Record,
+    body: &str,
+    within: Option<&str>,
+    severity: &str,
+    value: Option<&str>,
+) -> Result<Vec<Quad>> {
     let mut quads = Vec::new();
     let annotation = BlankNode::default();
     let target = BlankNode::default();
@@ -144,12 +150,33 @@ pub fn violation(record: &Record, body: &str, within: Option<&str>) -> Result<Ve
         OA_MOTIVATED_BY,
         named(OA_CLASSIFYING)?,
     )?);
-    quads.push(triple(
-        annotation,
-        SH_RESULT_SEVERITY,
-        named(SH_VIOLATION)?,
-    )?);
+    if let Some(value) = value {
+        quads.push(triple(
+            annotation.clone(),
+            SH_VALUE,
+            Literal::new_simple_literal(value),
+        )?);
+    }
+    quads.push(triple(annotation, SH_RESULT_SEVERITY, named(severity)?)?);
     Ok(quads)
+}
+
+/// The rule a Bridge stage found broken, and the element inside the record it
+/// was broken on.
+pub fn violation(record: &Record, body: &str, within: Option<&str>) -> Result<Vec<Quad>> {
+    finding(record, body, within, SH_VIOLATION, None)
+}
+
+/// A path of the record the adapter's accounting says nothing about, named as
+/// the entry that would silence it, at its first occurrence.
+pub fn unaccounted(record: &Record, path: &str, within: Option<&str>) -> Result<Vec<Quad>> {
+    finding(
+        record,
+        BRIDGE_PATH_NOT_ACCOUNTED,
+        within,
+        SH_INFO,
+        Some(path),
+    )
 }
 
 /// What a findings query constructed, made about this record: bridge:thisRecord
