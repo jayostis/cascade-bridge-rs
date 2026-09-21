@@ -11,12 +11,14 @@
 use crate::annotation::{self, Minted, Record};
 use crate::decode::decode;
 use crate::error::{Error, Result};
-use crate::lift::{lift_text, Paths};
+use crate::lift::{lift_text, Paths, Valued};
 use crate::load::{subject, value, Adapter};
 use crate::rdf::{
-    BRIDGE_CARRIED_IN_PART, BRIDGE_NAMES_GAP, BRIDGE_NO_HOME, BRIDGE_NO_PREDICATE,
-    BRIDGE_PATH_ENTRY, BRIDGE_SOURCE_LACKS_REQUIRED, BRIDGE_SOURCE_PATH, BRIDGE_VERDICT, RDF_TYPE,
-    SCHEMA_ENCODING_FORMAT, SH_INFO, SH_RESULT_SEVERITY, SH_VIOLATION, SH_WARNING, SKOS_BROADER,
+    BRIDGE_CARRIED_IN_PART, BRIDGE_LOOKUP_IN, BRIDGE_LOOKUP_NAMES_GAP, BRIDGE_NAMES_GAP,
+    BRIDGE_NO_HOME, BRIDGE_NO_PREDICATE, BRIDGE_PATH_ENTRY, BRIDGE_SOURCE_LACKS_REQUIRED,
+    BRIDGE_SOURCE_PATH, BRIDGE_VALUE_NOT_MAPPED, BRIDGE_VERDICT, RDF_TYPE, SCHEMA_ENCODING_FORMAT,
+    SH_INFO, SH_RESULT_SEVERITY, SH_VIOLATION, SH_WARNING, SKOS_BROADER, SKOS_CONCEPT_SCHEME,
+    SKOS_NOTATION,
 };
 use crate::resolver::Resolver;
 use crate::validate::{self, Schema};
@@ -258,6 +260,10 @@ struct Entry {
     path: String,
     verdict: Option<String>,
     gap: Option<String>,
+    /// The concept map the values at this path are looked up in, and the gap a
+    /// value it holds no notation for bodies.
+    map: Option<String>,
+    miss: Option<String>,
 }
 
 /// What a concept of an adapter's gap scheme declares about itself.
@@ -286,11 +292,29 @@ struct Reported {
     severity: String,
 }
 
+/// A concept map an entry looks a path's values up in: the notations the one
+/// scheme the file holds carries, the gap a value outside them bodies, and the
+/// severity that gap's concept gives it. Nothing else about a concept is a
+/// Bridge's business; the term each one matches is the mapping query's.
+struct Lookup {
+    gap: String,
+    severity: String,
+    notations: HashSet<String>,
+}
+
+/// A value's key: the value case-folded and whitespace-trimmed, which is the
+/// form a `skos:notation` is written in.
+fn key(value: &str) -> String {
+    value.trim().to_lowercase()
+}
+
 /// What an adapter's accounting says about the paths of a record: which of
-/// them it carries at all, and which of them an entry reports a gap at.
+/// them it carries at all, which of them an entry reports a gap at, and which
+/// of them an entry looks the values at up.
 struct Accounting {
     paths: HashSet<String>,
     reported: HashMap<String, Vec<Reported>>,
+    lookups: HashMap<String, Vec<Lookup>>,
 }
 
 impl Accounting {
@@ -298,9 +322,16 @@ impl Accounting {
     /// here rather than passed over. Whether it reports is not a question this
     /// Bridge can answer about such a gap, and answering "it does not" drops a
     /// finding for a reason no reader of the output can see.
-    fn of(entries: Vec<Entry>, scheme: &HashMap<String, Gap>, iri: &str) -> Result<Self> {
+    fn of(
+        entries: Vec<Entry>,
+        scheme: &HashMap<String, Gap>,
+        iri: &str,
+        resolver: &dyn Resolver,
+    ) -> Result<Self> {
         let mut paths = HashSet::new();
         let mut reported: HashMap<String, Vec<Reported>> = HashMap::new();
+        let mut lookups: HashMap<String, Vec<Lookup>> = HashMap::new();
+        let mut maps: HashMap<String, HashSet<String>> = HashMap::new();
         for entry in entries {
             if let (Some(verdict), Some(gap)) = (&entry.verdict, &entry.gap) {
                 if NAMES_A_GAP.contains(&verdict.as_str()) {
@@ -332,6 +363,57 @@ impl Accounting {
                     }
                 }
             }
+            match (&entry.map, &entry.miss) {
+                (None, None) => {}
+                (Some(_), None) | (None, Some(_)) => {
+                    return Err(Error::msg(format!(
+                        "{iri}: the entry for {} declares one half of a lookup; bridge:lookupIn \
+                         and bridge:lookupNamesGap are declared together or not at all",
+                        entry.path
+                    )))
+                }
+                (Some(map), Some(gap)) => {
+                    let declared = scheme.get(gap.as_str()).ok_or_else(|| {
+                        Error::msg(format!(
+                            "{iri}: the lookup of the entry for {} names {gap}, which the \
+                             adapter's bridge:gapScheme does not declare",
+                            entry.path
+                        ))
+                    })?;
+                    let kind = declared.kind.as_deref().ok_or_else(|| {
+                        Error::msg(format!(
+                            "{iri}: the lookup of the entry for {} names {gap}, which declares no \
+                             skos:broader, so what kind of gap it is cannot be read",
+                            entry.path
+                        ))
+                    })?;
+                    if kind != BRIDGE_VALUE_NOT_MAPPED {
+                        return Err(Error::msg(format!(
+                            "{iri}: the lookup of the entry for {} names {gap}, a gap of kind \
+                             {kind}; a value a concept map holds no notation for is a gap of kind \
+                             {BRIDGE_VALUE_NOT_MAPPED}",
+                            entry.path
+                        )));
+                    }
+                    if !maps.contains_key(map) {
+                        let notations = concept_map(resolver, map).map_err(|e| {
+                            Error::msg(format!(
+                                "{iri}: the entry for {} looks its values up in {e}",
+                                entry.path
+                            ))
+                        })?;
+                        maps.insert(map.clone(), notations);
+                    }
+                    lookups.entry(entry.path.clone()).or_default().push(Lookup {
+                        gap: gap.clone(),
+                        severity: declared
+                            .severity
+                            .clone()
+                            .unwrap_or_else(|| SH_INFO.to_owned()),
+                        notations: maps[map].clone(),
+                    });
+                }
+            }
             paths.insert(entry.path);
         }
         // A graph has no order of its own, so a run's output does not depend on
@@ -339,7 +421,14 @@ impl Accounting {
         for gaps in reported.values_mut() {
             gaps.sort_by(|one, two| one.gap.cmp(&two.gap));
         }
-        Ok(Self { paths, reported })
+        for found in lookups.values_mut() {
+            found.sort_by(|one, two| one.gap.cmp(&two.gap));
+        }
+        Ok(Self {
+            paths,
+            reported,
+            lookups,
+        })
     }
 }
 
@@ -379,6 +468,8 @@ fn entries(resolver: &dyn Resolver, iri: &str) -> Result<Vec<Entry>> {
     let mut named = Vec::new();
     let mut verdicts: HashMap<String, Vec<Term>> = HashMap::new();
     let mut gaps: HashMap<String, Vec<Term>> = HashMap::new();
+    let mut maps: HashMap<String, Vec<Term>> = HashMap::new();
+    let mut misses: HashMap<String, Vec<Term>> = HashMap::new();
     for quad in RdfParser::from_format(RdfFormat::Turtle)
         .with_base_iri(iri)?
         .for_slice(&bytes)
@@ -398,6 +489,8 @@ fn entries(resolver: &dyn Resolver, iri: &str) -> Result<Vec<Entry>> {
             }
             BRIDGE_VERDICT => verdicts.entry(subject).or_default().push(quad.object),
             BRIDGE_NAMES_GAP => gaps.entry(subject).or_default().push(quad.object),
+            BRIDGE_LOOKUP_IN => maps.entry(subject).or_default().push(quad.object),
+            BRIDGE_LOOKUP_NAMES_GAP => misses.entry(subject).or_default().push(quad.object),
             _ => {}
         }
     }
@@ -413,6 +506,8 @@ fn entries(resolver: &dyn Resolver, iri: &str) -> Result<Vec<Entry>> {
         entries.push(Entry {
             verdict: said(&verdicts, "verdict")?,
             gap: said(&gaps, "gap")?,
+            map: said(&maps, "bridge:lookupIn")?,
+            miss: said(&misses, "bridge:lookupNamesGap")?,
             path: path.clone(),
         });
     }
@@ -477,6 +572,47 @@ fn gap_scheme(resolver: &dyn Resolver, iri: &str) -> Result<HashMap<String, Gap>
         }
     }
     Ok(scheme)
+}
+
+/// Every `skos:notation` a concept map carries, which is the whole of what a
+/// Bridge reads from one. A file holding other than one `skos:ConceptScheme` is
+/// refused: which scheme a value is looked up in would otherwise be the parse
+/// order's to decide, or nothing's.
+fn concept_map(resolver: &dyn Resolver, iri: &str) -> Result<HashSet<String>> {
+    let bytes = resolver
+        .read(iri)
+        .map_err(|e| Error::msg(format!("{iri}: {e}")))?;
+    let mut schemes = HashSet::new();
+    let mut notations = HashSet::new();
+    for quad in RdfParser::from_format(RdfFormat::Turtle)
+        .with_base_iri(iri)?
+        .for_slice(&bytes)
+    {
+        let quad = quad.map_err(|e| Error::msg(format!("{iri}: {e}")))?;
+        match quad.predicate.as_str() {
+            RDF_TYPE if matches!(&quad.object, Term::NamedNode(scheme) if scheme.as_str() == SKOS_CONCEPT_SCHEME) =>
+            {
+                schemes.insert(quad.subject.to_string());
+            }
+            SKOS_NOTATION => {
+                let Term::Literal(notation) = &quad.object else {
+                    return Err(Error::msg(format!(
+                        "{iri}: {} is no skos:notation",
+                        quad.object
+                    )));
+                };
+                notations.insert(notation.value().to_owned());
+            }
+            _ => {}
+        }
+    }
+    if schemes.len() != 1 {
+        return Err(Error::msg(format!(
+            "{iri}: the file holds {} concept schemes; a bridge:lookupIn names a file holding one",
+            schemes.len()
+        )));
+    }
+    Ok(notations)
 }
 
 fn query(resolver: &dyn Resolver, iri: &str, expected: Form, what: &str) -> Result<Query> {
@@ -590,7 +726,7 @@ pub fn prepare(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prepared> {
         accounting: adapter
             .source_accounting
             .as_deref()
-            .map(|iri| Accounting::of(entries(resolver, iri)?, &scheme, iri))
+            .map(|iri| Accounting::of(entries(resolver, iri)?, &scheme, iri, resolver))
             .transpose()?,
     })
 }
@@ -608,8 +744,10 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
     // Decoding is the one stage that holds the whole document at once, so the
     // document schema below reads these characters rather than its own copy.
     let text = decode(source.xml)?;
-    let paths = match prepared.accounting {
-        Some(_) => Paths::Kept,
+    let paths = match &prepared.accounting {
+        Some(accounting) => Paths::Kept {
+            valued: accounting.lookups.keys().cloned().collect(),
+        },
         None => Paths::Dropped,
     };
     let mut lift = lift_text(Cow::Borrowed(&text), Some(&prepared.unit), paths)?;
@@ -662,6 +800,31 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
                         occurrence.within.as_deref(),
                         &reported.severity,
                         occurrence.count,
+                    )?);
+                }
+            }
+            // A graph has no order of its own, as the gaps above have none.
+            let mut held: Vec<&Valued> = unit.values().iter().collect();
+            held.sort_by(|one, two| (&one.path, &one.value).cmp(&(&two.path, &two.value)));
+            for valued in held {
+                let key = key(&valued.value);
+                if key.is_empty() {
+                    continue;
+                }
+                for lookup in accounting
+                    .lookups
+                    .get(&valued.path)
+                    .into_iter()
+                    .flatten()
+                    .filter(|lookup| !lookup.notations.contains(&key))
+                {
+                    findings.extend(annotation::lookup(
+                        &record,
+                        &lookup.gap,
+                        &valued.value,
+                        valued.within.as_deref(),
+                        &lookup.severity,
+                        valued.count,
                     )?);
                 }
             }
