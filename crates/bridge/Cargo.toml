@@ -16,4 +16,5 @@ oxrdfio = "=0.2.6"
 oxsdatatypes = "=0.2.3"
 quick-xml = "=0.37.5"
 spargebra = { version = "=0.4.7", features = ["sep-0002", "sep-0006"] }
+xpath-eval = "=0.2.2"
 xsd-schema = "=0.2.0"

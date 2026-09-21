@@ -8,10 +8,10 @@
 // would claim to be alternatives of each other.
 use crate::error::{Error, Result};
 use crate::rdf::{
-    BRIDGE_OCCURRENCES, BRIDGE_PATH_NOT_ACCOUNTED, BRIDGE_THIS_RECORD, OA_ANNOTATION,
-    OA_CLASSIFYING, OA_HAS_BODY, OA_HAS_SELECTOR, OA_HAS_SOURCE, OA_HAS_TARGET, OA_MOTIVATED_BY,
-    OA_REFINED_BY, OA_XPATH_SELECTOR, RDF_TYPE, RDF_VALUE, SH_INFO, SH_RESULT_SEVERITY, SH_VALUE,
-    SH_VIOLATION,
+    BRIDGE_ADDRESS_NOT_ONE_NODE, BRIDGE_OCCURRENCES, BRIDGE_PATH_NOT_ACCOUNTED, BRIDGE_THIS_RECORD,
+    OA_ANNOTATION, OA_CLASSIFYING, OA_HAS_BODY, OA_HAS_SELECTOR, OA_HAS_SOURCE, OA_HAS_TARGET,
+    OA_MOTIVATED_BY, OA_REFINED_BY, OA_XPATH_SELECTOR, RDF_TYPE, RDF_VALUE, SH_INFO,
+    SH_RESULT_SEVERITY, SH_VALUE, SH_VIOLATION,
 };
 use oxrdf::vocab::xsd;
 use oxrdf::{BlankNode, GraphName, Literal, NamedNode, NamedOrBlankNode, Quad, Term};
@@ -176,6 +176,21 @@ fn finding(
 /// was broken on.
 pub fn violation(record: &Record, body: &str, within: Option<&str>) -> Result<Vec<Quad>> {
     finding(record, body, within, SH_VIOLATION, None, 1)
+}
+
+/// An address a finding carries that this Bridge could not follow: it selects
+/// no node of the record, or more than one, so which node the finding is about
+/// is not recoverable. The finding whose address it is stands; this stands
+/// beside it.
+pub fn address(record: &Record, written: &str) -> Result<Vec<Quad>> {
+    finding(
+        record,
+        BRIDGE_ADDRESS_NOT_ONE_NODE,
+        None,
+        SH_VIOLATION,
+        Some(written),
+        1,
+    )
 }
 
 /// A path of the record the adapter's accounting says nothing about, named as

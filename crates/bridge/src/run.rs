@@ -22,6 +22,7 @@ use crate::rdf::{
 };
 use crate::resolver::Resolver;
 use crate::validate::{self, Schema};
+use crate::xpath;
 use oxigraph::model::{GraphName, NamedOrBlankNode, Quad, Term};
 use oxigraph::sparql::{PreparedSparqlQuery, QueryResults, SparqlEvaluator};
 use oxigraph::store::Store;
@@ -766,6 +767,7 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
         };
 
         let at = Instant::now();
+        let mark = findings.len();
         if let Some(schema) = &prepared.source_schema {
             for broken in schema.errors(&unit.xml)? {
                 findings.extend(annotation::violation(
@@ -852,6 +854,11 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
             )?);
         }
         ms.findings += at.elapsed();
+
+        let at = Instant::now();
+        let reports = xpath::unresolved(&record, &unit.xml, &findings[mark..])?;
+        findings.extend(reports);
+        ms.findings += at.elapsed();
     }
 
     let envelope = named.or_else(|| prepared.envelope_of(lift.document_element()));
@@ -867,6 +874,7 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
             source: source.iri,
             selector: &selector,
         };
+        let mark = findings.len();
         for broken in schema.errors(&text)? {
             findings.extend(annotation::violation(
                 &record,
@@ -874,6 +882,8 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
                 broken.within(),
             )?);
         }
+        let reports = xpath::unresolved(&record, &text, &findings[mark..])?;
+        findings.extend(reports);
     }
     ms.validation += at.elapsed();
 
