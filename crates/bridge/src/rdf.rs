@@ -1,9 +1,11 @@
 // The RDF plumbing every stage shares: the terms it names, the one canonical
 // form graphs are compared in, and the text a produced graph is handed over as.
 use crate::error::Result;
+use oxiri::Iri;
 use oxrdf::dataset::{CanonicalizationAlgorithm, CanonicalizationHashAlgorithm};
-use oxrdf::{Dataset, NamedOrBlankNode, Quad, Term};
+use oxrdf::{Dataset, NamedNode, NamedOrBlankNode, Quad, Term};
 use oxrdfio::{RdfFormat, RdfSerializer};
+use std::borrow::Cow;
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 macro_rules! terms {
@@ -233,7 +235,99 @@ pub fn serialise(
     format: GraphFormat,
     prefixes: &[(String, String)],
 ) -> Result<String> {
-    let namespaces = namespaces(quads);
+    serialise_at(quads, format, prefixes, None)
+}
+
+/// The reference a file standing at `base` names `iri` by, where it can name
+/// it at all: the same scheme and authority, no query or fragment on either,
+/// and a path a run of "../" reaches from the file's own directory.
+///
+/// Nothing else is relative, and an IRI this cannot name is named in full.
+fn relative_to(base: &Iri<&str>, iri: &str) -> Option<String> {
+    let target = Iri::parse(iri).ok()?;
+    if target.scheme() != base.scheme()
+        || target.authority() != base.authority()
+        || [
+            target.query(),
+            target.fragment(),
+            base.query(),
+            base.fragment(),
+        ]
+        .iter()
+        .any(Option::is_some)
+    {
+        return None;
+    }
+    // A relative reference is resolved against the directory the file stands
+    // in, so the file's own name is not part of the way back up.
+    let mut here: Vec<&str> = base.path().split('/').collect();
+    here.pop()?;
+    let there: Vec<&str> = target.path().split('/').collect();
+    let shared = here
+        .iter()
+        .zip(&there)
+        .take_while(|(here, there)| here == there)
+        .count();
+    let down = &there[shared..];
+    // An empty step would read as "//", an authority; a colon in the first
+    // step would read as a scheme.
+    if down.is_empty() || down.iter().any(|step| step.is_empty()) || down[0].contains(':') {
+        return None;
+    }
+    Some(format!(
+        "{}{}",
+        "../".repeat(here.len() - shared),
+        down.join("/")
+    ))
+}
+
+/// Every IRI of the graph a file standing at `base` can name relative to
+/// itself, named that way.
+fn relative(quads: &[Quad], base: &Iri<&str>) -> Vec<Quad> {
+    let named = |node: &NamedNode| match relative_to(base, node.as_str()) {
+        Some(reference) => NamedNode::new_unchecked(reference),
+        None => node.clone(),
+    };
+    quads
+        .iter()
+        .map(|quad| {
+            Quad::new(
+                match &quad.subject {
+                    NamedOrBlankNode::NamedNode(node) => NamedOrBlankNode::from(named(node)),
+                    blank => blank.clone(),
+                },
+                named(&quad.predicate),
+                match &quad.object {
+                    Term::NamedNode(node) => Term::from(named(node)),
+                    other => other.clone(),
+                },
+                quad.graph_name.clone(),
+            )
+        })
+        .collect()
+}
+
+/// The graph as the text of a file standing at `at`, which every IRI it can
+/// name relative to itself is named relative to.
+///
+/// No base is written into the file. A reader resolves a Turtle file's
+/// relative IRIs against the IRI it read the file from, which is what lets a
+/// committed oracle name its own checkout's documents; a base written into the
+/// file would resolve them against the machine that produced it instead, which
+/// is the defect this is here to close.
+///
+/// N-Triples has no relative IRI, so `at` does nothing there.
+pub fn serialise_at(
+    quads: &[Quad],
+    format: GraphFormat,
+    prefixes: &[(String, String)],
+    at: Option<&str>,
+) -> Result<String> {
+    let named = match (at, format) {
+        (Some(at), GraphFormat::Turtle) => Cow::Owned(relative(quads, &Iri::parse(at)?)),
+        _ => Cow::Borrowed(quads),
+    };
+    let namespaces = namespaces(&named);
     let mut serializer = RdfSerializer::from_format(format.format());
     for (prefix, namespace) in prefixes {
         if namespaces.contains(namespace.as_str()) {
@@ -242,10 +336,54 @@ pub fn serialise(
     }
     let mut serializer = serializer.for_writer(Vec::new());
     let mut written: HashSet<&Quad> = HashSet::new();
-    for quad in quads {
+    for quad in named.iter() {
         if written.insert(quad) {
             serializer.serialize_quad(quad)?;
         }
     }
     Ok(String::from_utf8(serializer.finish()?)?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::relative_to;
+    use oxiri::Iri;
+
+    const ORACLE: &str = "file:///checkout/fixtures/findings/two.ttl";
+
+    fn named(iri: &str) -> Option<String> {
+        relative_to(&Iri::parse(ORACLE).expect("the file's own IRI"), iri)
+    }
+
+    #[test]
+    fn names_a_document_beside_the_file_by_the_way_up_and_back_down_to_it() {
+        assert_eq!(
+            named("file:///checkout/fixtures/in/two.xml").as_deref(),
+            Some("../in/two.xml")
+        );
+        assert_eq!(
+            named("file:///checkout/fixtures/findings/other.ttl").as_deref(),
+            Some("other.ttl")
+        );
+        assert_eq!(
+            named("file:///elsewhere/in/two.xml").as_deref(),
+            Some("../../../elsewhere/in/two.xml")
+        );
+        assert_eq!(named(ORACLE).as_deref(), Some("two.ttl"));
+    }
+
+    #[test]
+    fn names_in_full_every_iri_the_file_cannot_name_relative_to_itself() {
+        for iri in [
+            // Another scheme, which is every body a gap scheme declares.
+            "urn:example:catalog#noteHasNoTerm",
+            "https://ns.cascadeprotocol.org/bridge/v1-draft#pathNotAccounted",
+            // Another host: a relative reference cannot cross one.
+            "file://elsewhere/checkout/fixtures/in/two.xml",
+            // A fragment, which resolution would carry along with the path.
+            "file:///checkout/fixtures/in/two.xml#record",
+        ] {
+            assert_eq!(named(iri), None, "{iri}");
+        }
+    }
 }
