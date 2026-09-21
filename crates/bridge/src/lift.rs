@@ -132,6 +132,7 @@ pub(crate) struct Valued {
 
 /// Whether the paths of each record are kept as it is lifted, and the paths the
 /// values standing at them are kept for.
+#[derive(Clone, PartialEq, Eq)]
 pub enum Paths {
     Kept { valued: HashSet<String> },
     Dropped,
@@ -159,7 +160,7 @@ struct Census {
 }
 
 impl Census {
-    fn of(record: &Step, attributes: &[(Step, String)], valued: &HashSet<String>) -> Self {
+    fn of(record: &Step, attributes: &[Attribute], valued: &HashSet<String>) -> Self {
         let mut census = Self::default();
         let path = format!("/{}", record.write(false));
         census.attributes(&path, None, attributes, valued);
@@ -174,7 +175,7 @@ impl Census {
         census
     }
 
-    fn open(&mut self, step: Step, attributes: &[(Step, String)], valued: &HashSet<String>) {
+    fn open(&mut self, step: Step, attributes: &[Attribute], valued: &HashSet<String>) {
         let (path, within) = {
             let parent = self.below.last_mut().expect("the record element is open");
             parent.childless = false;
@@ -217,11 +218,11 @@ impl Census {
         &mut self,
         element: &str,
         within: Option<&str>,
-        attributes: &[(Step, String)],
+        attributes: &[Attribute],
         valued: &HashSet<String>,
     ) {
-        for (attribute, value) in attributes {
-            let path = format!("{element}/@{}", attribute.write(false));
+        for (step, value) in attributes.iter().filter_map(Attribute::named) {
+            let path = format!("{element}/@{}", step.write(false));
             if valued.contains(&path) {
                 self.hold(&path, within, value);
             }
@@ -297,12 +298,25 @@ struct Element<'a> {
     namespace: Option<&'a str>,
     qname: &'a str,
     type_iri: NamedNode,
-    attributes: Vec<(NamedNode, String)>,
-    /// What each attribute is named in a path and what it says, an attribute
-    /// taking no place among siblings of its name.
-    named_attributes: Vec<(Step, String)>,
+    attributes: Vec<Attribute>,
     written: Vec<(String, String)>,
     declarations: Vec<(String, String)>,
+}
+
+/// An attribute as the parser read it: what a triple names it, what it says,
+/// and what a path names it, an attribute taking no place among siblings of
+/// its name. Only the census reads a step, so only a lift keeping paths
+/// spells one.
+struct Attribute {
+    predicate: NamedNode,
+    value: String,
+    step: Option<Step>,
+}
+
+impl Attribute {
+    fn named(&self) -> Option<(&Step, &str)> {
+        Some((self.step.as_ref()?, self.value.as_str()))
+    }
 }
 
 struct Frame {
@@ -381,6 +395,10 @@ impl Builder {
 
     fn inside_unit(&self) -> bool {
         self.stack.last().is_some_and(|f| f.unit)
+    }
+
+    fn keeps_paths(&self) -> bool {
+        matches!(self.paths, Paths::Kept { .. })
     }
 
     /// Characters of the unit, as the document wrote them.
@@ -469,7 +487,7 @@ impl Builder {
                 &element.declarations,
             ));
             if let (Some(census), Paths::Kept { valued }) = (&mut self.census, &self.paths) {
-                census.open(step.clone(), &element.named_attributes, valued);
+                census.open(step.clone(), &element.attributes, valued);
             }
             let id = self.fresh();
             let top = self.stack.last_mut().expect("checked above");
@@ -477,9 +495,12 @@ impl Builder {
             let slot = triple(&top.id, member(top.members)?, id.clone());
             self.unit.push(slot);
             self.unit.push(triple(&id, rdf_type, element.type_iri));
-            for (predicate, value) in element.attributes {
-                self.unit
-                    .push(triple(&id, predicate, Literal::new_simple_literal(value)));
+            for attribute in element.attributes {
+                self.unit.push(triple(
+                    &id,
+                    attribute.predicate,
+                    Literal::new_simple_literal(attribute.value),
+                ));
             }
             self.stack.push(frame(id, true, Some(step)));
             return Ok(());
@@ -511,9 +532,7 @@ impl Builder {
                 .chain([step.clone()])
                 .collect();
             let census = match &self.paths {
-                Paths::Kept { valued } => {
-                    Some(Census::of(&step, &element.named_attributes, valued))
-                }
+                Paths::Kept { valued } => Some(Census::of(&step, &element.attributes, valued)),
                 Paths::Dropped => None,
             };
             self.census = census;
@@ -528,20 +547,23 @@ impl Builder {
             self.unit
                 .push(triple(&unit_id, rdf_type.clone(), self.fx_root.clone()));
             self.unit.push(triple(&unit_id, rdf_type, element.type_iri));
-            for (predicate, value) in element.attributes {
+            for attribute in element.attributes {
                 self.unit.push(triple(
                     &unit_id,
-                    predicate,
-                    Literal::new_simple_literal(value),
+                    attribute.predicate,
+                    Literal::new_simple_literal(attribute.value),
                 ));
             }
             self.stack.push(frame(unit_id, true, Some(step)));
             return Ok(());
         }
 
-        for (predicate, value) in element.attributes {
-            self.skeleton
-                .push(triple(&id, predicate, Literal::new_simple_literal(value)));
+        for attribute in element.attributes {
+            self.skeleton.push(triple(
+                &id,
+                attribute.predicate,
+                Literal::new_simple_literal(attribute.value),
+            ));
         }
         self.stack.push(frame(id, false, Some(step)));
         Ok(())
@@ -648,7 +670,7 @@ impl<R: BufRead> Lift<R> {
                     let qname = String::from_utf8(start.name().as_ref().to_vec())?;
                     let type_iri = name(namespace.as_deref().unwrap_or(XYZ), &local)?;
                     let mut attributes = Vec::new();
-                    let mut named_attributes = Vec::new();
+                    let kept = self.builder.keeps_paths();
                     let mut written = Vec::new();
                     let mut declarations = Vec::new();
                     for attribute in start.attributes() {
@@ -675,15 +697,16 @@ impl<R: BufRead> Lift<R> {
                         let raw = std::str::from_utf8(&attribute.value)?;
                         let value = quick_xml::escape::unescape(&normalise_attribute_value(raw))?
                             .into_owned();
-                        named_attributes.push((
-                            Step {
-                                local: local.to_owned(),
-                                namespace: namespace.clone(),
-                                position: 1,
-                            },
-                            value.clone(),
-                        ));
-                        attributes.push((predicate, value));
+                        let step = kept.then(|| Step {
+                            local: local.to_owned(),
+                            namespace: namespace.clone(),
+                            position: 1,
+                        });
+                        attributes.push(Attribute {
+                            predicate,
+                            value,
+                            step,
+                        });
                     }
                     self.builder.open(Element {
                         local: &local,
@@ -691,7 +714,6 @@ impl<R: BufRead> Lift<R> {
                         qname: &qname,
                         type_iri,
                         attributes,
-                        named_attributes,
                         written,
                         declarations,
                     })?;

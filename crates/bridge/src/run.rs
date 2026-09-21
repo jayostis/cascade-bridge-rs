@@ -28,6 +28,7 @@ use oxigraph::store::Store;
 use oxrdfio::{RdfFormat, RdfParser};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 /// The form a query's own text declares, decided when it is parsed. Deciding
@@ -299,7 +300,7 @@ struct Reported {
 struct Lookup {
     gap: String,
     severity: String,
-    notations: HashSet<String>,
+    notations: Rc<HashSet<String>>,
 }
 
 /// A value's key: the value lowercased and trimmed of XML's S production,
@@ -331,7 +332,7 @@ impl Accounting {
         let mut paths = HashSet::new();
         let mut reported: HashMap<String, Vec<Reported>> = HashMap::new();
         let mut lookups: HashMap<String, Vec<Lookup>> = HashMap::new();
-        let mut maps: HashMap<String, HashSet<String>> = HashMap::new();
+        let mut maps: HashMap<String, Rc<HashSet<String>>> = HashMap::new();
         for entry in entries {
             if let (Some(verdict), Some(gap)) = (&entry.verdict, &entry.gap) {
                 if NAMES_A_GAP.contains(&verdict.as_str()) {
@@ -402,7 +403,7 @@ impl Accounting {
                                 entry.path
                             ))
                         })?;
-                        maps.insert(map.clone(), notations);
+                        maps.insert(map.clone(), Rc::new(notations));
                     }
                     lookups.entry(entry.path.clone()).or_default().push(Lookup {
                         gap: gap.clone(),
