@@ -16,7 +16,7 @@ use crate::load::{subject, value, Adapter};
 use crate::rdf::{
     BRIDGE_CARRIED_IN_PART, BRIDGE_NAMES_GAP, BRIDGE_NO_HOME, BRIDGE_NO_PREDICATE,
     BRIDGE_PATH_ENTRY, BRIDGE_SOURCE_LACKS_REQUIRED, BRIDGE_SOURCE_PATH, BRIDGE_VERDICT, RDF_TYPE,
-    SCHEMA_ENCODING_FORMAT, SH_INFO, SH_RESULT_SEVERITY, SKOS_BROADER,
+    SCHEMA_ENCODING_FORMAT, SH_INFO, SH_RESULT_SEVERITY, SH_VIOLATION, SH_WARNING, SKOS_BROADER,
 };
 use crate::resolver::Resolver;
 use crate::validate::{self, Schema};
@@ -276,6 +276,10 @@ const NAMES_A_GAP: [&str; 2] = [BRIDGE_NO_HOME, BRIDGE_CARRIED_IN_PART];
 /// holds is left to a findings query, which can count and compare.
 const REPORTS: [&str; 2] = [BRIDGE_NO_PREDICATE, BRIDGE_SOURCE_LACKS_REQUIRED];
 
+/// The severities a gap concept may declare, which are the severities the
+/// adapter profile's shape for a source finding accepts.
+const SEVERITIES: [&str; 3] = [SH_INFO, SH_WARNING, SH_VIOLATION];
+
 /// A gap a path's entry reports, and the severity its concept gives it.
 struct Reported {
     gap: String,
@@ -290,25 +294,42 @@ struct Accounting {
 }
 
 impl Accounting {
-    fn of(entries: Vec<Entry>, scheme: &HashMap<String, Gap>) -> Self {
+    /// A gap an entry names and the scheme cannot say the kind of is refused
+    /// here rather than passed over. Whether it reports is not a question this
+    /// Bridge can answer about such a gap, and answering "it does not" drops a
+    /// finding for a reason no reader of the output can see.
+    fn of(entries: Vec<Entry>, scheme: &HashMap<String, Gap>, iri: &str) -> Result<Self> {
         let mut paths = HashSet::new();
         let mut reported: HashMap<String, Vec<Reported>> = HashMap::new();
         for entry in entries {
             if let (Some(verdict), Some(gap)) = (&entry.verdict, &entry.gap) {
-                let declared = scheme.get(gap.as_str());
-                let kind = declared.and_then(|declared| declared.kind.as_deref());
-                if NAMES_A_GAP.contains(&verdict.as_str())
-                    && kind.is_some_and(|kind| REPORTS.contains(&kind))
-                {
-                    reported
-                        .entry(entry.path.clone())
-                        .or_default()
-                        .push(Reported {
-                            gap: gap.clone(),
-                            severity: declared
-                                .and_then(|declared| declared.severity.clone())
-                                .unwrap_or_else(|| SH_INFO.to_owned()),
-                        });
+                if NAMES_A_GAP.contains(&verdict.as_str()) {
+                    let declared = scheme.get(gap.as_str()).ok_or_else(|| {
+                        Error::msg(format!(
+                            "{iri}: the entry for {} names {gap}, which the adapter's \
+                             bridge:gapScheme does not declare",
+                            entry.path
+                        ))
+                    })?;
+                    let kind = declared.kind.as_deref().ok_or_else(|| {
+                        Error::msg(format!(
+                            "{iri}: the entry for {} names {gap}, which declares no skos:broader, \
+                             so what kind of gap it is cannot be read",
+                            entry.path
+                        ))
+                    })?;
+                    if REPORTS.contains(&kind) {
+                        reported
+                            .entry(entry.path.clone())
+                            .or_default()
+                            .push(Reported {
+                                gap: gap.clone(),
+                                severity: declared
+                                    .severity
+                                    .clone()
+                                    .unwrap_or_else(|| SH_INFO.to_owned()),
+                            });
+                    }
                 }
             }
             paths.insert(entry.path);
@@ -318,7 +339,7 @@ impl Accounting {
         for gaps in reported.values_mut() {
             gaps.sort_by(|one, two| one.gap.cmp(&two.gap));
         }
-        Self { paths, reported }
+        Ok(Self { paths, reported })
     }
 }
 
@@ -351,14 +372,16 @@ fn entries(resolver: &dyn Resolver, iri: &str) -> Result<Vec<Entry>> {
                 named.push((subject, path.value().to_owned()));
             }
             BRIDGE_VERDICT => {
-                if let Term::NamedNode(verdict) = &quad.object {
-                    verdicts.insert(subject, verdict.as_str().to_owned());
-                }
+                let Term::NamedNode(verdict) = &quad.object else {
+                    return Err(Error::msg(format!("{iri}: {} is no verdict", quad.object)));
+                };
+                verdicts.insert(subject, verdict.as_str().to_owned());
             }
             BRIDGE_NAMES_GAP => {
-                if let Term::NamedNode(gap) = &quad.object {
-                    gaps.insert(subject, gap.as_str().to_owned());
-                }
+                let Term::NamedNode(gap) = &quad.object else {
+                    return Err(Error::msg(format!("{iri}: {} is no gap", quad.object)));
+                };
+                gaps.insert(subject, gap.as_str().to_owned());
             }
             _ => {}
         }
@@ -376,7 +399,9 @@ fn entries(resolver: &dyn Resolver, iri: &str) -> Result<Vec<Entry>> {
 
 /// Each concept of an adapter's gap scheme, by the IRI an entry names it by. A
 /// crate that names a scheme and cannot show it is refused here, as its
-/// accounting is.
+/// accounting is, and so is one whose concept declares a severity outside the
+/// three the specification fixes: the finding it would carry is one the
+/// adapter profile's own shape for a source finding refuses.
 fn gap_scheme(resolver: &dyn Resolver, iri: &str) -> Result<HashMap<String, Gap>> {
     let bytes = resolver
         .read(iri)
@@ -387,23 +412,30 @@ fn gap_scheme(resolver: &dyn Resolver, iri: &str) -> Result<HashMap<String, Gap>
         .for_slice(&bytes)
     {
         let quad = quad.map_err(|e| Error::msg(format!("{iri}: {e}")))?;
-        let (NamedOrBlankNode::NamedNode(concept), Term::NamedNode(object)) =
-            (&quad.subject, &quad.object)
-        else {
+        let NamedOrBlankNode::NamedNode(concept) = &quad.subject else {
             continue;
         };
-        match quad.predicate.as_str() {
-            SKOS_BROADER => {
-                scheme.entry(concept.as_str().to_owned()).or_default().kind =
-                    Some(object.as_str().to_owned());
+        let predicate = quad.predicate.as_str();
+        if predicate != SKOS_BROADER && predicate != SH_RESULT_SEVERITY {
+            continue;
+        }
+        let Term::NamedNode(object) = &quad.object else {
+            return Err(Error::msg(format!(
+                "{iri}: {concept} declares {predicate} {}, which is no IRI",
+                quad.object
+            )));
+        };
+        let declared = scheme.entry(concept.as_str().to_owned()).or_default();
+        if predicate == SKOS_BROADER {
+            declared.kind = Some(object.as_str().to_owned());
+        } else {
+            if !SEVERITIES.contains(&object.as_str()) {
+                return Err(Error::msg(format!(
+                    "{iri}: {concept} declares sh:resultSeverity {object}; a gap's severity is \
+                     sh:Info, sh:Warning or sh:Violation"
+                )));
             }
-            SH_RESULT_SEVERITY => {
-                scheme
-                    .entry(concept.as_str().to_owned())
-                    .or_default()
-                    .severity = Some(object.as_str().to_owned());
-            }
-            _ => {}
+            declared.severity = Some(object.as_str().to_owned());
         }
     }
     Ok(scheme)
@@ -520,9 +552,8 @@ pub fn prepare(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prepared> {
         accounting: adapter
             .source_accounting
             .as_deref()
-            .map(|iri| entries(resolver, iri))
-            .transpose()?
-            .map(|entries| Accounting::of(entries, &scheme)),
+            .map(|iri| Accounting::of(entries(resolver, iri)?, &scheme, iri))
+            .transpose()?,
     })
 }
 

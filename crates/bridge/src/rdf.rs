@@ -33,6 +33,7 @@ terms! {
 
     SH_RESULT_SEVERITY = "http://www.w3.org/ns/shacl#", "resultSeverity";
     SH_VALUE = "http://www.w3.org/ns/shacl#", "value";
+    SH_WARNING = "http://www.w3.org/ns/shacl#", "Warning";
     SH_VIOLATION = "http://www.w3.org/ns/shacl#", "Violation";
     SH_INFO = "http://www.w3.org/ns/shacl#", "Info";
 
