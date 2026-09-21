@@ -5,8 +5,9 @@
 // record, how many.
 //
 // Which kinds report is the gap concept's own skos:broader: a gap true of the
-// path reports, and one true of a value at the path does not, because an entry
-// cannot say which of a path's values it is true of.
+// path reports, and one true of what the record happens to hold at the path
+// does not, because an entry cannot say which of that path's occurrences it is
+// true of.
 //
 // A crate naming no accounting is untouched by all of it, as it was in wave 1.
 use cascade_bridge::{
@@ -464,7 +465,7 @@ fn writes_a_namespaced_path_as_the_census_writes_it_for_the_same_node() {
 fn takes_the_severity_the_gap_declares_and_sh_info_where_it_declares_none() {
     let declared = Adapted::gaps(&gap_scheme(&[
         concept("noteHasNoTerm", "noPredicate", Some("Warning")),
-        concept("summaryLosesItsMarkup", "carriedWithLoss", None),
+        concept("summaryLosesItsMarkup", "sourceLacksRequired", None),
     ]));
     let found = findings(&declared, "every-verdict.xml");
     assert_eq!(
@@ -496,7 +497,7 @@ fn names_the_path_as_sh_value_the_same_string_the_entry_s_source_path_carries() 
     paths.sort();
     assert_eq!(
         paths,
-        ["/item/note", "/item/summary"],
+        ["/item/note"],
         "one finding stands for every node at the path, and one node's value would drop the rest"
     );
 }
@@ -506,15 +507,7 @@ fn bodies_a_reported_gap_at_the_gap_the_entry_names_and_motivates_it_by_classify
     let found = findings(&tiny(), "every-verdict.xml");
     assert_eq!(
         reported(&found),
-        [
-            row(NOTE_GAP, "/item/note", "/catalog/item[1]", "note[1]"),
-            row(
-                SUMMARY_GAP,
-                "/item/summary",
-                "/catalog/item[1]",
-                "summary[1]"
-            )
-        ]
+        [row(NOTE_GAP, "/item/note", "/catalog/item[1]", "note[1]")]
     );
     for annotation in reporters(&found) {
         assert_eq!(
@@ -532,7 +525,7 @@ fn bodies_a_reported_gap_at_the_gap_the_entry_names_and_motivates_it_by_classify
 
 #[test]
 fn reports_a_gap_of_every_kind_that_is_true_of_the_path() {
-    for kind in ["noPredicate", "sourceLacksRequired", "carriedWithLoss"] {
+    for kind in ["noPredicate", "sourceLacksRequired"] {
         let declared = Adapted::gaps(&gap_scheme(&[
             concept("noteHasNoTerm", kind, None),
             concept("summaryLosesItsMarkup", "carriedWithLoss", None),
@@ -547,8 +540,8 @@ fn reports_a_gap_of_every_kind_that_is_true_of_the_path() {
 }
 
 #[test]
-fn emits_nothing_for_a_gap_of_kind_value_not_mapped_or_schema_rule_unnamed() {
-    for kind in ["valueNotMapped", "schemaRuleUnnamed"] {
+fn emits_nothing_for_a_gap_of_a_kind_true_of_what_the_record_holds_at_the_path() {
+    for kind in ["carriedWithLoss", "valueNotMapped", "schemaRuleUnnamed"] {
         let declared = Adapted::gaps(&gap_scheme(&[
             concept("noteHasNoTerm", kind, None),
             concept("summaryLosesItsMarkup", kind, None),
@@ -556,9 +549,59 @@ fn emits_nothing_for_a_gap_of_kind_value_not_mapped_or_schema_rule_unnamed() {
         assert_eq!(
             reported(&findings(&declared, "every-verdict.xml")),
             Vec::new(),
-            "only some of a path's values are {kind}, and an entry cannot say which"
+            "only some of a path's occurrences are {kind}, and an entry cannot say which"
         );
     }
+}
+
+/// Every case above reads the reporting set forwards: it names a kind and
+/// asserts a finding. Narrowing the set passes all of them by reporting
+/// nothing at all, so the set is read backwards here — with a guard that the
+/// committed adapter really does stand an entry, a gap and a record at the
+/// path, and would report the moment the kind said the path rather than what
+/// the record holds at it.
+#[test]
+fn bodies_no_finding_at_a_gap_the_committed_adapter_declares_under_a_kind_that_does_not_report() {
+    let resolver = tiny();
+    let declared = String::from_utf8(
+        resolver
+            .read(&format!("{}{GAP_SCHEME}", resolver.root()))
+            .expect("the committed gap scheme"),
+    )
+    .expect("utf-8");
+    assert!(
+        declared.contains("ex:summaryLosesItsMarkup")
+            && declared.contains("skos:broader bridge:carriedWithLoss"),
+        "the committed scheme declares the summary's gap under a kind that does not report"
+    );
+
+    let found = findings(&resolver, "every-verdict.xml");
+    let bodies: Vec<String> = annotations(&found)
+        .iter()
+        .map(|annotation| says(&found, annotation, &format!("{OA}hasBody")))
+        .collect();
+    assert!(
+        !bodies.iter().any(|body| body == SUMMARY_GAP),
+        "no finding a run produced bodies a loss the entry recorded: {bodies:?}"
+    );
+
+    let reporting = Adapted::gaps(&gap_scheme(&[
+        concept("noteHasNoTerm", "noPredicate", None),
+        concept("summaryLosesItsMarkup", "noPredicate", None),
+    ]));
+    assert_eq!(
+        reported(&findings(&reporting, "every-verdict.xml")),
+        [
+            row(NOTE_GAP, "/item/note", "/catalog/item[1]", "note[1]"),
+            row(
+                SUMMARY_GAP,
+                "/item/summary",
+                "/catalog/item[1]",
+                "summary[1]"
+            )
+        ],
+        "the entry is live and the record stands at its path: the kind is the only thing quieting it"
+    );
 }
 
 #[test]
