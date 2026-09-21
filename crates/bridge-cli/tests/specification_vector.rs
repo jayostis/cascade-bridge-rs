@@ -4,9 +4,10 @@
 // counts.
 //
 // It reads a checkout of another repository, which a checkout of this one does
-// not carry and CI does not have, so it is run by name rather than by default:
-// `cargo test -- --ignored`, or the compatibility job, which runs the same
-// command through compatibility.json.
+// not carry, so it is named rather than run by default: `cargo test --
+// --ignored`. The compatibility job runs it there, after the specification's
+// start action has left that checkout beside this one at the version the run
+// picked.
 use std::path::PathBuf;
 use std::process::Command;
 

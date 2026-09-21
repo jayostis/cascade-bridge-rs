@@ -36,6 +36,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
+      # start leaves cascade-bridge-spec beside this checkout at the version the
+      # run picked, which is where the vector reads it from and the only place
+      # the two halves are one version: against a default branch, a pull request
+      # changing both would prove the new engine against the old expectations.
+      - run: rustc --version
+        working-directory: ${{ github.event.repository.name }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ github.event.repository.name }}
+      # cargo test skips what is #[ignore]d, and the vector is ignored because a
+      # checkout of this repository on its own cannot run it.
+      - run: cargo test -- --ignored
+        working-directory: ${{ github.event.repository.name }}
 
   ready-to-merge:
     name: ready-to-merge
