@@ -805,3 +805,123 @@ fn refuses_a_named_gap_that_is_no_iri() {
     let refusal = refusal.to_string();
     assert!(refusal.contains(ACCOUNTING), "{refusal}");
 }
+
+#[test]
+fn refuses_a_gap_declaring_two_kinds() {
+    let both = Adapted::gaps(&scheme_but_for(
+        "ex:noteHasNoTerm a skos:Concept ;\n  skos:inScheme ex:gaps ;\n  skos:broader bridge:noPredicate, bridge:carriedWithLoss .\n",
+    ));
+    let Err(refusal) = conversion(&both, "two.xml") else {
+        panic!("a gap declaring two kinds reports, or does not, by whichever the parse saw last");
+    };
+    let refusal = refusal.to_string();
+    assert!(refusal.contains("noteHasNoTerm"), "{refusal}");
+}
+
+/// What an entry says is what it says once. A second verdict leaves the parse
+/// order deciding whether the entry reports at all, and a second gap which gap
+/// it reports, which is the reason a second severity is refused one file over.
+#[test]
+fn refuses_an_entry_declaring_two_verdicts() {
+    let both = Adapted::accounting(&format!(
+        "{ACCOUNTING_PREAMBLE}\n[] a bridge:PathEntry ;\n   bridge:sourcePath \"/item/note\" ;\n   bridge:verdict bridge:carried, bridge:noHome ;\n   bridge:namesGap ex:noteHasNoTerm .\n"
+    ));
+    let Err(refusal) = conversion(&both, "two.xml") else {
+        panic!("an entry declaring two verdicts is judged at whichever one the parse saw last");
+    };
+    let refusal = refusal.to_string();
+    assert!(refusal.contains("/item/note"), "{refusal}");
+}
+
+#[test]
+fn refuses_an_entry_naming_two_gaps() {
+    let both = Adapted::accounting(&format!(
+        "{ACCOUNTING_PREAMBLE}\n[] a bridge:PathEntry ;\n   bridge:sourcePath \"/item/note\" ;\n   bridge:verdict bridge:noHome ;\n   bridge:namesGap ex:noteHasNoTerm, ex:itemHasNoTitle .\n"
+    ));
+    let Err(refusal) = conversion(&both, "two.xml") else {
+        panic!("an entry naming two gaps reports whichever one the parse saw last");
+    };
+    let refusal = refusal.to_string();
+    assert!(refusal.contains("/item/note"), "{refusal}");
+}
+
+/// A bridge:verdict and a bridge:namesGap are read from a bridge:PathEntry and
+/// nowhere else, so what neither is read from cannot make a run fail. A
+/// bridge:sourcePath is the standing exception: dropping one that is no
+/// literal would leave the census reporting the path as unaccounted, which is
+/// a wrong finding rather than an absent one.
+#[test]
+fn reads_no_verdict_and_no_gap_from_a_subject_that_is_no_path_entry() {
+    let alongside = Adapted::accounting(&format!(
+        "{}\nex:notAnEntry bridge:verdict \"free text\" ;\n   bridge:namesGap \"ex:noteHasNoTerm\" ;\n   bridge:verdict \"twice over\" .\n",
+        accounting(&[
+            entry("/item/@id", "carried", None),
+            entry("/item/title", "carried", None),
+            entry("/item/note", "noHome", Some("ex:noteHasNoTerm")),
+        ])
+    ));
+    assert_eq!(
+        reported(&findings(&alongside, "two.xml")),
+        [row(NOTE_GAP, "/item/note", "/catalog/item[1]", "note[1]")],
+        "the entries report what they report, and the subject beside them is not one"
+    );
+}
+
+#[test]
+fn refuses_a_source_path_that_is_no_literal_wherever_it_stands() {
+    let addressed = Adapted::accounting(&format!(
+        "{ACCOUNTING_PREAMBLE}\nex:notAnEntry bridge:sourcePath <urn:example:catalog#note> .\n"
+    ));
+    let Err(refusal) = conversion(&addressed, "two.xml") else {
+        panic!("a path that is no literal is dropped, and the census reports the path it named");
+    };
+    let refusal = refusal.to_string();
+    assert!(refusal.contains(ACCOUNTING), "{refusal}");
+}
+
+/// Contract point 3, which no test was named for: the verdict decides whether
+/// the entry names a gap at all, and it decides that on its own. The pairing
+/// of a verdict with a kind is the adapter profile's to refuse, so
+/// bridge:carriedInPart naming a gap of kind bridge:noPredicate — a pairing
+/// the lint's table does not list — reports rather than going quiet.
+#[test]
+fn reports_from_a_verdict_that_names_a_gap_and_from_no_other_whatever_kind_it_names() {
+    for verdict in ["noHome", "carriedInPart"] {
+        let stated = Adapted::accounting(&accounting(&[entry(
+            "/item/note",
+            verdict,
+            Some("ex:noteHasNoTerm"),
+        )]));
+        assert_eq!(
+            reported(&findings(&stated, "two.xml")),
+            [row(NOTE_GAP, "/item/note", "/catalog/item[1]", "note[1]")],
+            "bridge:{verdict} names a gap"
+        );
+    }
+    for verdict in ["carried", "ignored", "consumed", "redundantWith"] {
+        let stated = Adapted::accounting(&accounting(&[entry(
+            "/item/note",
+            verdict,
+            Some("ex:noteHasNoTerm"),
+        )]));
+        assert_eq!(
+            reported(&findings(&stated, "two.xml")),
+            Vec::new(),
+            "bridge:{verdict} names no gap"
+        );
+    }
+}
+
+/// The choice, recorded: an entry whose verdict names no gap is read no
+/// further, so what it names need not be a gap the scheme declares. An
+/// accounting is refused for what makes it unreadable, and not for what an
+/// entry the Bridge never consults happens to say.
+#[test]
+fn asks_nothing_of_the_scheme_about_a_gap_named_by_a_verdict_that_names_none() {
+    let undeclared = Adapted::accounting(&accounting(&[
+        entry("/item/@id", "carried", None),
+        entry("/item/title", "carried", None),
+        entry("/item/note", "carried", Some("ex:noGapAnyoneDeclared")),
+    ]));
+    assert_eq!(reported(&findings(&undeclared, "two.xml")), Vec::new());
+}

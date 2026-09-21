@@ -356,6 +356,70 @@ mod tests {
         relative_to(&Iri::parse(ORACLE).expect("the file's own IRI"), iri)
     }
 
+    /// A reference is right when the reader that resolves it arrives at the
+    /// IRI it was made from. Comparing it to the string it was expected to be
+    /// agrees just as readily with one that arrives somewhere else.
+    fn resolves_back_to(iri: &str) {
+        let Some(reference) = named(iri) else {
+            return;
+        };
+        let base = Iri::parse(ORACLE).expect("the file's own IRI");
+        assert_eq!(
+            base.resolve(&reference)
+                .unwrap_or_else(|e| panic!("{iri} named {reference}: {e}"))
+                .as_str(),
+            iri,
+            "{iri} named {reference}"
+        );
+    }
+
+    #[test]
+    fn emits_no_reference_that_resolves_anywhere_but_the_iri_it_was_made_from() {
+        for iri in [
+            // A dot segment, which the reader removes a second time and so
+            // arrives at a file the graph never named.
+            "file:///checkout/fixtures/../in/two.xml",
+            "file:///checkout/fixtures/./in/two.xml",
+            "file:///checkout/fixtures/in/./two.xml",
+            "file:///checkout/fixtures/findings/./x.ttl",
+            "file:///checkout/fixtures/findings/../x.ttl",
+            // A percent-encoded one, which is a name and not a step.
+            "file:///checkout/fixtures/%2E%2E/in/two.xml",
+            "file:///checkout/fixtures/findings/%2E/x.ttl",
+            // A first step a reader would take for a scheme.
+            "file:///checkout/fixtures/findings/http:x.ttl",
+            "file:///checkout/fixtures/http:x.ttl",
+            // Characters a reference carries as they stand, or encoded.
+            "file:///checkout/fixtures/in/two%2Fone.xml",
+            "file:///checkout/fixtures/in/two%20one.xml",
+            "file:///checkout/fixtures/in/two%23one.xml",
+            "file:///checkout/fixtures/in/caf%C3%A9.xml",
+            "file:///checkout/fixtures/in/caf\u{e9}.xml",
+            "file:///checkout/fixtures/in/\u{4e2d}\u{6587}.xml",
+            // Shapes that are no file standing beside this one at all.
+            "file:///checkout/fixtures/findings/",
+            "file:///",
+            "file:///checkout//in/two.xml",
+            "file://localhost/checkout/fixtures/in/two.xml",
+            "file:///C:/checkout/fixtures/in/two.xml",
+            "urn:example:catalog#noteHasNoTerm",
+            ORACLE,
+        ] {
+            resolves_back_to(iri);
+        }
+    }
+
+    /// What is refused is the step, not the characters that spell one: a name
+    /// reading `%2E%2E` is a name, and naming its file in full would be a
+    /// guard turned on a file this can perfectly well name.
+    #[test]
+    fn reads_a_percent_encoded_dot_segment_as_a_name_and_not_a_step() {
+        assert_eq!(
+            named("file:///checkout/fixtures/%2E%2E/in/two.xml").as_deref(),
+            Some("../%2E%2E/in/two.xml")
+        );
+    }
+
     #[test]
     fn names_a_document_beside_the_file_by_the_way_up_and_back_down_to_it() {
         assert_eq!(
