@@ -65,7 +65,6 @@ terms! {
     BRIDGE_CARRIED_IN_PART = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "carriedInPart";
     BRIDGE_NO_PREDICATE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "noPredicate";
     BRIDGE_SOURCE_LACKS_REQUIRED = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "sourceLacksRequired";
-    BRIDGE_CARRIED_WITH_LOSS = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "carriedWithLoss";
     BRIDGE_OCCURRENCES = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "occurrences";
     BRIDGE_PATH_NOT_ACCOUNTED = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "pathNotAccounted";
     BRIDGE_INPUT = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "input";

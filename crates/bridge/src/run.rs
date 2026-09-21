@@ -14,9 +14,9 @@ use crate::error::{Error, Result};
 use crate::lift::{lift_text, Paths};
 use crate::load::{subject, value, Adapter};
 use crate::rdf::{
-    BRIDGE_CARRIED_IN_PART, BRIDGE_CARRIED_WITH_LOSS, BRIDGE_NAMES_GAP, BRIDGE_NO_HOME,
-    BRIDGE_NO_PREDICATE, BRIDGE_PATH_ENTRY, BRIDGE_SOURCE_LACKS_REQUIRED, BRIDGE_SOURCE_PATH,
-    BRIDGE_VERDICT, RDF_TYPE, SCHEMA_ENCODING_FORMAT, SH_INFO, SH_RESULT_SEVERITY, SKOS_BROADER,
+    BRIDGE_CARRIED_IN_PART, BRIDGE_NAMES_GAP, BRIDGE_NO_HOME, BRIDGE_NO_PREDICATE,
+    BRIDGE_PATH_ENTRY, BRIDGE_SOURCE_LACKS_REQUIRED, BRIDGE_SOURCE_PATH, BRIDGE_VERDICT, RDF_TYPE,
+    SCHEMA_ENCODING_FORMAT, SH_INFO, SH_RESULT_SEVERITY, SKOS_BROADER,
 };
 use crate::resolver::Resolver;
 use crate::validate::{self, Schema};
@@ -270,14 +270,11 @@ struct Gap {
 /// The verdicts that may name a gap at all.
 const NAMES_A_GAP: [&str; 2] = [BRIDGE_NO_HOME, BRIDGE_CARRIED_IN_PART];
 
-/// The kinds of gap true of the path rather than of a value at it. Only some
-/// of a path's values are unmapped and an entry cannot say which, so a kind
-/// true of a value is left to a findings query.
-const REPORTS: [&str; 3] = [
-    BRIDGE_NO_PREDICATE,
-    BRIDGE_SOURCE_LACKS_REQUIRED,
-    BRIDGE_CARRIED_WITH_LOSS,
-];
+/// The kinds of gap true of the path rather than of what a record happens to
+/// hold at it. Only some of a path's occurrences are carried with loss or left
+/// unmapped, and an entry cannot say which, so a kind true of what a record
+/// holds is left to a findings query, which can count and compare.
+const REPORTS: [&str; 2] = [BRIDGE_NO_PREDICATE, BRIDGE_SOURCE_LACKS_REQUIRED];
 
 /// A gap a path's entry reports, and the severity its concept gives it.
 struct Reported {
