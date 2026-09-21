@@ -23,7 +23,7 @@ const ADDRESS_NOT_ONE_NODE: &str =
 /// The findings query whose annotations name a node inside the record: the one
 /// file that decides what a refinement of the tiny adapter says.
 const NOTE_QUERY: &str = "mapping/item-note-findings.rq";
-const NOTE: &str = "rdf:value \"note\"";
+const NOTE: &str = "rdf:value ?at";
 
 /// The tiny adapter with some of its files rewritten as they are read, so a
 /// variant of a committed input, query or oracle is run without committing one.
@@ -252,7 +252,20 @@ fn produces_the_graph_for_a_document_no_tree_can_be_built_from() {
 /// the record one of them is about.
 const ORACLE: &str = "fixtures/findings/two.ttl";
 const RECORD: &str = "\"/catalog/item[1]\"";
-const REFINEMENT: &str = "rdf:value \"note\" ]";
+/// The oracle's copy of the finding the findings query writes, whole. The
+/// census finding of the same record names the same node, so what a shorter
+/// anchor would reach is both of them.
+const QUERY_FINDING: &str = r#"rdf:value "note[1]" ]
+    ]
+  ] ;
+  oa:hasBody ex:noteHasNoTerm ;
+  oa:motivatedBy oa:classifying ;
+  sh:resultSeverity sh:Info ."#;
+
+/// That finding with its address spelled another way.
+fn query_finding(address: &str) -> String {
+    QUERY_FINDING.replacen("note[1]", address, 1)
+}
 
 /// What the manifest made of one of its entries, and what it said about it.
 fn judged(resolver: &dyn Resolver, entry: &str) -> (String, String) {
@@ -280,7 +293,7 @@ fn passes_a_record_address_spelled_another_correct_way() {
 #[test]
 fn passes_a_refinement_spelled_another_correct_way() {
     let (outcome, said) = judged(
-        &variant(ORACLE, REFINEMENT, "rdf:value \"child::note[last()]\" ]"),
+        &variant(ORACLE, QUERY_FINDING, &query_finding("child::note[last()]")),
         "pass",
     );
     assert_eq!(outcome, "passed", "{said}");
@@ -316,7 +329,7 @@ fn compares_an_address_that_selects_no_node_by_its_characters() {
     let (outcome, said) = judged(
         &variants(vec![
             (NOTE_QUERY, NOTE, "rdf:value \"nowhere\"".to_owned()),
-            (ORACLE, REFINEMENT, "rdf:value \"nowhere\" ]".to_owned()),
+            (ORACLE, QUERY_FINDING, query_finding("nowhere")),
             (
                 ORACLE,
                 "@prefix ex:  <urn:example:catalog#> .",

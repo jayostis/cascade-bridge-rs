@@ -353,3 +353,24 @@ pub fn run_manifest(
     }
     Ok(results)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::beyond;
+
+    fn findings(lines: &[&str]) -> Vec<String> {
+        lines.iter().map(|line| (*line).to_owned()).collect()
+    }
+
+    /// No adapter this engine tests writes one address for two nodes any more,
+    /// so no fixture reaches this: findings are a multiset all the same, and a
+    /// repeat a run produced that its oracle expects once is one extra.
+    #[test]
+    fn counts_a_finding_produced_twice_and_expected_once_as_one_extra() {
+        let once = findings(&["a finding"]);
+        let twice = findings(&["a finding", "a finding"]);
+        assert_eq!(beyond(&twice, &once), ["a finding"]);
+        assert_eq!(beyond(&once, &twice), Vec::<String>::new());
+        assert_eq!(beyond(&twice, &twice), Vec::<String>::new());
+    }
+}

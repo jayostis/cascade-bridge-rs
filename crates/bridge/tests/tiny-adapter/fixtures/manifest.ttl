@@ -21,12 +21,12 @@
   mf:action [ bridge:input <in/two.xml> ; bridge:envelope <../ro-crate-metadata.json#envelope-catalog> ] ;
   mf:result [ bridge:expectedGraph <expected/two-wrong.ttl> ; bridge:expectedFindings <findings/two.ttl> ] .
 
-# One of two findings a record produces twice is missing: a finding produced
-# twice is two blank nodes and counts twice.
+# One of the two findings the first record's notes draw is missing: each note
+# is its own node, so each is its own finding.
 <#findings-fail> a bridge:IsomorphicConversionTest ;
   mf:name "findings-fail" ;
   mf:action [ bridge:input <in/order.xml> ; bridge:envelope <../ro-crate-metadata.json#envelope-catalog> ] ;
-  mf:result [ bridge:expectedGraph <expected/order.ttl> ; bridge:expectedFindings <findings/order-missing-duplicate.ttl> ] .
+  mf:result [ bridge:expectedGraph <expected/order.ttl> ; bridge:expectedFindings <findings/order-missing-a-note-finding.ttl> ] .
 
 # The same findings, the repeated one included.
 <#findings-repeated> a bridge:IsomorphicConversionTest ;
