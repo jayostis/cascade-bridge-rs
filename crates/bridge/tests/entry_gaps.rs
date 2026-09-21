@@ -702,3 +702,94 @@ fn refuses_a_gap_scheme_the_crate_names_and_nothing_answers_to() {
         panic!("a crate that says what it does not carry and cannot show it is read in silence");
     }
 }
+
+/// The scheme with everything the committed accounting names declared as it
+/// declares it, but for the one concept a case is about.
+fn scheme_but_for(concept_under_test: &str) -> String {
+    format!(
+        "{GAPS_PREAMBLE}\nex:gaps a skos:ConceptScheme .\n{}\n{concept_under_test}",
+        concept("summaryLosesItsMarkup", "carriedWithLoss", None)
+    )
+}
+
+/// One story for every way a gap scheme can fail to say what kind of gap an
+/// entry names and how severe it is: the run is refused, naming what it could
+/// not read. A Bridge that went quiet instead would drop a finding for a
+/// reason the reader of its output cannot see, which is the worse failure the
+/// contract's point 3 names — and a finding the specification's own
+/// <#SourceFinding> shape would then refuse is no better.
+#[test]
+fn refuses_a_gap_declaring_a_severity_the_specification_does_not_name() {
+    let catastrophic = Adapted::gaps(&scheme_but_for(
+        "ex:noteHasNoTerm a skos:Concept ;\n  skos:inScheme ex:gaps ;\n  skos:broader bridge:noPredicate ;\n  sh:resultSeverity ex:Catastrophic .\n",
+    ));
+    let Err(refusal) = conversion(&catastrophic, "two.xml") else {
+        panic!("a severity outside the three is carried into a finding the profile refuses");
+    };
+    let refusal = refusal.to_string();
+    assert!(refusal.contains("Catastrophic"), "{refusal}");
+}
+
+#[test]
+fn refuses_a_gap_declaring_a_severity_that_is_no_iri() {
+    let quoted = Adapted::gaps(&scheme_but_for(
+        "ex:noteHasNoTerm a skos:Concept ;\n  skos:inScheme ex:gaps ;\n  skos:broader bridge:noPredicate ;\n  sh:resultSeverity \"sh:Warning\" .\n",
+    ));
+    let Err(refusal) = conversion(&quoted, "two.xml") else {
+        panic!("a severity that is not an IRI is dropped, and the gap reports at sh:Info");
+    };
+    let refusal = refusal.to_string();
+    assert!(refusal.contains("noteHasNoTerm"), "{refusal}");
+}
+
+#[test]
+fn refuses_a_gap_the_scheme_declares_with_no_kind() {
+    let kindless = Adapted::gaps(&scheme_but_for(
+        "ex:noteHasNoTerm a skos:Concept ;\n  skos:inScheme ex:gaps ;\n  sh:resultSeverity sh:Warning .\n",
+    ));
+    let Err(refusal) = conversion(&kindless, "two.xml") else {
+        panic!("a gap with no skos:broader is read as a gap of a kind that does not report");
+    };
+    let refusal = refusal.to_string();
+    assert!(refusal.contains("noteHasNoTerm"), "{refusal}");
+}
+
+#[test]
+fn refuses_an_entry_naming_a_gap_the_scheme_does_not_declare() {
+    let unwritten = Adapted::accounting(&accounting(&[
+        entry("/item/@id", "carried", None),
+        entry("/item/title", "carried", None),
+        entry("/item/note", "noHome", Some("ex:noGapAnyoneDeclared")),
+    ]));
+    let Err(refusal) = conversion(&unwritten, "two.xml") else {
+        panic!("a gap nothing declares is read as a gap of a kind that does not report");
+    };
+    let refusal = refusal.to_string();
+    assert!(refusal.contains("noGapAnyoneDeclared"), "{refusal}");
+}
+
+/// An accounting's verdict and the gap it names are IRIs, as its
+/// bridge:sourcePath is a literal, and the same parse refuses all three.
+#[test]
+fn refuses_a_verdict_that_is_no_iri() {
+    let quoted = Adapted::accounting(&format!(
+        "{ACCOUNTING_PREAMBLE}\n[] a bridge:PathEntry ;\n   bridge:sourcePath \"/item/note\" ;\n   bridge:verdict \"noHome\" .\n"
+    ));
+    let Err(refusal) = conversion(&quoted, "two.xml") else {
+        panic!("a verdict that is not an IRI is dropped, and its entry accounts for the path");
+    };
+    let refusal = refusal.to_string();
+    assert!(refusal.contains(ACCOUNTING), "{refusal}");
+}
+
+#[test]
+fn refuses_a_named_gap_that_is_no_iri() {
+    let quoted = Adapted::accounting(&format!(
+        "{ACCOUNTING_PREAMBLE}\n[] a bridge:PathEntry ;\n   bridge:sourcePath \"/item/note\" ;\n   bridge:verdict bridge:noHome ;\n   bridge:namesGap \"ex:noteHasNoTerm\" .\n"
+    ));
+    let Err(refusal) = conversion(&quoted, "two.xml") else {
+        panic!("a gap that is not an IRI is dropped, and its entry reports nothing");
+    };
+    let refusal = refusal.to_string();
+    assert!(refusal.contains(ACCOUNTING), "{refusal}");
+}
