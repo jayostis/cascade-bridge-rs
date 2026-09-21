@@ -5,8 +5,9 @@
 //
 // An address that does select one node is compared by that node: two findings
 // whose addresses reach the same element are one finding however either of
-// them is spelled, and one whose address reaches nobody is compared by its
-// characters, as every address was before.
+// them is spelled. Comparison is stricter than conversion: an address on
+// either side that reaches other than one node fails the entry, and is said to
+// have failed it by the address and what it selected.
 use cascade_bridge::{
     canonical_lines, convert, load_adapter, prepare, run_manifest, Conversion, DirectoryResolver,
     Resolver, RunOptions, Source,
@@ -344,10 +345,8 @@ fn fails_an_address_that_selects_another_node_of_the_same_document() {
     assert_eq!(outcome, "failed", "{said}");
 }
 
-/// The adapter's query writing an address that reaches nobody, and the oracle
-/// written to match: the two are compared by their characters, as every
-/// address was before, and the Bridge's own report of the address stands
-/// beside the finding that carried it.
+/// The Bridge's own report of the address, as the oracle carries it beside the
+/// finding whose address it is about.
 const REPORTED: &str = "@prefix ex:  <urn:example:catalog#> .
 
 [] a oa:Annotation ;
@@ -361,8 +360,11 @@ const REPORTED: &str = "@prefix ex:  <urn:example:catalog#> .
   sh:resultSeverity sh:Violation .
 ";
 
+/// Both sides carry the same findings and the same address, so a comparison
+/// of them holds nothing missing and nothing extra: what fails the entry is
+/// the address itself, said as the address and what it selected.
 #[test]
-fn compares_an_address_that_selects_no_node_by_its_characters() {
+fn fails_an_entry_whose_address_selects_no_node() {
     let (outcome, said) = judged(
         &variants(vec![
             (NOTE_QUERY, NOTE, "rdf:value \"nowhere\"".to_owned()),
@@ -375,5 +377,38 @@ fn compares_an_address_that_selects_no_node_by_its_characters() {
         ]),
         "pass",
     );
-    assert_eq!(outcome, "passed", "{said}");
+    assert_eq!(outcome, "failed", "{said}");
+    assert!(
+        said.contains("produced \"nowhere\" selects no node"),
+        "{said}"
+    );
+    assert!(
+        said.contains("expected \"nowhere\" selects no node"),
+        "{said}"
+    );
+    assert!(!said.contains("findings differ"), "{said}");
+}
+
+/// The first record of `order.xml` holds two notes, so a step with no index
+/// selects both where each finding is about one.
+#[test]
+fn fails_an_entry_whose_address_selects_several_nodes() {
+    let (outcome, said) = judged(
+        &variant(NOTE_QUERY, NOTE, "rdf:value \"note\""),
+        "findings-repeated",
+    );
+    assert_eq!(outcome, "failed", "{said}");
+    assert!(said.contains("produced \"note\" selects 2 nodes"), "{said}");
+}
+
+/// An oracle's own address is judged by the same rule as the one the adapter
+/// wrote.
+#[test]
+fn fails_an_entry_whose_expected_address_selects_several_nodes() {
+    let (outcome, said) = judged(&variant(ORACLE, RECORD, "\"/catalog/item\""), "pass");
+    assert_eq!(outcome, "failed", "{said}");
+    assert!(
+        said.contains("expected \"/catalog/item\" selects 2 nodes"),
+        "{said}"
+    );
 }
