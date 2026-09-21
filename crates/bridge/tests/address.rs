@@ -2,9 +2,14 @@
 // selects no node, or several, names nothing the finding can be about, so the
 // Bridge reports it beside the adapter's own finding and produces the graph all
 // the same: verification reports, and never refuses.
+//
+// An address that does select one node is compared by that node: two findings
+// whose addresses reach the same element are one finding however either of
+// them is spelled, and one whose address reaches nobody is compared by its
+// characters, as every address was before.
 use cascade_bridge::{
-    canonical_lines, convert, load_adapter, prepare, Conversion, DirectoryResolver, Resolver,
-    Source,
+    canonical_lines, convert, load_adapter, prepare, run_manifest, Conversion, DirectoryResolver,
+    Resolver, RunOptions, Source,
 };
 use oxrdf::{Quad, Term};
 use std::path::PathBuf;
@@ -60,9 +65,13 @@ fn tiny() -> Variant {
 
 /// The tiny adapter with one string of one of its files replaced.
 fn variant(file: &'static str, from: &'static str, to: &str) -> Variant {
+    variants(vec![(file, from, to.to_owned())])
+}
+
+fn variants(edits: Vec<(&'static str, &'static str, String)>) -> Variant {
     Variant {
         directory: directory(),
-        edits: vec![(file, from, to.to_owned())],
+        edits,
     }
 }
 
@@ -236,4 +245,85 @@ fn produces_the_graph_for_a_document_no_tree_can_be_built_from() {
         Vec::<(String, String)>::new(),
         "a document with no one document element is judged by nothing, not refused"
     );
+}
+
+/// The oracle the manifest's passing entry is judged against, and the two
+/// addresses it carries: the record its findings stand in, and the node inside
+/// the record one of them is about.
+const ORACLE: &str = "fixtures/findings/two.ttl";
+const RECORD: &str = "\"/catalog/item[1]\"";
+const REFINEMENT: &str = "rdf:value \"note\" ]";
+
+/// What the manifest made of one of its entries, and what it said about it.
+fn judged(resolver: &dyn Resolver, entry: &str) -> (String, String) {
+    let adapter = load_adapter(resolver).expect("adapter");
+    let results = run_manifest(&adapter, resolver, RunOptions::default()).expect("manifest");
+    let result = results
+        .iter()
+        .find(|result| result.name == entry)
+        .unwrap_or_else(|| panic!("the manifest lists {entry}"));
+    (
+        result.outcome.as_str().to_owned(),
+        result.description.clone(),
+    )
+}
+
+#[test]
+fn passes_a_record_address_spelled_another_correct_way() {
+    let (outcome, said) = judged(
+        &variant(ORACLE, RECORD, "\"/catalog/*[local-name()='item'][1]\""),
+        "pass",
+    );
+    assert_eq!(outcome, "passed", "{said}");
+}
+
+#[test]
+fn passes_a_refinement_spelled_another_correct_way() {
+    let (outcome, said) = judged(
+        &variant(ORACLE, REFINEMENT, "rdf:value \"child::note[last()]\" ]"),
+        "pass",
+    );
+    assert_eq!(outcome, "passed", "{said}");
+}
+
+/// Without this, a comparison that made every address equal would pass the two
+/// above and be reported as the loosening they ask for.
+#[test]
+fn fails_an_address_that_selects_another_node_of_the_same_document() {
+    let (outcome, said) = judged(&variant(ORACLE, RECORD, "\"/catalog/item[2]\""), "pass");
+    assert_eq!(outcome, "failed", "{said}");
+}
+
+/// The adapter's query writing an address that reaches nobody, and the oracle
+/// written to match: the two are compared by their characters, as every
+/// address was before, and the Bridge's own report of the address stands
+/// beside the finding that carried it.
+const REPORTED: &str = "@prefix ex:  <urn:example:catalog#> .
+
+[] a oa:Annotation ;
+  oa:hasTarget [
+    oa:hasSource <../in/two.xml> ;
+    oa:hasSelector [ a oa:XPathSelector ; rdf:value \"/catalog/item[1]\" ]
+  ] ;
+  oa:hasBody <https://ns.cascadeprotocol.org/bridge/v1-draft#addressNotOneNode> ;
+  oa:motivatedBy oa:classifying ;
+  sh:value \"nowhere\" ;
+  sh:resultSeverity sh:Violation .
+";
+
+#[test]
+fn compares_an_address_that_selects_no_node_by_its_characters() {
+    let (outcome, said) = judged(
+        &variants(vec![
+            (NOTE_QUERY, NOTE, "rdf:value \"nowhere\"".to_owned()),
+            (ORACLE, REFINEMENT, "rdf:value \"nowhere\" ]".to_owned()),
+            (
+                ORACLE,
+                "@prefix ex:  <urn:example:catalog#> .",
+                REPORTED.to_owned(),
+            ),
+        ]),
+        "pass",
+    );
+    assert_eq!(outcome, "passed", "{said}");
 }
