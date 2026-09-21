@@ -2,6 +2,7 @@
 // carries, as the rdfs:comment on that type in the specification's vocabulary
 // states it.
 use crate::annotation;
+use crate::decode::decode;
 use crate::error::{Error, Result};
 use crate::load::{as_subject, list, objects, subject, term_value, value, values, Adapter};
 use crate::rdf::{
@@ -11,6 +12,7 @@ use crate::rdf::{
 };
 use crate::resolver::Resolver;
 use crate::run::{convert, prepare, Prepared, Source};
+use crate::xpath;
 use oxigraph::model::{NamedOrBlankNode, Quad, Term};
 use oxrdfio::{RdfFormat, RdfParser};
 use std::collections::{HashMap, HashSet};
@@ -143,12 +145,13 @@ impl Entry<'_> {
             .map(|a| value(graph, a, BRIDGE_ENVELOPE))
             .transpose()?
             .flatten();
+        let bytes = self.resolver.read(&input)?;
         let run = convert(
             self.setup,
             Source {
                 iri: &input,
                 envelope: envelope.as_deref(),
-                xml: &self.resolver.read(&input)?,
+                xml: &bytes,
             },
         )?;
         let detect = if run.detected == Some(false) {
@@ -207,8 +210,12 @@ impl Entry<'_> {
             // A finding is a part of the graph no blank node reaches out of, so
             // it is compared as one. Canonicalising the graph whole relabels
             // every finding in it when one differs, and reports them all.
-            let want = canonical_parts(want)?;
-            let got = canonical_parts(run.findings)?;
+            // Two addresses that select one node are one address, so each
+            // side is spelled as this Bridge spells that node before either
+            // is compared with the other.
+            let source = decode(&bytes)?;
+            let want = canonical_parts(xpath::respelled(want, &source))?;
+            let got = canonical_parts(xpath::respelled(run.findings, &source))?;
             let missing = beyond(&want, &got);
             let extra = beyond(&got, &want);
             findings_ok = missing.is_empty() && extra.is_empty();

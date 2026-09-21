@@ -1,6 +1,8 @@
 // Following an address, rather than only writing one. A finding's address is
 // an XPath, and what the finding is about is the node that XPath selects, so
-// an address selecting no node, or several, is reported.
+// an address selecting no node, or several, is reported, and two findings
+// whose addresses reach one node are compared as one however either is
+// spelled.
 //
 // The tree is parsed here rather than read out of the lifted store, because
 // XPath counts what the lift drops: a comment, a processing instruction and a
@@ -11,16 +13,21 @@
 use crate::annotation::{self, Record};
 use crate::decode::{normalise_attribute_value, normalise_line_endings};
 use crate::error::Result;
-use crate::rdf::{OA_REFINED_BY, RDF_VALUE};
-use oxrdf::{BlankNode, NamedOrBlankNode, Quad, Term};
+use crate::lift::Step;
+use crate::rdf::{OA_HAS_SELECTOR, OA_REFINED_BY, RDF_VALUE};
+use oxrdf::{BlankNode, Literal, NamedOrBlankNode, Quad, Term};
 use quick_xml::events::Event;
 use quick_xml::name::ResolveResult;
 use quick_xml::NsReader;
 use std::cmp::Ordering;
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use xpath_eval::{
     evaluate, parse, Document, EvaluationContext, ExpandedName, Node, NodeKind, Value,
 };
+
+/// The document node, which is where an absolute address is read from and the
+/// first node of any tree.
+const DOCUMENT: usize = 0;
 
 struct Data {
     kind: NodeKind,
@@ -82,7 +89,7 @@ impl Tree {
         let mut reader = NsReader::from_str(xml);
         reader.config_mut().expand_empty_elements = true;
         let mut nodes = vec![Data::of(NodeKind::Root, None)];
-        let mut open: Vec<usize> = vec![0];
+        let mut open: Vec<usize> = vec![DOCUMENT];
         // The text node still taking characters. Adjacent character data is one
         // text node however many events it arrived in, and a comment or a
         // processing instruction between two runs of it begins no second one.
@@ -173,7 +180,7 @@ impl Tree {
         if open.len() != 1 {
             return None;
         }
-        let mut elements = nodes[0]
+        let mut elements = nodes[DOCUMENT]
             .children
             .iter()
             .copied()
@@ -188,13 +195,94 @@ impl Tree {
     fn at(&self, at: usize) -> Handle<'_> {
         Handle { tree: self, at }
     }
+
+    /// Where a node stands among the siblings of its own expanded name, which
+    /// is the place a step carries.
+    fn position(&self, at: usize) -> usize {
+        let Some(parent) = self.nodes[at].parent else {
+            return 1;
+        };
+        let name = &self.nodes[at].name;
+        self.nodes[parent]
+            .children
+            .iter()
+            .take_while(|&&child| child != at)
+            .filter(|&&child| self.nodes[child].kind == NodeKind::Element)
+            .filter(|&&child| self.nodes[child].name == *name)
+            .count()
+            + 1
+    }
+
+    fn step(&self, at: usize) -> Option<Step> {
+        let name = self.nodes[at].name.as_ref()?;
+        Some(Step {
+            local: name.local_name.clone(),
+            namespace: name.namespace_uri.clone(),
+            position: self.position(at),
+        })
+    }
+
+    /// Every element from a node up to and including `stop`, innermost first,
+    /// and nothing at all where the node is no element standing below it.
+    fn up_to(&self, at: usize, stop: usize) -> Option<Vec<usize>> {
+        let mut chain = Vec::new();
+        let mut walk = at;
+        loop {
+            if self.nodes[walk].kind != NodeKind::Element {
+                return None;
+            }
+            chain.push(walk);
+            if walk == stop {
+                return Some(chain);
+            }
+            walk = self.nodes[walk].parent?;
+        }
+    }
+
+    /// A node of the document as this Bridge spells it from the document
+    /// element: for a record element, the record's own selector.
+    fn spell_absolute(&self, at: usize) -> Option<String> {
+        if self.nodes[at].kind == NodeKind::Attribute {
+            let carrier = self.spell_absolute(self.nodes[at].parent?)?;
+            return Some(format!("{carrier}/@{}", self.step(at)?.write(false)));
+        }
+        let chain = self.up_to(at, self.element)?;
+        let mut written = String::new();
+        for (depth, &node) in chain.iter().rev().enumerate() {
+            written.push('/');
+            written.push_str(&self.step(node)?.write(depth > 0));
+        }
+        Some(written)
+    }
+
+    /// A node of a record as this Bridge spells it from the record, which is
+    /// what a finding's oa:refinedBy carries.
+    fn spell_relative(&self, at: usize, from: usize) -> Option<String> {
+        if self.nodes[at].kind == NodeKind::Attribute {
+            let carrier = self.nodes[at].parent?;
+            let name = format!("@{}", self.step(at)?.write(false));
+            if carrier == from {
+                return Some(name);
+            }
+            return Some(format!("{}/{name}", self.spell_relative(carrier, from)?));
+        }
+        if at == from {
+            return None;
+        }
+        let chain = self.up_to(at, from)?;
+        let mut steps = Vec::with_capacity(chain.len() - 1);
+        for &node in chain[..chain.len() - 1].iter().rev() {
+            steps.push(self.step(node)?.write(true));
+        }
+        Some(steps.join("/"))
+    }
 }
 
 /// Characters said inside the element the walk is in, which the text node
 /// already taking them takes where there is one. Character data outside the
 /// document element is XML's own whitespace and no node.
 fn say(nodes: &mut Vec<Data>, taking: &mut Option<usize>, open: &[usize], characters: String) {
-    let Some(&parent) = open.last().filter(|&&node| node != 0) else {
+    let Some(&parent) = open.last().filter(|&&node| node != DOCUMENT) else {
         return;
     };
     if let Some(at) = *taking {
@@ -284,7 +372,7 @@ impl Document for Tree {
     type N<'a> = Handle<'a>;
 
     fn root(&self) -> Self::N<'_> {
-        self.at(0)
+        self.at(DOCUMENT)
     }
 }
 
@@ -353,9 +441,100 @@ pub(crate) fn unresolved(record: &Record, xml: &str, findings: &[Quad]) -> Resul
     Ok(reports)
 }
 
+/// What each selector node of these findings is to be re-spelled as: a record
+/// selector by the node it selects of the document, and each address refining
+/// it by the node that one selects of the record. A selector reaching no one
+/// node is in nothing here, and stays as it was written.
+fn respelling(tree: &Tree, quads: &[Quad]) -> HashMap<BlankNode, String> {
+    let mut refining: HashMap<&BlankNode, Vec<&BlankNode>> = HashMap::new();
+    let mut refinement: HashSet<&BlankNode> = HashSet::new();
+    let mut written: HashMap<&BlankNode, &str> = HashMap::new();
+    for quad in quads {
+        let NamedOrBlankNode::BlankNode(subject) = &quad.subject else {
+            continue;
+        };
+        match (quad.predicate.as_str(), &quad.object) {
+            (OA_REFINED_BY, Term::BlankNode(refined)) => {
+                refining.entry(subject).or_default().push(refined);
+                refinement.insert(refined);
+            }
+            (RDF_VALUE, Term::Literal(address)) => {
+                written.insert(subject, address.value());
+            }
+            _ => {}
+        }
+    }
+
+    let mut respell: HashMap<BlankNode, String> = HashMap::new();
+    for quad in quads {
+        let Term::BlankNode(selector) = &quad.object else {
+            continue;
+        };
+        // A record selector is the one a target names and no address refines.
+        if quad.predicate.as_str() != OA_HAS_SELECTOR || refinement.contains(selector) {
+            continue;
+        }
+        let Some(record) = written.get(selector).and_then(|address| {
+            // An absolute address is read from the document node.
+            one(tree, DOCUMENT, address)
+        }) else {
+            continue;
+        };
+        if let Some(spelled) = tree.spell_absolute(record) {
+            respell.insert(selector.clone(), spelled);
+        }
+        for refined in refining.get(selector).into_iter().flatten() {
+            let Some(node) = written
+                .get(refined)
+                .and_then(|address| one(tree, record, address))
+            else {
+                continue;
+            };
+            if let Some(spelled) = tree.spell_relative(node, record) {
+                respell.insert((*refined).clone(), spelled);
+            }
+        }
+    }
+    respell
+}
+
+/// These findings with every address re-spelled as this Bridge spells the node
+/// it selects, so two findings about one node are one finding however either
+/// of them was spelled. An address reaching no one node is left as it was
+/// written, and compared by its characters as every address once was.
+pub(crate) fn respelled(quads: Vec<Quad>, xml: &str) -> Vec<Quad> {
+    let Some(tree) = Tree::of(xml) else {
+        return quads;
+    };
+    let respell = respelling(&tree, &quads);
+    if respell.is_empty() {
+        return quads;
+    }
+    quads
+        .into_iter()
+        .map(|quad| {
+            let spelled = match &quad.subject {
+                NamedOrBlankNode::BlankNode(node) if quad.predicate.as_str() == RDF_VALUE => {
+                    respell.get(node).cloned()
+                }
+                _ => None,
+            };
+            match spelled {
+                Some(address) => Quad::new(
+                    quad.subject,
+                    quad.predicate,
+                    Literal::new_simple_literal(address),
+                    quad.graph_name,
+                ),
+                None => quad,
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::Tree;
+    use super::{one, Tree, DOCUMENT};
     use xpath_eval::NodeKind;
 
     fn tree(xml: &str) -> Tree {
@@ -398,6 +577,38 @@ mod tests {
         assert_eq!(
             kinds(&tree),
             [NodeKind::Text, NodeKind::Element, NodeKind::Text]
+        );
+    }
+
+    /// One spelling rule: what the lift writes for a record is what following
+    /// that address and spelling the node it reaches writes again.
+    #[test]
+    fn spells_a_record_as_the_lift_wrote_its_selector() {
+        let document =
+            br#"<s:set xmlns:s="urn:example:set"><g><s:item/><s:item/></g><g><item/></g></s:set>"#;
+        let selectors: Vec<String> = crate::lift::lift_slice(document, Some("item"))
+            .expect("the lift")
+            .map(|unit| unit.expect("a unit").selector())
+            .collect();
+        assert_eq!(selectors.len(), 3);
+        let tree = tree(std::str::from_utf8(document).expect("utf-8"));
+        let spelled: Vec<String> = selectors
+            .iter()
+            .map(|selector| {
+                let at = one(&tree, DOCUMENT, selector).unwrap_or_else(|| panic!("{selector}"));
+                tree.spell_absolute(at).expect("an address")
+            })
+            .collect();
+        assert_eq!(spelled, selectors);
+    }
+
+    #[test]
+    fn spells_an_attribute_of_a_record_by_the_element_that_carries_it() {
+        let tree = tree(r#"<item><label colour="red"/><label colour="blue"/></item>"#);
+        let at = one(&tree, tree.element, "label[2]/@colour").expect("the attribute");
+        assert_eq!(
+            tree.spell_relative(at, tree.element).as_deref(),
+            Some("label[2]/@colour")
         );
     }
 }
