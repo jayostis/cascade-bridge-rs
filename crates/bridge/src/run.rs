@@ -857,7 +857,17 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
         ms.findings += at.elapsed();
 
         let at = Instant::now();
-        let reports = followed.unresolved(&record, &findings[mark..])?;
+        // A record was read, so the document element was, and what a report
+        // selects is known without the envelope this document has yet to name.
+        let element = document_selector(lift.document_selector(), None);
+        let reports = followed.unresolved(
+            &Record {
+                source: source.iri,
+                selector: &element,
+            },
+            xpath::Stands::Along(unit.path()),
+            &findings[mark..],
+        )?;
         findings.extend(reports);
         ms.findings += at.elapsed();
     }
@@ -883,7 +893,11 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
                 broken.within(),
             )?);
         }
-        let reports = followed.unresolved(&record, &findings[mark..])?;
+        let reports = followed.unresolved(
+            &record,
+            xpath::Stands::AtTheDocumentElement,
+            &findings[mark..],
+        )?;
         findings.extend(reports);
     }
     ms.validation += at.elapsed();

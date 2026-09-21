@@ -282,6 +282,12 @@ impl Unit {
             .collect()
     }
 
+    /// The steps the lift opened to reach this record, which its selector is
+    /// written from and which reach it again with nothing followed.
+    pub(crate) fn path(&self) -> &[Step] {
+        &self.path
+    }
+
     pub(crate) fn occurrences(&self) -> &[Occurrence] {
         &self.occurrences
     }

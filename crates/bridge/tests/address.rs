@@ -114,8 +114,8 @@ fn reached(findings: &[Quad], subject: &str, predicate: &str) -> String {
         .unwrap_or_default()
 }
 
-/// Every address this Bridge could not follow, as the record it was about and
-/// the address as it was written.
+/// Every address this Bridge could not follow, as the node the report selects
+/// and the address as it was written.
 fn reports(findings: &[Quad]) -> Vec<(String, String)> {
     let mut reported: Vec<(String, String)> = findings
         .iter()
@@ -127,10 +127,10 @@ fn reports(findings: &[Quad]) -> Vec<(String, String)> {
             let annotation = quad.subject.to_string();
             let target = reached(findings, &annotation, &format!("{OA}hasTarget"));
             let selector = reached(findings, &target, &format!("{OA}hasSelector"));
-            let record = objects(findings, &selector, RDF_VALUE);
+            let selects = objects(findings, &selector, RDF_VALUE);
             let written = objects(findings, &annotation, SH_VALUE);
             (
-                record.first().map(text).unwrap_or_default(),
+                selects.first().map(text).unwrap_or_default(),
                 written.first().map(text).unwrap_or_default(),
             )
         })
@@ -156,7 +156,7 @@ fn reports_an_address_that_selects_no_node_and_produces_the_graph_all_the_same()
     assert_eq!(reports(&plain.findings), Vec::<(String, String)>::new());
     assert_eq!(
         reports(&strayed.findings),
-        [("/catalog/item[1]".to_owned(), "nowhere".to_owned())]
+        [("/catalog".to_owned(), "nowhere".to_owned())]
     );
     assert_eq!(graph(&strayed), graph(&plain));
 }
@@ -166,7 +166,7 @@ fn reports_an_address_that_selects_more_than_one_node() {
     let several = run(&variant(NOTE_QUERY, NOTE, "rdf:value \"*\""), "two.xml");
     assert_eq!(
         reports(&several.findings),
-        [("/catalog/item[1]".to_owned(), "*".to_owned())],
+        [("/catalog".to_owned(), "*".to_owned())],
         "the record holds a title and a note, and an address selects one node"
     );
 }
@@ -176,7 +176,7 @@ fn reports_an_address_that_is_no_xpath_at_all() {
     let nonsense = run(&variant(NOTE_QUERY, NOTE, "rdf:value \"(((\""), "two.xml");
     assert_eq!(
         reports(&nonsense.findings),
-        [("/catalog/item[1]".to_owned(), "(((".to_owned())]
+        [("/catalog".to_owned(), "(((".to_owned())]
     );
 }
 
@@ -189,10 +189,12 @@ fn reports_an_address_two_findings_of_one_record_share_once() {
     assert_eq!(
         reports(&shared.findings),
         [
-            ("/catalog/item[1]".to_owned(), "nowhere".to_owned()),
-            ("/catalog/item[2]".to_owned(), "nowhere".to_owned())
+            ("/catalog".to_owned(), "nowhere".to_owned()),
+            ("/catalog".to_owned(), "nowhere".to_owned())
         ],
-        "the first record's two notes share one address, and one report"
+        "the first record's two notes share one address, and one report; each \
+         record reports the address its own findings carry, and every report \
+         selects the document element"
     );
 }
 
@@ -348,6 +350,47 @@ fn fails_an_address_that_selects_another_node_of_the_same_document() {
     assert!(said.contains("findings differ"), "{said}");
 }
 
+/// The adapter's own address and the oracle's, each of them the one node the
+/// finding is about, spelled two correct ways.
+fn spelled(adapter: &str, oracle: &str) -> Variant {
+    variants(vec![
+        (NOTE_QUERY, NOTE, format!("rdf:value \"{adapter}\"")),
+        (ORACLE, QUERY_FINDING, query_finding(oracle)),
+    ])
+}
+
+/// A text node is a node a finding is about as an element is.
+#[test]
+fn passes_a_refinement_of_a_text_node_spelled_another_correct_way() {
+    let (outcome, said) = judged(&spelled("note[1]/text()", "note[1]/text()[1]"), "pass");
+    assert_eq!(outcome, "passed", "{said}");
+}
+
+/// The record is one of the nodes its own findings are about.
+#[test]
+fn passes_a_refinement_of_the_record_itself_spelled_another_correct_way() {
+    let (outcome, said) = judged(&spelled(".", "self::item"), "pass");
+    assert_eq!(outcome, "passed", "{said}");
+}
+
+/// An address is followed from the record through the whole source, so one
+/// that leaves the record is compared by the node it reaches out there, as one
+/// that stays is by the node it reaches inside.
+#[test]
+fn passes_a_refinement_that_leaves_the_record_spelled_another_correct_way() {
+    let (outcome, said) = judged(&spelled("../item[2]", "following-sibling::item[1]"), "pass");
+    assert_eq!(outcome, "passed", "{said}");
+}
+
+/// Without this, a comparison that made every address leaving the record equal
+/// would pass `passes_a_refinement_that_leaves_the_record_spelled_another_correct_way`.
+#[test]
+fn fails_a_refinement_that_leaves_the_record_for_another_node() {
+    let (outcome, said) = judged(&spelled("../item[2]", "parent::catalog"), "pass");
+    assert_eq!(outcome, "failed", "{said}");
+    assert!(said.contains("findings differ"), "{said}");
+}
+
 /// The Bridge's own report of the address, as the oracle carries it beside the
 /// finding whose address it is about.
 const REPORTED: &str = "@prefix ex:  <urn:example:catalog#> .
@@ -355,7 +398,7 @@ const REPORTED: &str = "@prefix ex:  <urn:example:catalog#> .
 [] a oa:Annotation ;
   oa:hasTarget [
     oa:hasSource <../in/two.xml> ;
-    oa:hasSelector [ a oa:XPathSelector ; rdf:value \"/catalog/item[1]\" ]
+    oa:hasSelector [ a oa:XPathSelector ; rdf:value \"/catalog\" ]
   ] ;
   oa:hasBody <https://ns.cascadeprotocol.org/bridge/v1-draft#addressNotOneNode> ;
   oa:motivatedBy oa:classifying ;

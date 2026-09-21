@@ -20,7 +20,7 @@ use oxrdf::{BlankNode, Literal, NamedOrBlankNode, Quad, Term};
 use quick_xml::events::Event;
 use quick_xml::name::ResolveResult;
 use quick_xml::NsReader;
-use std::cell::OnceCell;
+use std::cell::{OnceCell, RefCell};
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use xpath_eval::{
@@ -34,6 +34,9 @@ const DOCUMENT: usize = 0;
 struct Data {
     kind: NodeKind,
     name: Option<ExpandedName>,
+    /// Where it stands among the siblings one step of an address counts, which
+    /// is the place that step carries.
+    position: usize,
     text: String,
     parent: Option<usize>,
     children: Vec<usize>,
@@ -45,6 +48,7 @@ impl Data {
         Self {
             kind,
             name: None,
+            position: 1,
             text: String::new(),
             parent,
             children: Vec::new(),
@@ -66,6 +70,38 @@ impl Data {
     }
 }
 
+/// What one step of an address names a node by: an element by its expanded
+/// name, and every other node by its kind, a node test naming no other.
+#[derive(Clone, PartialEq, Eq, Hash)]
+enum Among {
+    Named(Option<String>, String),
+    Kind(NodeKind),
+}
+
+fn among(data: &Data) -> Among {
+    match (data.kind, &data.name) {
+        (NodeKind::Element, Some(name)) => {
+            Among::Named(name.namespace_uri.clone(), name.local_name.clone())
+        }
+        (kind, _) => Among::Kind(kind),
+    }
+}
+
+/// Where each node stands among the siblings its own node test counts, walked
+/// once for the whole tree so that no later walk of it counts siblings again.
+fn place(nodes: &mut [Data]) {
+    for at in 0..nodes.len() {
+        let children = std::mem::take(&mut nodes[at].children);
+        let mut counted: HashMap<Among, usize> = HashMap::new();
+        for &child in &children {
+            let seen = counted.entry(among(&nodes[child])).or_default();
+            *seen += 1;
+            nodes[child].position = *seen;
+        }
+        nodes[at].children = children;
+    }
+}
+
 /// One document as XPath counts it, held in one vector in document order: a
 /// node is an index into it, and one index against another is document order.
 struct Tree {
@@ -73,6 +109,10 @@ struct Tree {
     /// The document's own element, which every address of a record or of a
     /// document is written from.
     element: usize,
+    /// Each child of a node by what a step names it, built for a node the
+    /// first time a walk reaches through it, so that a walk to each record of
+    /// a set in turn reads the set's children once and not once per record.
+    under: RefCell<HashMap<usize, HashMap<Among, Vec<usize>>>>,
 }
 
 /// An owned name, where the parser bound one.
@@ -194,28 +234,16 @@ impl Tree {
         if elements.next().is_some() {
             return None;
         }
-        Some(Self { nodes, element })
+        place(&mut nodes);
+        Some(Self {
+            nodes,
+            element,
+            under: RefCell::new(HashMap::new()),
+        })
     }
 
     fn at(&self, at: usize) -> Handle<'_> {
         Handle { tree: self, at }
-    }
-
-    /// Where a node stands among the siblings of its own expanded name, which
-    /// is the place a step carries.
-    fn position(&self, at: usize) -> usize {
-        let Some(parent) = self.nodes[at].parent else {
-            return 1;
-        };
-        let name = &self.nodes[at].name;
-        self.nodes[parent]
-            .children
-            .iter()
-            .take_while(|&&child| child != at)
-            .filter(|&&child| self.nodes[child].kind == NodeKind::Element)
-            .filter(|&&child| self.nodes[child].name == *name)
-            .count()
-            + 1
     }
 
     fn step(&self, at: usize) -> Option<Step> {
@@ -223,62 +251,96 @@ impl Tree {
         Some(Step {
             local: name.local_name.clone(),
             namespace: name.namespace_uri.clone(),
-            position: self.position(at),
+            position: self.nodes[at].position,
         })
     }
 
-    /// Every element from a node up to and including `stop`, innermost first,
-    /// and nothing at all where the node is no element standing below it.
-    fn up_to(&self, at: usize, stop: usize) -> Option<Vec<usize>> {
-        let mut chain = Vec::new();
-        let mut walk = at;
-        loop {
-            if self.nodes[walk].kind != NodeKind::Element {
-                return None;
+    /// The child a step names, of the node it is a step below.
+    fn child(&self, parent: usize, step: &Step) -> Option<usize> {
+        let mut under = self.under.borrow_mut();
+        let counted = under.entry(parent).or_insert_with(|| {
+            let mut counted: HashMap<Among, Vec<usize>> = HashMap::new();
+            for &child in &self.nodes[parent].children {
+                counted
+                    .entry(among(&self.nodes[child]))
+                    .or_default()
+                    .push(child);
             }
-            chain.push(walk);
-            if walk == stop {
-                return Some(chain);
-            }
-            walk = self.nodes[walk].parent?;
+            counted
+        });
+        counted
+            .get(&Among::Named(step.namespace.clone(), step.local.clone()))?
+            .get(step.position.checked_sub(1)?)
+            .copied()
+    }
+
+    /// The node these steps reach: the document element, which the first of
+    /// them names, and a child for each step below it.
+    fn walk(&self, path: &[Step]) -> Option<usize> {
+        let (document, below) = path.split_first()?;
+        let name = self.nodes[self.element].name.as_ref()?;
+        if name.local_name != document.local || name.namespace_uri != document.namespace {
+            return None;
         }
+        let mut at = self.element;
+        for step in below {
+            at = self.child(at, step)?;
+        }
+        Some(at)
+    }
+
+    /// One step of an address, which tells a node from its siblings: an
+    /// element by its name, every other node by its node test, and an
+    /// attribute by its name alone, an element carrying one of each name.
+    fn spell_step(&self, at: usize, indexed: bool) -> Option<String> {
+        let data = &self.nodes[at];
+        let test = match data.kind {
+            NodeKind::Element => self.step(at)?.write(false),
+            NodeKind::Attribute => return Some(format!("@{}", self.step(at)?.write(false))),
+            NodeKind::Text => "text()".to_owned(),
+            NodeKind::Comment => "comment()".to_owned(),
+            NodeKind::ProcessingInstruction => "processing-instruction()".to_owned(),
+            NodeKind::Root | NodeKind::Namespace => return None,
+        };
+        Some(match indexed {
+            true => format!("{test}[{}]", data.position),
+            false => test,
+        })
     }
 
     /// A node of the document as this Bridge spells it from the document
     /// element: for a record element, the record's own selector.
     fn spell_absolute(&self, at: usize) -> Option<String> {
-        if self.nodes[at].kind == NodeKind::Attribute {
-            let carrier = self.spell_absolute(self.nodes[at].parent?)?;
-            return Some(format!("{carrier}/@{}", self.step(at)?.write(false)));
-        }
-        let chain = self.up_to(at, self.element)?;
-        let mut written = String::new();
-        for (depth, &node) in chain.iter().rev().enumerate() {
-            written.push('/');
-            written.push_str(&self.step(node)?.write(depth > 0));
-        }
-        Some(written)
+        let Some(parent) = self.nodes[at].parent else {
+            return Some("/".to_owned());
+        };
+        let above = match self.spell_absolute(parent)?.as_str() {
+            "/" => String::new(),
+            above => above.to_owned(),
+        };
+        Some(format!(
+            "{above}/{}",
+            self.spell_step(at, at != self.element)?
+        ))
     }
 
     /// A node of a record as this Bridge spells it from the record, which is
-    /// what a finding's oa:refinedBy carries.
+    /// what a finding's oa:refinedBy carries; a node the record does not hold
+    /// is spelled from the document, no address of the record naming it.
     fn spell_relative(&self, at: usize, from: usize) -> Option<String> {
-        if self.nodes[at].kind == NodeKind::Attribute {
-            let carrier = self.nodes[at].parent?;
-            let name = format!("@{}", self.step(at)?.write(false));
-            if carrier == from {
-                return Some(name);
-            }
-            return Some(format!("{}/{name}", self.spell_relative(carrier, from)?));
+        let mut steps = Vec::new();
+        let mut walk = at;
+        while walk != from {
+            let Some(parent) = self.nodes[walk].parent else {
+                return self.spell_absolute(at);
+            };
+            steps.push(self.spell_step(walk, true)?);
+            walk = parent;
         }
-        if at == from {
-            return None;
+        if steps.is_empty() {
+            return Some(".".to_owned());
         }
-        let chain = self.up_to(at, from)?;
-        let mut steps = Vec::with_capacity(chain.len() - 1);
-        for &node in chain[..chain.len() - 1].iter().rev() {
-            steps.push(self.step(node)?.write(true));
-        }
+        steps.reverse();
         Some(steps.join("/"))
     }
 }
@@ -381,9 +443,18 @@ impl Document for Tree {
     }
 }
 
+#[cfg(test)]
+thread_local! {
+    /// How many addresses this thread has put through the evaluator, which a
+    /// test reads to hold a record's lookup off it.
+    static EVALUATED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 /// Every node an address selects from a context node; nothing at all where it
 /// is no XPath, or is one whose value is not a set of nodes.
 fn selects(tree: &Tree, context: usize, written: &str) -> Option<Vec<usize>> {
+    #[cfg(test)]
+    EVALUATED.with(|count| count.set(count.get() + 1));
     let expression = parse(written).ok()?;
     let context = EvaluationContext::new(tree.at(context));
     match evaluate(&expression, &context).ok()? {
@@ -464,6 +535,26 @@ pub(crate) struct Followed<'a> {
     tree: OnceCell<Option<Tree>>,
 }
 
+/// Where the record a finding is about stands in the source, which is what its
+/// address is followed from.
+pub(crate) enum Stands<'a> {
+    /// The steps the lift opened to reach the record, which is what it walked
+    /// as it read one, and so is no search.
+    Along(&'a [Step]),
+    /// The document's own element, which a finding about the document rather
+    /// than about a record is about.
+    AtTheDocumentElement,
+}
+
+impl Stands<'_> {
+    fn node(&self, tree: &Tree) -> Option<usize> {
+        match self {
+            Self::Along(path) => tree.walk(path),
+            Self::AtTheDocumentElement => Some(tree.element),
+        }
+    }
+}
+
 impl<'a> Followed<'a> {
     pub(crate) fn of(xml: &'a str) -> Self {
         Self {
@@ -477,10 +568,16 @@ impl<'a> Followed<'a> {
     }
 
     /// A report for each address these findings carry that does not select
-    /// exactly one node from the record they are about. A record this Bridge
-    /// cannot find in the tree is one it says nothing about, as a document no
-    /// tree can be built from is.
-    pub(crate) fn unresolved(&self, record: &Record, findings: &[Quad]) -> Result<Vec<Quad>> {
+    /// exactly one node from the record they are about, selecting the document
+    /// element as every report does. A record this Bridge cannot find in the
+    /// tree is one it says nothing about, as a document no tree can be built
+    /// from is.
+    pub(crate) fn unresolved(
+        &self,
+        document: &Record,
+        stands: Stands<'_>,
+        findings: &[Quad],
+    ) -> Result<Vec<Quad>> {
         let addresses = refinements(findings);
         if addresses.is_empty() {
             return Ok(Vec::new());
@@ -488,13 +585,13 @@ impl<'a> Followed<'a> {
         let Some(tree) = self.tree() else {
             return Ok(Vec::new());
         };
-        let Some(at) = one(tree, DOCUMENT, record.selector) else {
+        let Some(at) = stands.node(tree) else {
             return Ok(Vec::new());
         };
         let mut reports = Vec::new();
         for written in addresses {
             if one(tree, at, &written).is_none() {
-                reports.extend(annotation::address(record, &written)?);
+                reports.extend(annotation::address(document, &written)?);
             }
         }
         Ok(reports)
@@ -614,11 +711,36 @@ pub(crate) struct Respelled {
 
 #[cfg(test)]
 mod tests {
-    use super::{one, Tree, DOCUMENT};
+    use super::{one, Followed, Stands, Tree, DOCUMENT, EVALUATED};
+    use crate::annotation::Record;
+    use crate::rdf::{OA_REFINED_BY, RDF_VALUE};
+    use oxrdf::{BlankNode, GraphName, Literal, NamedNode, Quad};
     use xpath_eval::NodeKind;
 
     fn tree(xml: &str) -> Tree {
         Tree::of(xml).expect("a tree")
+    }
+
+    /// One finding refining its record by an address, which is what a record's
+    /// findings carry for a Bridge to follow.
+    fn refining(address: &str) -> Vec<Quad> {
+        let selector = BlankNode::default();
+        let refined = BlankNode::default();
+        let named = |iri: &str| NamedNode::new(iri).expect("an IRI");
+        vec![
+            Quad::new(
+                selector,
+                named(OA_REFINED_BY),
+                refined.clone(),
+                GraphName::DefaultGraph,
+            ),
+            Quad::new(
+                refined,
+                named(RDF_VALUE),
+                Literal::new_simple_literal(address),
+                GraphName::DefaultGraph,
+            ),
+        ]
     }
 
     fn kinds(tree: &Tree) -> Vec<NodeKind> {
@@ -685,25 +807,86 @@ mod tests {
     }
 
     /// One spelling rule: what the lift writes for a record is what following
-    /// that address and spelling the node it reaches writes again.
+    /// that address and spelling the node it reaches writes again, and the
+    /// steps it wrote that address from reach the same node without it.
     #[test]
     fn spells_a_record_as_the_lift_wrote_its_selector() {
         let document =
             br#"<s:set xmlns:s="urn:example:set"><g><s:item/><s:item/></g><g><item/></g></s:set>"#;
-        let selectors: Vec<String> = crate::lift::lift_slice(document, Some("item"))
+        let units: Vec<crate::lift::Unit> = crate::lift::lift_slice(document, Some("item"))
             .expect("the lift")
-            .map(|unit| unit.expect("a unit").selector())
+            .map(|unit| unit.expect("a unit"))
             .collect();
-        assert_eq!(selectors.len(), 3);
+        assert_eq!(units.len(), 3);
         let tree = tree(std::str::from_utf8(document).expect("utf-8"));
-        let spelled: Vec<String> = selectors
-            .iter()
-            .map(|selector| {
-                let at = one(&tree, DOCUMENT, selector).unwrap_or_else(|| panic!("{selector}"));
-                tree.spell_absolute(at).expect("an address")
-            })
+        for unit in &units {
+            let selector = unit.selector();
+            let at = one(&tree, DOCUMENT, &selector).unwrap_or_else(|| panic!("{selector}"));
+            assert_eq!(tree.spell_absolute(at).as_deref(), Some(selector.as_str()));
+            assert_eq!(tree.walk(unit.path()), Some(at), "{selector}");
+        }
+    }
+
+    /// Two addresses that reach one node are one address, so every node is
+    /// spelled the one way: the nodes a record holds from the record, and a
+    /// node it does not hold from the document, there being no address of the
+    /// record that names it.
+    #[test]
+    fn spells_the_node_an_address_reaches_however_it_was_written() {
+        let tree = tree(
+            r#"<catalog><item>said<!-- aside --><?say again?><note a="b">text</note></item><item/></catalog>"#,
+        );
+        let record = one(&tree, DOCUMENT, "/catalog/item[1]").expect("the record");
+        for (written, spelled) in [
+            ("note[1]/text()", "note[1]/text()[1]"),
+            ("note/text()[1]", "note[1]/text()[1]"),
+            ("text()", "text()[1]"),
+            ("comment()", "comment()[1]"),
+            ("processing-instruction()", "processing-instruction()[1]"),
+            ("note/@a", "note[1]/@a"),
+            (".", "."),
+            ("self::item", "."),
+            ("../item[2]", "/catalog/item[2]"),
+            ("following-sibling::item[1]", "/catalog/item[2]"),
+            ("..", "/catalog"),
+        ] {
+            let at = one(&tree, record, written).unwrap_or_else(|| panic!("{written}"));
+            assert_eq!(
+                tree.spell_relative(at, record).as_deref(),
+                Some(spelled),
+                "{written}"
+            );
+        }
+    }
+
+    /// A record is reached by the steps the lift opened to reach it, so a
+    /// conversion puts each address of a record's findings through the
+    /// evaluator and the record itself not at all.
+    #[test]
+    fn reaches_each_record_without_evaluating_its_selector() {
+        let document =
+            b"<catalog><item><note/></item><item><note/></item><item><note/></item></catalog>";
+        let text = std::str::from_utf8(document).expect("utf-8");
+        let followed = Followed::of(text);
+        let units: Vec<crate::lift::Unit> = crate::lift::lift_slice(document, Some("item"))
+            .expect("the lift")
+            .map(|unit| unit.expect("a unit"))
             .collect();
-        assert_eq!(spelled, selectors);
+        assert_eq!(units.len(), 3);
+        let findings = refining("note[1]");
+        EVALUATED.with(|count| count.set(0));
+        for unit in &units {
+            let selector = unit.selector();
+            let record = Record {
+                source: "urn:example:catalog",
+                selector: &selector,
+            };
+            assert!(followed
+                .unresolved(&record, Stands::Along(unit.path()), &findings)
+                .expect("the reports")
+                .is_empty());
+        }
+        assert_eq!(EVALUATED.with(std::cell::Cell::get), units.len());
     }
 
     #[test]

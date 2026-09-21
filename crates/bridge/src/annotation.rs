@@ -179,12 +179,13 @@ pub fn violation(record: &Record, body: &str, within: Option<&str>) -> Result<Ve
 }
 
 /// An address a finding carries that this Bridge could not follow: it selects
-/// no node of the record, or more than one, so which node the finding is about
-/// is not recoverable. The finding whose address it is stands; this stands
-/// beside it.
-pub fn address(record: &Record, written: &str) -> Result<Vec<Quad>> {
+/// no node, or more than one, so which node the finding is about is not
+/// recoverable. The finding whose address it is stands; this stands beside it,
+/// selecting the document element, the one node a Bridge addresses without
+/// following anything, so that a report is never the case it reports.
+pub fn address(document: &Record, written: &str) -> Result<Vec<Quad>> {
     finding(
-        record,
+        document,
         BRIDGE_ADDRESS_NOT_ONE_NODE,
         None,
         SH_VIOLATION,
