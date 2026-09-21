@@ -1,14 +1,20 @@
-// Two boundaries, each of which is invisible until something crosses it.
+// Three boundaries, each of which is invisible until something crosses it.
 //
 // The filesystem is one module's business. The library must run wherever a
 // host can hand it bytes, and std::fs named anywhere but the resolver makes
 // that false for every host without a filesystem, which only the first one to
 // try would discover.
 //
-// The adapter's directory is the other. A mapping's IRI comes out of a
+// The adapter's directory is the second. A mapping's IRI comes out of a
 // stranger's crate, so the boundary is decided on the path a filesystem would
 // actually reach, never on how the IRI happens to be spelled.
-use cascade_bridge::{DirectoryResolver, Resolver};
+//
+// The thread is the third. An adapter is prepared once and converted with many
+// times, so a host prepares on one thread and hands the result to the worker
+// that converts. An auto trait is granted by every field at once and withdrawn
+// by any one of them, with no line to read it off and no caller in this
+// repository to miss it.
+use cascade_bridge::{DirectoryResolver, Prepared, Resolver};
 use std::path::PathBuf;
 
 const ALLOWED: &str = "resolver.rs";
@@ -81,4 +87,13 @@ fn refuses_a_path_that_leaves_the_adapter_however_it_is_spelled() {
         .unwrap_err()
         .to_string()
         .contains("not inside the adapter"));
+}
+
+/// Send and not Sync: a schema has carried a RefCell since long before this
+/// test, so a prepared adapter has never been shared between threads, only
+/// moved to one.
+#[test]
+fn moves_a_prepared_adapter_to_the_thread_that_converts_with_it() {
+    fn sendable<T: Send>() {}
+    sendable::<Prepared>();
 }
