@@ -1,0 +1,22 @@
+# Each notation is written as a key is: the source phrase lowercased and
+# stripped of leading and trailing XML whitespace.
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix ex:   <urn:example:catalog#> .
+
+ex:statuses a skos:ConceptScheme ;
+  skos:prefLabel "the statuses the catalog adapter maps" .
+
+ex:status-current a skos:Concept ;
+  skos:inScheme ex:statuses ;
+  skos:notation "current" ;
+  skos:exactMatch ex:Current .
+
+ex:status-superseded a skos:Concept ;
+  skos:inScheme ex:statuses ;
+  skos:notation "superseded" ;
+  skos:exactMatch ex:Superseded .
+
+ex:status-withdrawn a skos:Concept ;
+  skos:inScheme ex:statuses ;
+  skos:notation "withdrawn" ;
+  skos:closeMatch ex:Withdrawn .

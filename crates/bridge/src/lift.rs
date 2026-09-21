@@ -23,7 +23,7 @@ use quick_xml::events::Event;
 use quick_xml::name::ResolveResult;
 use quick_xml::NsReader;
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, Cursor};
 
 const RDF: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
@@ -120,61 +120,129 @@ pub(crate) struct Occurrence {
     pub(crate) count: usize,
 }
 
-/// Whether the paths of each record are kept as it is lifted.
-#[derive(Clone, Copy, PartialEq, Eq)]
+/// One value a record holds at a path whose entry looks its values up: the
+/// value as the record wrote it, the occurrence it first stood at, and how many
+/// nodes of the record hold it there.
+pub(crate) struct Valued {
+    pub(crate) path: String,
+    pub(crate) value: String,
+    pub(crate) within: Option<String>,
+    pub(crate) count: usize,
+}
+
+/// Whether the paths of each record are kept as it is lifted, and the paths the
+/// values standing at them are kept for.
+#[derive(Clone, PartialEq, Eq)]
 pub enum Paths {
-    Kept,
+    Kept { valued: HashSet<String> },
     Dropped,
 }
 
+/// An element the walk is inside: where it stands, whether the values at its
+/// path are kept, and whether an element child has taken its text away.
+struct Open {
+    path: String,
+    within: Option<String>,
+    valued: bool,
+    childless: bool,
+}
+
 /// The distinct paths of one record, each kept at its first occurrence and
-/// counted at every one.
+/// counted at every one, and, at a path whose values are kept, each distinct
+/// value the same way.
 #[derive(Default)]
 struct Census {
-    record: String,
-    below: Vec<Step>,
+    below: Vec<Open>,
     seen: HashMap<String, usize>,
     occurrences: Vec<Occurrence>,
+    held: HashMap<(String, String), usize>,
+    values: Vec<Valued>,
 }
 
 impl Census {
-    fn of(record: &Step, attributes: &[Step]) -> Self {
-        let mut census = Self {
-            record: format!("/{}", record.write(false)),
-            ..Self::default()
-        };
-        let path = census.record.clone();
-        census.attributes(&path, None, attributes);
+    fn of(record: &Step, attributes: &[Attribute], valued: &HashSet<String>) -> Self {
+        let mut census = Self::default();
+        let path = format!("/{}", record.write(false));
+        census.attributes(&path, None, attributes, valued);
+        // The record element itself is no path, so nothing is looked up in what
+        // it holds; it stands here to spell the paths below it.
+        census.below.push(Open {
+            path,
+            within: None,
+            valued: false,
+            childless: true,
+        });
         census
     }
 
-    fn open(&mut self, step: Step, attributes: &[Step]) {
-        self.below.push(step);
-        let path = format!(
-            "{}{}",
-            self.record,
-            self.below
-                .iter()
-                .map(|step| format!("/{}", step.write(false)))
-                .collect::<String>()
-        );
-        let within = self
-            .below
-            .iter()
-            .map(|step| step.write(true))
-            .collect::<Vec<String>>()
-            .join("/");
+    fn open(&mut self, step: Step, attributes: &[Attribute], valued: &HashSet<String>) {
+        let (path, within) = {
+            let parent = self.below.last_mut().expect("the record element is open");
+            parent.childless = false;
+            let within = match &parent.within {
+                Some(above) => format!("{above}/{}", step.write(true)),
+                None => step.write(true),
+            };
+            (format!("{}/{}", parent.path, step.write(false)), within)
+        };
         self.add(path.clone(), Some(&within));
-        self.attributes(&path, Some(&within), attributes);
+        self.attributes(&path, Some(&within), attributes, valued);
+        self.below.push(Open {
+            valued: valued.contains(&path),
+            path,
+            within: Some(within),
+            childless: true,
+        });
     }
 
-    fn close(&mut self) {
-        self.below.pop();
+    /// An element's text arrives between its start and its end, so its value is
+    /// known here and nowhere earlier.
+    fn close(&mut self, text: Option<&str>) {
+        let Some(closed) = self.below.pop() else {
+            return;
+        };
+        if let Some(text) = text {
+            self.hold(&closed.path, closed.within.as_deref(), text);
+        }
     }
 
-    fn attributes(&mut self, element: &str, within: Option<&str>, attributes: &[Step]) {
-        for attribute in attributes {
-            self.add(format!("{element}/@{}", attribute.write(false)), within);
+    /// Whether the element about to close holds a value at all. Copying the
+    /// text of every element that closes would copy the document.
+    fn wants_value(&self) -> bool {
+        self.below
+            .last()
+            .is_some_and(|open| open.valued && open.childless)
+    }
+
+    fn attributes(
+        &mut self,
+        element: &str,
+        within: Option<&str>,
+        attributes: &[Attribute],
+        valued: &HashSet<String>,
+    ) {
+        for (step, value) in attributes.iter().filter_map(Attribute::named) {
+            let path = format!("{element}/@{}", step.write(false));
+            if valued.contains(&path) {
+                self.hold(&path, within, value);
+            }
+            self.add(path, within);
+        }
+    }
+
+    fn hold(&mut self, path: &str, within: Option<&str>, value: &str) {
+        let held = (path.to_owned(), value.to_owned());
+        match self.held.get(&held) {
+            Some(&first) => self.values[first].count += 1,
+            None => {
+                self.held.insert(held, self.values.len());
+                self.values.push(Valued {
+                    path: path.to_owned(),
+                    value: value.to_owned(),
+                    within: within.map(str::to_owned),
+                    count: 1,
+                });
+            }
         }
     }
 
@@ -200,6 +268,7 @@ pub struct Unit {
     pub xml: String,
     path: Vec<Step>,
     occurrences: Vec<Occurrence>,
+    values: Vec<Valued>,
 }
 
 impl Unit {
@@ -216,6 +285,10 @@ impl Unit {
     pub(crate) fn occurrences(&self) -> &[Occurrence] {
         &self.occurrences
     }
+
+    pub(crate) fn values(&self) -> &[Valued] {
+        &self.values
+    }
 }
 
 /// An element as the parser read it: what the lift names it by, and what the
@@ -225,12 +298,25 @@ struct Element<'a> {
     namespace: Option<&'a str>,
     qname: &'a str,
     type_iri: NamedNode,
-    attributes: Vec<(NamedNode, String)>,
-    /// What each attribute is named in a path, an attribute taking no place
-    /// among siblings of its name.
-    attribute_names: Vec<Step>,
+    attributes: Vec<Attribute>,
     written: Vec<(String, String)>,
     declarations: Vec<(String, String)>,
+}
+
+/// An attribute as the parser read it: what a triple names it, what it says,
+/// and what a path names it, an attribute taking no place among siblings of
+/// its name. Only the census reads a step, so only a lift keeping paths
+/// spells one.
+struct Attribute {
+    predicate: NamedNode,
+    value: String,
+    step: Option<Step>,
+}
+
+impl Attribute {
+    fn named(&self) -> Option<(&Step, &str)> {
+        Some((self.step.as_ref()?, self.value.as_str()))
+    }
 }
 
 struct Frame {
@@ -309,6 +395,10 @@ impl Builder {
 
     fn inside_unit(&self) -> bool {
         self.stack.last().is_some_and(|f| f.unit)
+    }
+
+    fn keeps_paths(&self) -> bool {
+        matches!(self.paths, Paths::Kept { .. })
     }
 
     /// Characters of the unit, as the document wrote them.
@@ -396,8 +486,8 @@ impl Builder {
                 &element.written,
                 &element.declarations,
             ));
-            if let Some(census) = &mut self.census {
-                census.open(step.clone(), &element.attribute_names);
+            if let (Some(census), Paths::Kept { valued }) = (&mut self.census, &self.paths) {
+                census.open(step.clone(), &element.attributes, valued);
             }
             let id = self.fresh();
             let top = self.stack.last_mut().expect("checked above");
@@ -405,9 +495,12 @@ impl Builder {
             let slot = triple(&top.id, member(top.members)?, id.clone());
             self.unit.push(slot);
             self.unit.push(triple(&id, rdf_type, element.type_iri));
-            for (predicate, value) in element.attributes {
-                self.unit
-                    .push(triple(&id, predicate, Literal::new_simple_literal(value)));
+            for attribute in element.attributes {
+                self.unit.push(triple(
+                    &id,
+                    attribute.predicate,
+                    Literal::new_simple_literal(attribute.value),
+                ));
             }
             self.stack.push(frame(id, true, Some(step)));
             return Ok(());
@@ -438,10 +531,11 @@ impl Builder {
                 .filter_map(|frame| frame.step.clone())
                 .chain([step.clone()])
                 .collect();
-            self.census = match self.paths {
-                Paths::Kept => Some(Census::of(&step, &element.attribute_names)),
+            let census = match &self.paths {
+                Paths::Kept { valued } => Some(Census::of(&step, &element.attributes, valued)),
                 Paths::Dropped => None,
             };
+            self.census = census;
             self.raw.clear();
             self.raw.push_str(UTF_8_DECLARATION);
             let scope = self.in_scope(&element.declarations);
@@ -453,20 +547,23 @@ impl Builder {
             self.unit
                 .push(triple(&unit_id, rdf_type.clone(), self.fx_root.clone()));
             self.unit.push(triple(&unit_id, rdf_type, element.type_iri));
-            for (predicate, value) in element.attributes {
+            for attribute in element.attributes {
                 self.unit.push(triple(
                     &unit_id,
-                    predicate,
-                    Literal::new_simple_literal(value),
+                    attribute.predicate,
+                    Literal::new_simple_literal(attribute.value),
                 ));
             }
             self.stack.push(frame(unit_id, true, Some(step)));
             return Ok(());
         }
 
-        for (predicate, value) in element.attributes {
-            self.skeleton
-                .push(triple(&id, predicate, Literal::new_simple_literal(value)));
+        for attribute in element.attributes {
+            self.skeleton.push(triple(
+                &id,
+                attribute.predicate,
+                Literal::new_simple_literal(attribute.value),
+            ));
         }
         self.stack.push(frame(id, false, Some(step)));
         Ok(())
@@ -474,6 +571,11 @@ impl Builder {
 
     /// Closes an element, and says whether the outermost unit ended here.
     fn close(&mut self) -> Result<bool> {
+        let value = self
+            .census
+            .as_ref()
+            .is_some_and(Census::wants_value)
+            .then(|| self.text.clone());
         self.flush()?;
         let Some(frame) = self.stack.pop() else {
             return Ok(false);
@@ -481,7 +583,7 @@ impl Builder {
         if frame.unit {
             self.raw.push_str(&format!("</{}>", frame.qname));
             if let Some(census) = &mut self.census {
-                census.close();
+                census.close(value.as_deref());
             }
         }
         Ok(frame.unit && !self.inside_unit())
@@ -568,7 +670,7 @@ impl<R: BufRead> Lift<R> {
                     let qname = String::from_utf8(start.name().as_ref().to_vec())?;
                     let type_iri = name(namespace.as_deref().unwrap_or(XYZ), &local)?;
                     let mut attributes = Vec::new();
-                    let mut attribute_names = Vec::new();
+                    let kept = self.builder.keeps_paths();
                     let mut written = Vec::new();
                     let mut declarations = Vec::new();
                     for attribute in start.attributes() {
@@ -592,15 +694,19 @@ impl<R: BufRead> Lift<R> {
                         };
                         let local = std::str::from_utf8(local.as_ref())?;
                         let predicate = name(namespace.as_deref().unwrap_or(XYZ), local)?;
-                        attribute_names.push(Step {
+                        let raw = std::str::from_utf8(&attribute.value)?;
+                        let value = quick_xml::escape::unescape(&normalise_attribute_value(raw))?
+                            .into_owned();
+                        let step = kept.then(|| Step {
                             local: local.to_owned(),
                             namespace: namespace.clone(),
                             position: 1,
                         });
-                        let raw = std::str::from_utf8(&attribute.value)?;
-                        let value = quick_xml::escape::unescape(&normalise_attribute_value(raw))?
-                            .into_owned();
-                        attributes.push((predicate, value));
+                        attributes.push(Attribute {
+                            predicate,
+                            value,
+                            step,
+                        });
                     }
                     self.builder.open(Element {
                         local: &local,
@@ -608,7 +714,6 @@ impl<R: BufRead> Lift<R> {
                         qname: &qname,
                         type_iri,
                         attributes,
-                        attribute_names,
                         written,
                         declarations,
                     })?;
@@ -616,16 +721,18 @@ impl<R: BufRead> Lift<R> {
                 Event::End(_) => {
                     if self.builder.close()? {
                         let quads = std::mem::take(&mut self.builder.unit);
+                        let (occurrences, values) = self
+                            .builder
+                            .census
+                            .take()
+                            .map(|census| (census.occurrences, census.values))
+                            .unwrap_or_default();
                         return Ok(Some(Unit {
                             store: store_of(quads)?,
                             xml: std::mem::take(&mut self.builder.raw),
                             path: std::mem::take(&mut self.builder.unit_path),
-                            occurrences: self
-                                .builder
-                                .census
-                                .take()
-                                .map(|census| census.occurrences)
-                                .unwrap_or_default(),
+                            occurrences,
+                            values,
                         }));
                     }
                 }

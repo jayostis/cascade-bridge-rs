@@ -209,6 +209,21 @@ pub fn gap(
     finding(record, gap, within, severity, Some(path), occurrences)
 }
 
+/// The gap an entry's lookup names for a value the record holds at its path
+/// that the concept map carries no notation for, at that value's first
+/// occurrence. A gap finding's sh:value is the path, standing for every node at
+/// it; a lookup finding stands for one value, and the path is in the address.
+pub fn lookup(
+    record: &Record,
+    gap: &str,
+    value: &str,
+    within: Option<&str>,
+    severity: &str,
+    occurrences: usize,
+) -> Result<Vec<Quad>> {
+    finding(record, gap, within, severity, Some(value), occurrences)
+}
+
 /// What a findings query constructed, made about this record: bridge:thisRecord
 /// becomes the document, and each annotation's target becomes a node of its own
 /// carrying a record selector, the query's selector under it.

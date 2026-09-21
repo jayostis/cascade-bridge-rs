@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<catalog>
+  <item id="1"><title>First</title><shelf status="current">a shelf</shelf><shelf status="Retired">another shelf</shelf></item>
+</catalog>

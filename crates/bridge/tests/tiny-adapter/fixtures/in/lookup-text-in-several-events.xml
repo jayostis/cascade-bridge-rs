@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<catalog>
+  <item id="1"><title>First</title><note>Re<![CDATA[ti]]>red</note><note>Reti<!-- what a comment leaves behind -->red</note><note>Reti&#114;ed</note></item>
+</catalog>
