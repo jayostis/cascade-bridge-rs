@@ -401,7 +401,9 @@ fn entries(resolver: &dyn Resolver, iri: &str) -> Result<Vec<Entry>> {
 /// crate that names a scheme and cannot show it is refused here, as its
 /// accounting is, and so is one whose concept declares a severity outside the
 /// three the specification fixes: the finding it would carry is one the
-/// adapter profile's own shape for a source finding refuses.
+/// adapter profile's own shape for a source finding refuses. One declaring two
+/// severities is refused for the neighbouring reason — keeping either leaves
+/// the parse order deciding how loud the gap is.
 fn gap_scheme(resolver: &dyn Resolver, iri: &str) -> Result<HashMap<String, Gap>> {
     let bytes = resolver
         .read(iri)
@@ -433,6 +435,12 @@ fn gap_scheme(resolver: &dyn Resolver, iri: &str) -> Result<HashMap<String, Gap>
                 return Err(Error::msg(format!(
                     "{iri}: {concept} declares sh:resultSeverity {object}; a gap's severity is \
                      sh:Info, sh:Warning or sh:Violation"
+                )));
+            }
+            if let Some(already) = &declared.severity {
+                return Err(Error::msg(format!(
+                    "{iri}: {concept} declares sh:resultSeverity {already} and {object}; a gap \
+                     declares at most one"
                 )));
             }
             declared.severity = Some(object.as_str().to_owned());
