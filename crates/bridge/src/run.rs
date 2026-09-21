@@ -746,6 +746,7 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
     // Decoding is the one stage that holds the whole document at once, so the
     // document schema below reads these characters rather than its own copy.
     let text = decode(source.xml)?;
+    let followed = xpath::Followed::of(&text);
     let paths = match &prepared.accounting {
         Some(accounting) => Paths::Kept {
             valued: accounting.lookups.keys().cloned().collect(),
@@ -856,7 +857,7 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
         ms.findings += at.elapsed();
 
         let at = Instant::now();
-        let reports = xpath::unresolved(&record, &unit.xml, &findings[mark..])?;
+        let reports = followed.unresolved(&record, &findings[mark..])?;
         findings.extend(reports);
         ms.findings += at.elapsed();
     }
@@ -882,7 +883,7 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
                 broken.within(),
             )?);
         }
-        let reports = xpath::unresolved(&record, &text, &findings[mark..])?;
+        let reports = followed.unresolved(&record, &findings[mark..])?;
         findings.extend(reports);
     }
     ms.validation += at.elapsed();

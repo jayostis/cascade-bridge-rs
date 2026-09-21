@@ -19,6 +19,7 @@ use oxrdf::{BlankNode, Literal, NamedOrBlankNode, Quad, Term};
 use quick_xml::events::Event;
 use quick_xml::name::ResolveResult;
 use quick_xml::NsReader;
+use std::cell::OnceCell;
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use xpath_eval::{
@@ -91,8 +92,9 @@ impl Tree {
         let mut nodes = vec![Data::of(NodeKind::Root, None)];
         let mut open: Vec<usize> = vec![DOCUMENT];
         // The text node still taking characters. Adjacent character data is one
-        // text node however many events it arrived in, and a comment or a
-        // processing instruction between two runs of it begins no second one.
+        // text node however many events it arrived in, and a node standing
+        // between two runs of character data leaves them not adjacent, so the
+        // run after it begins a second text node.
         let mut taking: Option<usize> = None;
         loop {
             let (namespace, event) = reader.read_resolved_event().ok()?;
@@ -154,6 +156,7 @@ impl Tree {
                     say(&mut nodes, &mut taking, &open, characters);
                 }
                 Event::Comment(comment) => {
+                    taking = None;
                     let raw = comment.into_inner();
                     let text = std::str::from_utf8(&raw).ok()?.to_owned();
                     let parent = *open.last()?;
@@ -162,6 +165,7 @@ impl Tree {
                     nodes[parent].children.push(at);
                 }
                 Event::PI(instruction) => {
+                    taking = None;
                     let target = std::str::from_utf8(instruction.target()).ok()?.to_owned();
                     let content = std::str::from_utf8(instruction.content()).ok()?.to_owned();
                     let parent = *open.last()?;
@@ -422,23 +426,53 @@ fn refinements(findings: &[Quad]) -> BTreeSet<String> {
         .collect()
 }
 
-/// A report for each address these findings carry that does not select exactly
-/// one node of the record they are about.
-pub(crate) fn unresolved(record: &Record, xml: &str, findings: &[Quad]) -> Result<Vec<Quad>> {
-    let addresses = refinements(findings);
-    if addresses.is_empty() {
-        return Ok(Vec::new());
-    }
-    let Some(tree) = Tree::of(xml) else {
-        return Ok(Vec::new());
-    };
-    let mut reports = Vec::new();
-    for written in addresses {
-        if one(&tree, tree.element, &written).is_none() {
-            reports.extend(annotation::address(record, &written)?);
+/// The source document as XPath counts it, followed for every record of it and
+/// for the document itself. It is the source rather than the record the lift
+/// rebuilt, because the lift leaves out what XPath counts and a record read on
+/// its own has no ancestor: an address is followed here through the tree a
+/// comparison follows it through, so a conversion and a comparison cannot
+/// disagree about the node one address names. One document is one tree, parsed
+/// when an address is first to be followed through it.
+pub(crate) struct Followed<'a> {
+    xml: &'a str,
+    tree: OnceCell<Option<Tree>>,
+}
+
+impl<'a> Followed<'a> {
+    pub(crate) fn of(xml: &'a str) -> Self {
+        Self {
+            xml,
+            tree: OnceCell::new(),
         }
     }
-    Ok(reports)
+
+    fn tree(&self) -> Option<&Tree> {
+        self.tree.get_or_init(|| Tree::of(self.xml)).as_ref()
+    }
+
+    /// A report for each address these findings carry that does not select
+    /// exactly one node from the record they are about. A record this Bridge
+    /// cannot find in the tree is one it says nothing about, as a document no
+    /// tree can be built from is.
+    pub(crate) fn unresolved(&self, record: &Record, findings: &[Quad]) -> Result<Vec<Quad>> {
+        let addresses = refinements(findings);
+        if addresses.is_empty() {
+            return Ok(Vec::new());
+        }
+        let Some(tree) = self.tree() else {
+            return Ok(Vec::new());
+        };
+        let Some(at) = one(tree, DOCUMENT, record.selector) else {
+            return Ok(Vec::new());
+        };
+        let mut reports = Vec::new();
+        for written in addresses {
+            if one(tree, at, &written).is_none() {
+                reports.extend(annotation::address(record, &written)?);
+            }
+        }
+        Ok(reports)
+    }
 }
 
 /// What each selector node of these findings is to be re-spelled as: a record
@@ -565,10 +599,34 @@ mod tests {
     }
 
     #[test]
-    fn reads_character_data_either_side_of_a_section_or_a_comment_as_one_text_node() {
+    fn reads_character_data_either_side_of_a_section_as_one_text_node() {
+        let tree = tree("<c>Re<![CDATA[ti]]>r&#101;d</c>");
+        assert_eq!(kinds(&tree), [NodeKind::Text]);
+        assert_eq!(said(&tree), ["Retired"]);
+    }
+
+    #[test]
+    fn reads_character_data_either_side_of_a_comment_as_two_text_nodes() {
         let tree = tree("<c>Re<![CDATA[ti]]>r<!-- said twice -->&#101;d</c>");
-        assert_eq!(kinds(&tree), [NodeKind::Text, NodeKind::Comment]);
-        assert_eq!(said(&tree), ["Retired", " said twice "]);
+        assert_eq!(
+            kinds(&tree),
+            [NodeKind::Text, NodeKind::Comment, NodeKind::Text]
+        );
+        assert_eq!(said(&tree), ["Retir", " said twice ", "ed"]);
+    }
+
+    #[test]
+    fn reads_character_data_either_side_of_an_instruction_as_two_text_nodes() {
+        let tree = tree("<c>Retir<?say it twice?>ed</c>");
+        assert_eq!(
+            kinds(&tree),
+            [
+                NodeKind::Text,
+                NodeKind::ProcessingInstruction,
+                NodeKind::Text
+            ]
+        );
+        assert_eq!([said(&tree)[0], said(&tree)[2]], ["Retir", "ed"]);
     }
 
     #[test]

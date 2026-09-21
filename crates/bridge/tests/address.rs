@@ -195,6 +195,43 @@ fn reports_an_address_two_findings_of_one_record_share_once() {
     );
 }
 
+/// A comment and a processing instruction are no part of what the lift
+/// rebuilds from a record, and an address that counts them is followed through
+/// the source, where they stand.
+#[test]
+fn follows_an_address_through_what_the_lift_leaves_out() {
+    for address in ["comment()[1]", "processing-instruction()[1]", "node()[2]"] {
+        let counted = run(
+            &variants(vec![
+                (
+                    "fixtures/in/two.xml",
+                    "<item id=\"1\">",
+                    "<item id=\"1\"><!-- said of the first --><?say it again?>".to_owned(),
+                ),
+                (NOTE_QUERY, NOTE, format!("rdf:value \"{address}\"")),
+            ]),
+            "two.xml",
+        );
+        assert_eq!(
+            reports(&counted.findings),
+            Vec::<(String, String)>::new(),
+            "{address}"
+        );
+    }
+}
+
+/// An address is followed from the record through the whole source, so one
+/// that walks out of the record reaches the node it names rather than the edge
+/// of a record read on its own.
+#[test]
+fn follows_an_address_that_leaves_the_record() {
+    let outward = run(
+        &variant(NOTE_QUERY, NOTE, "rdf:value \"../item[2]\""),
+        "two.xml",
+    );
+    assert_eq!(reports(&outward.findings), Vec::<(String, String)>::new());
+}
+
 /// Every input the adapter committed, which its oracles are written against.
 fn committed() -> Vec<String> {
     let inputs = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/tiny-adapter/fixtures/in");
