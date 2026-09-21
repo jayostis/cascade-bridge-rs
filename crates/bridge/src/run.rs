@@ -343,17 +343,42 @@ impl Accounting {
     }
 }
 
+/// The one IRI an entry declares for a predicate, where it declares any. Two
+/// leave the parse order deciding what the entry says, and a literal says
+/// nothing an entry can be read by.
+fn declared(objects: &[Term], iri: &str, path: &str, predicate: &str) -> Result<Option<String>> {
+    if let [first, second, ..] = objects {
+        return Err(Error::msg(format!(
+            "{iri}: the entry for {path} declares the {predicate} {first} and {second}; an entry \
+             declares at most one"
+        )));
+    }
+    let Some(object) = objects.first() else {
+        return Ok(None);
+    };
+    let Term::NamedNode(named) = object else {
+        return Err(Error::msg(format!("{iri}: {object} is no {predicate}")));
+    };
+    Ok(Some(named.as_str().to_owned()))
+}
+
 /// The entries an accounting carries, each a `bridge:PathEntry` with a literal
 /// `bridge:sourcePath`. A crate that names an accounting and cannot show it is
 /// refused here, where a crate that names none is never asked.
+///
+/// A verdict and a gap are read from an entry and from nothing else, so what
+/// neither is read from is refused for neither. A `bridge:sourcePath` is the
+/// standing exception: dropping one that is no literal would leave the census
+/// reporting the path as unaccounted, which is a wrong finding and not an
+/// absent one.
 fn entries(resolver: &dyn Resolver, iri: &str) -> Result<Vec<Entry>> {
     let bytes = resolver
         .read(iri)
         .map_err(|e| Error::msg(format!("{iri}: {e}")))?;
     let mut typed = HashSet::new();
     let mut named = Vec::new();
-    let mut verdicts: HashMap<String, String> = HashMap::new();
-    let mut gaps: HashMap<String, String> = HashMap::new();
+    let mut verdicts: HashMap<String, Vec<Term>> = HashMap::new();
+    let mut gaps: HashMap<String, Vec<Term>> = HashMap::new();
     for quad in RdfParser::from_format(RdfFormat::Turtle)
         .with_base_iri(iri)?
         .for_slice(&bytes)
@@ -371,30 +396,27 @@ fn entries(resolver: &dyn Resolver, iri: &str) -> Result<Vec<Entry>> {
                 };
                 named.push((subject, path.value().to_owned()));
             }
-            BRIDGE_VERDICT => {
-                let Term::NamedNode(verdict) = &quad.object else {
-                    return Err(Error::msg(format!("{iri}: {} is no verdict", quad.object)));
-                };
-                verdicts.insert(subject, verdict.as_str().to_owned());
-            }
-            BRIDGE_NAMES_GAP => {
-                let Term::NamedNode(gap) = &quad.object else {
-                    return Err(Error::msg(format!("{iri}: {} is no gap", quad.object)));
-                };
-                gaps.insert(subject, gap.as_str().to_owned());
-            }
+            BRIDGE_VERDICT => verdicts.entry(subject).or_default().push(quad.object),
+            BRIDGE_NAMES_GAP => gaps.entry(subject).or_default().push(quad.object),
             _ => {}
         }
     }
-    Ok(named
-        .into_iter()
-        .filter(|(subject, _)| typed.contains(subject))
-        .map(|(subject, path)| Entry {
-            verdict: verdicts.get(&subject).cloned(),
-            gap: gaps.get(&subject).cloned(),
-            path,
-        })
-        .collect())
+    let mut entries = Vec::new();
+    for (subject, path) in named {
+        if !typed.contains(&subject) {
+            continue;
+        }
+        let said = |by: &HashMap<String, Vec<Term>>, predicate: &str| {
+            let objects: &[Term] = by.get(&subject).map(Vec::as_slice).unwrap_or_default();
+            declared(objects, iri, &path, predicate)
+        };
+        entries.push(Entry {
+            verdict: said(&verdicts, "verdict")?,
+            gap: said(&gaps, "gap")?,
+            path: path.clone(),
+        });
+    }
+    Ok(entries)
 }
 
 /// Each concept of an adapter's gap scheme, by the IRI an entry names it by. A
@@ -403,7 +425,9 @@ fn entries(resolver: &dyn Resolver, iri: &str) -> Result<Vec<Entry>> {
 /// three the specification fixes: the finding it would carry is one the
 /// adapter profile's own shape for a source finding refuses. One declaring two
 /// severities is refused for the neighbouring reason — keeping either leaves
-/// the parse order deciding how loud the gap is.
+/// the parse order deciding how loud the gap is — and one declaring two
+/// `skos:broader` for the same reason one step harder, where the parse order
+/// would decide whether the gap reports at all.
 fn gap_scheme(resolver: &dyn Resolver, iri: &str) -> Result<HashMap<String, Gap>> {
     let bytes = resolver
         .read(iri)
@@ -429,6 +453,12 @@ fn gap_scheme(resolver: &dyn Resolver, iri: &str) -> Result<HashMap<String, Gap>
         };
         let declared = scheme.entry(concept.as_str().to_owned()).or_default();
         if predicate == SKOS_BROADER {
+            if let Some(already) = &declared.kind {
+                return Err(Error::msg(format!(
+                    "{iri}: {concept} declares skos:broader {already} and {object}; a gap declares \
+                     at most one"
+                )));
+            }
             declared.kind = Some(object.as_str().to_owned());
         } else {
             if !SEVERITIES.contains(&object.as_str()) {
