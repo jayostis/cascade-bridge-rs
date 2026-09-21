@@ -731,6 +731,18 @@ fn refuses_a_gap_declaring_a_severity_the_specification_does_not_name() {
 }
 
 #[test]
+fn refuses_a_gap_declaring_two_severities() {
+    let both = Adapted::gaps(&scheme_but_for(
+        "ex:noteHasNoTerm a skos:Concept ;\n  skos:inScheme ex:gaps ;\n  skos:broader bridge:noPredicate ;\n  sh:resultSeverity sh:Warning, sh:Violation .\n",
+    ));
+    let Err(refusal) = conversion(&both, "two.xml") else {
+        panic!("a gap declaring two severities is judged at whichever one the parse saw last");
+    };
+    let refusal = refusal.to_string();
+    assert!(refusal.contains("noteHasNoTerm"), "{refusal}");
+}
+
+#[test]
 fn refuses_a_gap_declaring_a_severity_that_is_no_iri() {
     let quoted = Adapted::gaps(&scheme_but_for(
         "ex:noteHasNoTerm a skos:Concept ;\n  skos:inScheme ex:gaps ;\n  skos:broader bridge:noPredicate ;\n  sh:resultSeverity \"sh:Warning\" .\n",
