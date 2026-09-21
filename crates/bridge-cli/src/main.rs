@@ -219,8 +219,15 @@ fn convert_document(arguments: Convert) -> Result<ExitCode, String> {
         // names this document relative to the IRI the file will be read back
         // from, and that IRI is the file's own. An author commits what this
         // writes as their bridge:expectedFindings, and a finding naming an
-        // absolute path would hold on this machine and no other.
-        std::fs::write(path, "").map_err(|e| format!("{path}: {e}"))?;
+        // absolute path would hold on this machine and no other. It is not
+        // emptied here: an author regenerating a committed oracle in place
+        // keeps what they have until there is something to put in its place.
+        std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(false)
+            .open(path)
+            .map_err(|e| format!("{path}: {e}"))?;
         let at = file_iri(path).map_err(|e| e.to_string())?;
         let written = serialise_at(
             &conversion.findings,
