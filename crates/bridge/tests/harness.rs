@@ -59,7 +59,7 @@ fn says_what_differed_in_the_words_of_the_comparison() {
     assert!(described("graph-fail").contains("graph differs: 1 missing, 1 extra"));
     assert!(
         described("findings-fail").contains(
-            "findings differ: 4 annotation(s) produced, 3 expected; 0 finding(s) missing, 1 extra"
+            "findings differ: 6 annotation(s) produced, 5 expected; 0 finding(s) missing, 1 extra"
         ),
         "{}",
         described("findings-fail")
@@ -79,7 +79,7 @@ fn says_what_differed_in_the_words_of_the_comparison() {
     );
     assert!(!described("pass").contains("detect query is false"));
     assert!(
-        described("pass").contains("findings isomorphic (2 annotation(s))"),
+        described("pass").contains("findings isomorphic (3 annotation(s))"),
         "{}",
         described("pass")
     );

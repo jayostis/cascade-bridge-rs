@@ -1,7 +1,7 @@
 // cascade-bridge test <adapter-dir> [--earl <out.ttl>] [--datasets]
-// cascade-bridge convert <adapter-dir> <document.xml> [--out <file>] [--format turtle|ntriples]
+// cascade-bridge convert <adapter-dir> <document.xml> [--out <file>] [--findings <file>] [--format turtle|ntriples]
 use cascade_bridge::{
-    convert, earl_report, file_iri, load_adapter, prepare, run_manifest, serialise,
+    convert, earl_report, file_iri, load_adapter, prepare, run_manifest, serialise, serialise_at,
     DirectoryResolver, EntryResult, GraphFormat, Outcome, ReportSubject, RunOptions, Source,
     OFFERED_PROFILES,
 };
@@ -9,7 +9,7 @@ use std::io::Write;
 use std::process::ExitCode;
 
 const USAGE: &str = "usage: cascade-bridge test <adapter-dir> [--earl <out.ttl>] [--datasets]
-       cascade-bridge convert <adapter-dir> <document.xml> [--out <file>] [--format turtle|ntriples]";
+       cascade-bridge convert <adapter-dir> <document.xml> [--out <file>] [--findings <file>] [--format turtle|ntriples]";
 
 /// A run proves nothing when an entry failed or could not be run at all.
 const FAILING: [Outcome; 2] = [Outcome::Failed, Outcome::Inapplicable];
@@ -42,6 +42,7 @@ struct Convert {
     directory: String,
     document: String,
     out: Option<String>,
+    findings: Option<String>,
     format: GraphFormat,
 }
 
@@ -73,11 +74,13 @@ fn parse(argv: Vec<String>) -> Option<Command> {
                 directory: argv.next()?,
                 document: argv.next()?,
                 out: None,
+                findings: None,
                 format: GraphFormat::Turtle,
             };
             while let Some(flag) = argv.next() {
                 match flag.as_str() {
                     "--out" => arguments.out = Some(argv.next()?),
+                    "--findings" => arguments.findings = Some(argv.next()?),
                     "--format" => arguments.format = GraphFormat::named(&argv.next()?)?,
                     _ => return None,
                 }
@@ -208,6 +211,34 @@ fn convert_document(arguments: Convert) -> Result<ExitCode, String> {
             None => "the adapter names no bridge:detectQuery".to_owned(),
         }
     );
+
+    // Before the graph, so a findings file that cannot be written leaves
+    // standard output carrying nothing, as the non-zero exit says it does.
+    if let Some(path) = &arguments.findings {
+        // The file is created before it is filled, because what goes in it
+        // names this document relative to the IRI the file will be read back
+        // from, and that IRI is the file's own. An author commits what this
+        // writes as their bridge:expectedFindings, and a finding naming an
+        // absolute path would hold on this machine and no other. It is not
+        // emptied here: an author regenerating a committed oracle in place
+        // keeps what they have until there is something to put in its place.
+        std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(false)
+            .open(path)
+            .map_err(|e| format!("{path}: {e}"))?;
+        let at = file_iri(path).map_err(|e| e.to_string())?;
+        let written = serialise_at(
+            &conversion.findings,
+            arguments.format,
+            &prepared.prefixes,
+            Some(&at),
+        )
+        .map_err(|e| e.to_string())?;
+        std::fs::write(path, written).map_err(|e| format!("{path}: {e}"))?;
+        eprintln!("Findings {path}");
+    }
 
     match &arguments.out {
         Some(path) => {

@@ -13,15 +13,19 @@ use crate::decode::decode;
 use crate::error::{Error, Result};
 use crate::lift::{lift_text, Paths};
 use crate::load::{subject, value, Adapter};
-use crate::rdf::{BRIDGE_PATH_ENTRY, BRIDGE_SOURCE_PATH, RDF_TYPE, SCHEMA_ENCODING_FORMAT};
+use crate::rdf::{
+    BRIDGE_CARRIED_IN_PART, BRIDGE_NAMES_GAP, BRIDGE_NO_HOME, BRIDGE_NO_PREDICATE,
+    BRIDGE_PATH_ENTRY, BRIDGE_SOURCE_LACKS_REQUIRED, BRIDGE_SOURCE_PATH, BRIDGE_VERDICT, RDF_TYPE,
+    SCHEMA_ENCODING_FORMAT, SH_INFO, SH_RESULT_SEVERITY, SH_VIOLATION, SH_WARNING, SKOS_BROADER,
+};
 use crate::resolver::Resolver;
 use crate::validate::{self, Schema};
-use oxigraph::model::{GraphName, Quad, Term};
+use oxigraph::model::{GraphName, NamedOrBlankNode, Quad, Term};
 use oxigraph::sparql::{PreparedSparqlQuery, QueryResults, SparqlEvaluator};
 use oxigraph::store::Store;
 use oxrdfio::{RdfFormat, RdfParser};
 use std::borrow::Cow;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
 /// The form a query's own text declares, decided when it is parsed. Deciding
@@ -113,7 +117,7 @@ pub struct Prepared {
     pub prefixes: Vec<(String, String)>,
     envelopes: Vec<Envelope>,
     source_schema: Option<Schema>,
-    accounted: Option<HashSet<String>>,
+    accounting: Option<Accounting>,
 }
 
 impl Prepared {
@@ -248,37 +252,231 @@ fn document_selector(document: Option<String>, described: Option<&str>) -> Strin
         .unwrap_or_else(|| "/*".to_owned())
 }
 
-/// The paths an accounting carries, each the object of a `bridge:PathEntry`'s
+/// One path of the source, what the adapter does with it, and the gap it opens
+/// where it opens one.
+struct Entry {
+    path: String,
+    verdict: Option<String>,
+    gap: Option<String>,
+}
+
+/// What a concept of an adapter's gap scheme declares about itself.
+#[derive(Default)]
+struct Gap {
+    kind: Option<String>,
+    severity: Option<String>,
+}
+
+/// The verdicts that may name a gap at all.
+const NAMES_A_GAP: [&str; 2] = [BRIDGE_NO_HOME, BRIDGE_CARRIED_IN_PART];
+
+/// The kinds of gap true of the path rather than of what a record happens to
+/// hold at it. Only some of a path's occurrences are carried with loss or left
+/// unmapped, and an entry cannot say which, so a kind true of what a record
+/// holds is left to a findings query, which can count and compare.
+const REPORTS: [&str; 2] = [BRIDGE_NO_PREDICATE, BRIDGE_SOURCE_LACKS_REQUIRED];
+
+/// The severities a gap concept may declare, which are the severities the
+/// adapter profile's shape for a source finding accepts.
+const SEVERITIES: [&str; 3] = [SH_INFO, SH_WARNING, SH_VIOLATION];
+
+/// A gap a path's entry reports, and the severity its concept gives it.
+struct Reported {
+    gap: String,
+    severity: String,
+}
+
+/// What an adapter's accounting says about the paths of a record: which of
+/// them it carries at all, and which of them an entry reports a gap at.
+struct Accounting {
+    paths: HashSet<String>,
+    reported: HashMap<String, Vec<Reported>>,
+}
+
+impl Accounting {
+    /// A gap an entry names and the scheme cannot say the kind of is refused
+    /// here rather than passed over. Whether it reports is not a question this
+    /// Bridge can answer about such a gap, and answering "it does not" drops a
+    /// finding for a reason no reader of the output can see.
+    fn of(entries: Vec<Entry>, scheme: &HashMap<String, Gap>, iri: &str) -> Result<Self> {
+        let mut paths = HashSet::new();
+        let mut reported: HashMap<String, Vec<Reported>> = HashMap::new();
+        for entry in entries {
+            if let (Some(verdict), Some(gap)) = (&entry.verdict, &entry.gap) {
+                if NAMES_A_GAP.contains(&verdict.as_str()) {
+                    let declared = scheme.get(gap.as_str()).ok_or_else(|| {
+                        Error::msg(format!(
+                            "{iri}: the entry for {} names {gap}, which the adapter's \
+                             bridge:gapScheme does not declare",
+                            entry.path
+                        ))
+                    })?;
+                    let kind = declared.kind.as_deref().ok_or_else(|| {
+                        Error::msg(format!(
+                            "{iri}: the entry for {} names {gap}, which declares no skos:broader, \
+                             so what kind of gap it is cannot be read",
+                            entry.path
+                        ))
+                    })?;
+                    if REPORTS.contains(&kind) {
+                        reported
+                            .entry(entry.path.clone())
+                            .or_default()
+                            .push(Reported {
+                                gap: gap.clone(),
+                                severity: declared
+                                    .severity
+                                    .clone()
+                                    .unwrap_or_else(|| SH_INFO.to_owned()),
+                            });
+                    }
+                }
+            }
+            paths.insert(entry.path);
+        }
+        // A graph has no order of its own, so a run's output does not depend on
+        // which way a hash happened to fall.
+        for gaps in reported.values_mut() {
+            gaps.sort_by(|one, two| one.gap.cmp(&two.gap));
+        }
+        Ok(Self { paths, reported })
+    }
+}
+
+/// The one IRI an entry declares for a predicate, where it declares any. Two
+/// leave the parse order deciding what the entry says, and a literal says
+/// nothing an entry can be read by.
+fn declared(objects: &[Term], iri: &str, path: &str, predicate: &str) -> Result<Option<String>> {
+    if let [first, second, ..] = objects {
+        return Err(Error::msg(format!(
+            "{iri}: the entry for {path} declares the {predicate} {first} and {second}; an entry \
+             declares at most one"
+        )));
+    }
+    let Some(object) = objects.first() else {
+        return Ok(None);
+    };
+    let Term::NamedNode(named) = object else {
+        return Err(Error::msg(format!("{iri}: {object} is no {predicate}")));
+    };
+    Ok(Some(named.as_str().to_owned()))
+}
+
+/// The entries an accounting carries, each a `bridge:PathEntry` with a literal
 /// `bridge:sourcePath`. A crate that names an accounting and cannot show it is
 /// refused here, where a crate that names none is never asked.
-fn accounted(resolver: &dyn Resolver, iri: &str) -> Result<HashSet<String>> {
+///
+/// A verdict and a gap are read from an entry and from nothing else, so what
+/// neither is read from is refused for neither. A `bridge:sourcePath` is the
+/// standing exception: dropping one that is no literal would leave the census
+/// reporting the path as unaccounted, which is a wrong finding and not an
+/// absent one.
+fn entries(resolver: &dyn Resolver, iri: &str) -> Result<Vec<Entry>> {
     let bytes = resolver
         .read(iri)
         .map_err(|e| Error::msg(format!("{iri}: {e}")))?;
-    let mut entries = HashSet::new();
+    let mut typed = HashSet::new();
     let mut named = Vec::new();
+    let mut verdicts: HashMap<String, Vec<Term>> = HashMap::new();
+    let mut gaps: HashMap<String, Vec<Term>> = HashMap::new();
     for quad in RdfParser::from_format(RdfFormat::Turtle)
         .with_base_iri(iri)?
         .for_slice(&bytes)
     {
         let quad = quad.map_err(|e| Error::msg(format!("{iri}: {e}")))?;
-        if quad.predicate.as_str() == RDF_TYPE
-            && matches!(&quad.object, Term::NamedNode(entry) if entry.as_str() == BRIDGE_PATH_ENTRY)
-        {
-            entries.insert(quad.subject.to_string());
-        }
-        if quad.predicate.as_str() == BRIDGE_SOURCE_PATH {
-            let Term::Literal(path) = &quad.object else {
-                return Err(Error::msg(format!("{iri}: {} is no path", quad.object)));
-            };
-            named.push((quad.subject.to_string(), path.value().to_owned()));
+        let subject = quad.subject.to_string();
+        match quad.predicate.as_str() {
+            RDF_TYPE if matches!(&quad.object, Term::NamedNode(entry) if entry.as_str() == BRIDGE_PATH_ENTRY) =>
+            {
+                typed.insert(subject);
+            }
+            BRIDGE_SOURCE_PATH => {
+                let Term::Literal(path) = &quad.object else {
+                    return Err(Error::msg(format!("{iri}: {} is no path", quad.object)));
+                };
+                named.push((subject, path.value().to_owned()));
+            }
+            BRIDGE_VERDICT => verdicts.entry(subject).or_default().push(quad.object),
+            BRIDGE_NAMES_GAP => gaps.entry(subject).or_default().push(quad.object),
+            _ => {}
         }
     }
-    Ok(named
-        .into_iter()
-        .filter(|(subject, _)| entries.contains(subject))
-        .map(|(_, path)| path)
-        .collect())
+    let mut entries = Vec::new();
+    for (subject, path) in named {
+        if !typed.contains(&subject) {
+            continue;
+        }
+        let said = |by: &HashMap<String, Vec<Term>>, predicate: &str| {
+            let objects: &[Term] = by.get(&subject).map(Vec::as_slice).unwrap_or_default();
+            declared(objects, iri, &path, predicate)
+        };
+        entries.push(Entry {
+            verdict: said(&verdicts, "verdict")?,
+            gap: said(&gaps, "gap")?,
+            path: path.clone(),
+        });
+    }
+    Ok(entries)
+}
+
+/// Each concept of an adapter's gap scheme, by the IRI an entry names it by. A
+/// crate that names a scheme and cannot show it is refused here, as its
+/// accounting is, and so is one whose concept declares a severity outside the
+/// three the specification fixes: the finding it would carry is one the
+/// adapter profile's own shape for a source finding refuses. One declaring two
+/// severities is refused for the neighbouring reason — keeping either leaves
+/// the parse order deciding how loud the gap is — and one declaring two
+/// `skos:broader` for the same reason one step harder, where the parse order
+/// would decide whether the gap reports at all.
+fn gap_scheme(resolver: &dyn Resolver, iri: &str) -> Result<HashMap<String, Gap>> {
+    let bytes = resolver
+        .read(iri)
+        .map_err(|e| Error::msg(format!("{iri}: {e}")))?;
+    let mut scheme: HashMap<String, Gap> = HashMap::new();
+    for quad in RdfParser::from_format(RdfFormat::Turtle)
+        .with_base_iri(iri)?
+        .for_slice(&bytes)
+    {
+        let quad = quad.map_err(|e| Error::msg(format!("{iri}: {e}")))?;
+        let NamedOrBlankNode::NamedNode(concept) = &quad.subject else {
+            continue;
+        };
+        let predicate = quad.predicate.as_str();
+        if predicate != SKOS_BROADER && predicate != SH_RESULT_SEVERITY {
+            continue;
+        }
+        let Term::NamedNode(object) = &quad.object else {
+            return Err(Error::msg(format!(
+                "{iri}: {concept} declares {predicate} {}, which is no IRI",
+                quad.object
+            )));
+        };
+        let declared = scheme.entry(concept.as_str().to_owned()).or_default();
+        if predicate == SKOS_BROADER {
+            if let Some(already) = &declared.kind {
+                return Err(Error::msg(format!(
+                    "{iri}: {concept} declares skos:broader {already} and {object}; a gap declares \
+                     at most one"
+                )));
+            }
+            declared.kind = Some(object.as_str().to_owned());
+        } else {
+            if !SEVERITIES.contains(&object.as_str()) {
+                return Err(Error::msg(format!(
+                    "{iri}: {concept} declares sh:resultSeverity {object}; a gap's severity is \
+                     sh:Info, sh:Warning or sh:Violation"
+                )));
+            }
+            if let Some(already) = &declared.severity {
+                return Err(Error::msg(format!(
+                    "{iri}: {concept} declares sh:resultSeverity {already} and {object}; a gap \
+                     declares at most one"
+                )));
+            }
+            declared.severity = Some(object.as_str().to_owned());
+        }
+    }
+    Ok(scheme)
 }
 
 fn query(resolver: &dyn Resolver, iri: &str, expected: Form, what: &str) -> Result<Query> {
@@ -366,6 +564,13 @@ pub fn prepare(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prepared> {
         });
     }
 
+    let scheme = adapter
+        .gap_scheme
+        .as_deref()
+        .map(|iri| gap_scheme(resolver, iri))
+        .transpose()?
+        .unwrap_or_default();
+
     let mut prefixes: Vec<(String, String)> = Vec::new();
     for (name, namespace) in mappings.iter().flat_map(|m| m.prefixes.iter()) {
         if !prefixes.iter().any(|(taken, _)| taken == name) {
@@ -382,10 +587,10 @@ pub fn prepare(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prepared> {
         prefixes,
         envelopes,
         source_schema,
-        accounted: adapter
+        accounting: adapter
             .source_accounting
             .as_deref()
-            .map(|iri| accounted(resolver, iri))
+            .map(|iri| Accounting::of(entries(resolver, iri)?, &scheme, iri))
             .transpose()?,
     })
 }
@@ -403,7 +608,7 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
     // Decoding is the one stage that holds the whole document at once, so the
     // document schema below reads these characters rather than its own copy.
     let text = decode(source.xml)?;
-    let paths = match prepared.accounted {
+    let paths = match prepared.accounting {
         Some(_) => Paths::Kept,
         None => Paths::Dropped,
     };
@@ -434,16 +639,31 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
         ms.validation += at.elapsed();
 
         let at = Instant::now();
-        if let Some(accounted) = &prepared.accounted {
+        if let Some(accounting) = &prepared.accounting {
             for occurrence in unit.occurrences() {
-                if accounted.contains(&occurrence.path) {
-                    continue;
+                if !accounting.paths.contains(&occurrence.path) {
+                    findings.extend(annotation::unaccounted(
+                        &record,
+                        &occurrence.path,
+                        occurrence.within.as_deref(),
+                        occurrence.count,
+                    )?);
                 }
-                findings.extend(annotation::unaccounted(
-                    &record,
-                    &occurrence.path,
-                    occurrence.within.as_deref(),
-                )?);
+                for reported in accounting
+                    .reported
+                    .get(&occurrence.path)
+                    .into_iter()
+                    .flatten()
+                {
+                    findings.extend(annotation::gap(
+                        &record,
+                        &reported.gap,
+                        &occurrence.path,
+                        occurrence.within.as_deref(),
+                        &reported.severity,
+                        occurrence.count,
+                    )?);
+                }
             }
         }
         ms.findings += at.elapsed();

@@ -12,9 +12,7 @@
 use cascade_bridge::{
     convert, load_adapter, prepare, Conversion, DirectoryResolver, Resolver, Source,
 };
-use oxrdf::dataset::{CanonicalizationAlgorithm, CanonicalizationHashAlgorithm};
-use oxrdf::{Dataset, Quad, Term};
-use oxrdfio::{RdfFormat, RdfParser};
+use oxrdf::{Quad, Term};
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
@@ -122,6 +120,35 @@ fn census(findings: &[Quad]) -> Vec<(String, String, String)> {
     rows
 }
 
+/// How many nodes of the record a census finding stands for, where it says
+/// so: one finding stands for every node at the path, and a path standing at
+/// one node carries no count at all.
+fn count(findings: &[Quad], annotation: &str) -> Option<String> {
+    match one(findings, annotation, &format!("{BRIDGE}occurrences"))? {
+        Term::Literal(literal) => Some(literal.value().to_owned()),
+        other => Some(other.to_string()),
+    }
+}
+
+/// Each census finding as the path it names, the record it is about, and the
+/// count it carries.
+fn counted(findings: &[Quad]) -> Vec<(String, String, Option<String>)> {
+    let mut rows: Vec<(String, String, Option<String>)> = censuses(findings)
+        .iter()
+        .map(|annotation| {
+            let target = node(findings, annotation, &format!("{OA}hasTarget"));
+            let selector = node(findings, &target, &format!("{OA}hasSelector"));
+            (
+                says(findings, annotation, &format!("{SH}value")),
+                says(findings, &selector, RDF_VALUE),
+                count(findings, annotation),
+            )
+        })
+        .collect();
+    rows.sort();
+    rows
+}
+
 /// How many nodes below the record this finding's record selector is refined
 /// onto, where an empty refinement in a row above could as well have been a
 /// selector carrying two.
@@ -179,33 +206,34 @@ fn annotations(findings: &[Quad]) -> usize {
         .count()
 }
 
-/// RDFC-1.0 canonical N-Quads: two graphs are isomorphic exactly when these
-/// are equal, which is how the harness compares a run's findings with the
-/// findings a fixture expects of it.
-fn canonical(quads: impl IntoIterator<Item = Quad>) -> BTreeSet<String> {
-    let mut dataset = Dataset::new();
-    for quad in quads {
-        dataset.insert(&quad);
-    }
-    dataset.canonicalize(CanonicalizationAlgorithm::Rdfc10 {
-        hash_algorithm: CanonicalizationHashAlgorithm::Sha256,
-    });
-    dataset.iter().map(|quad| quad.to_string()).collect()
-}
-
-/// The findings a committed fixture expects of an input, parsed where it
-/// stands so its relative source resolves to the input's own IRI.
-fn expected(name: &str) -> BTreeSet<String> {
-    let resolver = tiny();
-    let iri = format!("{}fixtures/findings/{name}", resolver.root());
-    let bytes = resolver.read(&iri).expect("the expected findings");
-    canonical(
-        RdfParser::from_format(RdfFormat::Turtle)
-            .with_base_iri(&iri)
-            .expect("base")
-            .for_slice(&bytes)
-            .map(|quad| quad.expect("turtle")),
-    )
+/// Every finding as what it says and where it says it: its body, its
+/// severity, the path it names where it names one, the record it is about,
+/// and the node below that record it selects. Only a finding read from the
+/// accounting names a path, so striking the accounting out leaves exactly the
+/// rows whose path is empty.
+fn said(findings: &[Quad]) -> Vec<(String, String, String, String, String)> {
+    let mut rows: Vec<(String, String, String, String, String)> = findings
+        .iter()
+        .filter(|q| q.predicate.as_str() == RDF_TYPE)
+        .filter(
+            |q| matches!(&q.object, Term::NamedNode(n) if n.as_str() == format!("{OA}Annotation")),
+        )
+        .map(|q| q.subject.to_string())
+        .map(|annotation| {
+            let target = node(findings, &annotation, &format!("{OA}hasTarget"));
+            let selector = node(findings, &target, &format!("{OA}hasSelector"));
+            let refinement = node(findings, &selector, &format!("{OA}refinedBy"));
+            (
+                says(findings, &annotation, &format!("{OA}hasBody")),
+                says(findings, &annotation, &format!("{SH}resultSeverity")),
+                says(findings, &annotation, &format!("{SH}value")),
+                says(findings, &selector, RDF_VALUE),
+                says(findings, &refinement, RDF_VALUE),
+            )
+        })
+        .collect();
+    rows.sort();
+    rows
 }
 
 /// The tiny adapter with the accounting struck out of its crate, which is
@@ -326,10 +354,15 @@ impl Resolver for Missing {
 #[test]
 fn leaves_a_crate_that_names_no_accounting_the_findings_it_has_today() {
     let unaccounted = Unaccounted::new();
-    for (input, expects) in [("two.xml", "two.ttl"), ("order.xml", "order.ttl")] {
+    for input in ["two.xml", "order.xml", "every-verdict.xml"] {
+        let named_no_path: Vec<(String, String, String, String, String)> =
+            said(&findings(&tiny(), input))
+                .into_iter()
+                .filter(|(_, _, path, _, _)| path.is_empty())
+                .collect();
         assert_eq!(
-            canonical(findings(&unaccounted, input)),
-            expected(expects),
+            said(&findings(&unaccounted, input)),
+            named_no_path,
             "{input} through a crate naming no accounting"
         );
     }
@@ -374,6 +407,11 @@ fn reports_a_path_the_accounting_omits_at_its_first_occurrence_in_the_record() {
         format!("{SH}Info"),
         "a path nothing accounts for is a backlog item, not a defect in the document"
     );
+    assert_eq!(
+        count(&findings, &annotation),
+        None,
+        "a count of one is what its absence says"
+    );
     let target = node(&findings, &annotation, &format!("{OA}hasTarget"));
     assert!(
         says(&findings, &target, &format!("{OA}hasSource"))
@@ -384,13 +422,42 @@ fn reports_a_path_the_accounting_omits_at_its_first_occurrence_in_the_record() {
 
 #[test]
 fn reports_a_path_a_record_carries_five_times_once_addressed_at_the_first() {
+    let found = findings(&tiny(), "unaccounted-five-times.xml");
     assert_eq!(
-        census(&findings(&tiny(), "unaccounted-five-times.xml")),
+        census(&found),
         [(
             "/item/novelty".to_owned(),
             "/catalog/item[1]".to_owned(),
             "novelty[1]".to_owned()
         )]
+    );
+    assert_eq!(
+        counted(&found),
+        [(
+            "/item/novelty".to_owned(),
+            "/catalog/item[1]".to_owned(),
+            Some("5".to_owned())
+        )],
+        "a path newly appeared cannot otherwise be told from a thousand of them"
+    );
+}
+
+#[test]
+fn counts_only_its_own_record_s_nodes_where_two_records_carry_the_path() {
+    assert_eq!(
+        counted(&findings(&tiny(), "unaccounted-twice-then-once.xml")),
+        [
+            (
+                "/item/novelty".to_owned(),
+                "/catalog/item[1]".to_owned(),
+                Some("2".to_owned())
+            ),
+            (
+                "/item/novelty".to_owned(),
+                "/catalog/item[2]".to_owned(),
+                None
+            )
+        ]
     );
 }
 
@@ -428,11 +495,25 @@ fn ends_an_attribute_s_path_in_its_own_name_and_refines_onto_the_element_it_stan
 
 #[test]
 fn refines_onto_every_step_below_the_record_down_to_the_one_the_path_ends_at() {
+    let found = findings(&tiny(), "unaccounted-under-a-repeated-parent.xml");
     assert_eq!(
-        census(&findings(
-            &tiny(),
-            "unaccounted-under-a-repeated-parent.xml"
-        )),
+        counted(&found),
+        [
+            (
+                "/item/label/@colour".to_owned(),
+                "/catalog/item[1]".to_owned(),
+                Some("2".to_owned())
+            ),
+            (
+                "/item/label/deep".to_owned(),
+                "/catalog/item[1]".to_owned(),
+                Some("2".to_owned())
+            )
+        ],
+        "a colour on each label, and a deep under each of the second label's"
+    );
+    assert_eq!(
+        census(&found),
         [
             (
                 "/item/label/@colour".to_owned(),

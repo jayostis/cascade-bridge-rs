@@ -8,10 +8,12 @@
 // would claim to be alternatives of each other.
 use crate::error::{Error, Result};
 use crate::rdf::{
-    BRIDGE_PATH_NOT_ACCOUNTED, BRIDGE_THIS_RECORD, OA_ANNOTATION, OA_CLASSIFYING, OA_HAS_BODY,
-    OA_HAS_SELECTOR, OA_HAS_SOURCE, OA_HAS_TARGET, OA_MOTIVATED_BY, OA_REFINED_BY,
-    OA_XPATH_SELECTOR, RDF_TYPE, RDF_VALUE, SH_INFO, SH_RESULT_SEVERITY, SH_VALUE, SH_VIOLATION,
+    BRIDGE_OCCURRENCES, BRIDGE_PATH_NOT_ACCOUNTED, BRIDGE_THIS_RECORD, OA_ANNOTATION,
+    OA_CLASSIFYING, OA_HAS_BODY, OA_HAS_SELECTOR, OA_HAS_SOURCE, OA_HAS_TARGET, OA_MOTIVATED_BY,
+    OA_REFINED_BY, OA_XPATH_SELECTOR, RDF_TYPE, RDF_VALUE, SH_INFO, SH_RESULT_SEVERITY, SH_VALUE,
+    SH_VIOLATION,
 };
+use oxrdf::vocab::xsd;
 use oxrdf::{BlankNode, GraphName, Literal, NamedNode, NamedOrBlankNode, Quad, Term};
 use std::collections::{HashMap, HashSet};
 
@@ -110,13 +112,15 @@ fn copy(
 
 /// The finding a Bridge stage made itself: what it names as its body, the node
 /// inside the record it is addressed at where that is not the record itself,
-/// its severity, and what its body alone cannot say.
+/// its severity, what its body alone cannot say, and how many nodes of the
+/// record it stands for.
 fn finding(
     record: &Record,
     body: &str,
     within: Option<&str>,
     severity: &str,
     value: Option<&str>,
+    occurrences: usize,
 ) -> Result<Vec<Quad>> {
     let mut quads = Vec::new();
     let annotation = BlankNode::default();
@@ -157,6 +161,13 @@ fn finding(
             Literal::new_simple_literal(value),
         )?);
     }
+    if occurrences > 1 {
+        quads.push(triple(
+            annotation.clone(),
+            BRIDGE_OCCURRENCES,
+            Literal::new_typed_literal(occurrences.to_string(), xsd::INTEGER),
+        )?);
+    }
     quads.push(triple(annotation, SH_RESULT_SEVERITY, named(severity)?)?);
     Ok(quads)
 }
@@ -164,19 +175,38 @@ fn finding(
 /// The rule a Bridge stage found broken, and the element inside the record it
 /// was broken on.
 pub fn violation(record: &Record, body: &str, within: Option<&str>) -> Result<Vec<Quad>> {
-    finding(record, body, within, SH_VIOLATION, None)
+    finding(record, body, within, SH_VIOLATION, None, 1)
 }
 
 /// A path of the record the adapter's accounting says nothing about, named as
 /// the entry that would silence it, at its first occurrence.
-pub fn unaccounted(record: &Record, path: &str, within: Option<&str>) -> Result<Vec<Quad>> {
+pub fn unaccounted(
+    record: &Record,
+    path: &str,
+    within: Option<&str>,
+    occurrences: usize,
+) -> Result<Vec<Quad>> {
     finding(
         record,
         BRIDGE_PATH_NOT_ACCOUNTED,
         within,
         SH_INFO,
         Some(path),
+        occurrences,
     )
+}
+
+/// The gap an accounting entry names at a path of the record, at that path's
+/// first occurrence and at the severity the gap's own concept declares.
+pub fn gap(
+    record: &Record,
+    gap: &str,
+    path: &str,
+    within: Option<&str>,
+    severity: &str,
+    occurrences: usize,
+) -> Result<Vec<Quad>> {
+    finding(record, gap, within, severity, Some(path), occurrences)
 }
 
 /// What a findings query constructed, made about this record: bridge:thisRecord

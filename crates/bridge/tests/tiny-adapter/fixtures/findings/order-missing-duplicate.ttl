@@ -1,6 +1,7 @@
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix sh:  <http://www.w3.org/ns/shacl#> .
 @prefix oa:  <http://www.w3.org/ns/oa#> .
+@prefix bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
 @prefix ex:  <urn:example:catalog#> .
 
 [] a oa:Annotation ;
@@ -36,4 +37,33 @@
   ] ;
   oa:hasBody ex:noteHasNoTerm ;
   oa:motivatedBy oa:classifying ;
+  sh:resultSeverity sh:Info .
+
+[] a oa:Annotation ;
+  oa:hasTarget [
+    oa:hasSource <../in/order.xml> ;
+    oa:hasSelector [
+      a oa:XPathSelector ;
+      rdf:value "/catalog/item[1]" ;
+      oa:refinedBy [ a oa:XPathSelector ; rdf:value "note[1]" ]
+    ]
+  ] ;
+  oa:hasBody ex:noteHasNoTerm ;
+  oa:motivatedBy oa:classifying ;
+  sh:value "/item/note" ;
+  bridge:occurrences 2 ;
+  sh:resultSeverity sh:Info .
+
+[] a oa:Annotation ;
+  oa:hasTarget [
+    oa:hasSource <../in/order.xml> ;
+    oa:hasSelector [
+      a oa:XPathSelector ;
+      rdf:value "/catalog/item[2]" ;
+      oa:refinedBy [ a oa:XPathSelector ; rdf:value "note[1]" ]
+    ]
+  ] ;
+  oa:hasBody ex:noteHasNoTerm ;
+  oa:motivatedBy oa:classifying ;
+  sh:value "/item/note" ;
   sh:resultSeverity sh:Info .
