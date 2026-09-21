@@ -23,8 +23,9 @@ use quick_xml::NsReader;
 use std::cell::{OnceCell, RefCell};
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap, HashSet};
+use std::rc::Rc;
 use xpath_eval::{
-    evaluate, parse, Document, EvaluationContext, ExpandedName, Node, NodeKind, Value,
+    evaluate, parse, Document, EvaluationContext, ExpandedName, Expr, Node, NodeKind, Value,
 };
 
 /// The document node, which is where an absolute address is read from and the
@@ -113,6 +114,10 @@ struct Tree {
     /// first time a walk reaches through it, so that a walk to each record of
     /// a set in turn reads the set's children once and not once per record.
     under: RefCell<HashMap<usize, HashMap<Among, Vec<usize>>>>,
+    /// Each address as the parser read it, kept because an address written
+    /// once in an adapter is followed once for every record of the document,
+    /// and it is the same expression each time.
+    parsed: RefCell<HashMap<String, Option<Rc<Expr>>>>,
 }
 
 /// An owned name, where the parser bound one.
@@ -239,11 +244,26 @@ impl Tree {
             nodes,
             element,
             under: RefCell::new(HashMap::new()),
+            parsed: RefCell::new(HashMap::new()),
         })
     }
 
     fn at(&self, at: usize) -> Handle<'_> {
         Handle { tree: self, at }
+    }
+
+    /// The expression an address is, or nothing at all where it is no XPath.
+    fn expression(&self, written: &str) -> Option<Rc<Expr>> {
+        if let Some(expression) = self.parsed.borrow().get(written) {
+            return expression.clone();
+        }
+        #[cfg(test)]
+        PARSED.with(|count| count.set(count.get() + 1));
+        let expression = parse(written).ok().map(Rc::new);
+        self.parsed
+            .borrow_mut()
+            .insert(written.to_owned(), expression.clone());
+        expression
     }
 
     fn step(&self, at: usize) -> Option<Step> {
@@ -448,6 +468,9 @@ thread_local! {
     /// How many addresses this thread has put through the evaluator, which a
     /// test reads to hold a record's lookup off it.
     static EVALUATED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    /// How many addresses this thread has put through the parser, which a test
+    /// reads to hold an address every record carries off it once a record.
+    static PARSED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 /// Every node an address selects from a context node; nothing at all where it
@@ -455,7 +478,7 @@ thread_local! {
 fn selects(tree: &Tree, context: usize, written: &str) -> Option<Vec<usize>> {
     #[cfg(test)]
     EVALUATED.with(|count| count.set(count.get() + 1));
-    let expression = parse(written).ok()?;
+    let expression = tree.expression(written)?;
     let context = EvaluationContext::new(tree.at(context));
     match evaluate(&expression, &context).ok()? {
         Value::NodeSet(nodes) => Some(nodes.iter().map(|node| node.at).collect()),
@@ -711,7 +734,7 @@ pub(crate) struct Respelled {
 
 #[cfg(test)]
 mod tests {
-    use super::{one, Followed, Stands, Tree, DOCUMENT, EVALUATED};
+    use super::{one, Followed, Stands, Tree, DOCUMENT, EVALUATED, PARSED};
     use crate::annotation::Record;
     use crate::rdf::{OA_REFINED_BY, RDF_VALUE};
     use oxrdf::{BlankNode, GraphName, Literal, NamedNode, Quad};
@@ -887,6 +910,35 @@ mod tests {
                 .is_empty());
         }
         assert_eq!(EVALUATED.with(std::cell::Cell::get), units.len());
+    }
+
+    /// An address is one expression however many records carry it, so a
+    /// conversion parses each distinct address once and not once per record.
+    #[test]
+    fn parses_an_address_once_however_many_records_are_followed_for_it() {
+        let document =
+            b"<catalog><item><note/></item><item><note/></item><item><note/></item></catalog>";
+        let text = std::str::from_utf8(document).expect("utf-8");
+        let followed = Followed::of(text);
+        let units: Vec<crate::lift::Unit> = crate::lift::lift_slice(document, Some("item"))
+            .expect("the lift")
+            .map(|unit| unit.expect("a unit"))
+            .collect();
+        assert_eq!(units.len(), 3);
+        let findings = refining("note[1]");
+        PARSED.with(|count| count.set(0));
+        for unit in &units {
+            let selector = unit.selector();
+            let record = Record {
+                source: "urn:example:catalog",
+                selector: &selector,
+            };
+            assert!(followed
+                .unresolved(&record, Stands::Along(unit.path()), &findings)
+                .expect("the reports")
+                .is_empty());
+        }
+        assert_eq!(PARSED.with(std::cell::Cell::get), 1);
     }
 
     #[test]
