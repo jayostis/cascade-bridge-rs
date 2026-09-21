@@ -1,6 +1,6 @@
 use oxrdfio::{RdfFormat, RdfParser};
 use std::collections::BTreeSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 /// The stamp the tiny adapter's expected graph carries and no stage of this
@@ -215,9 +215,71 @@ fn writes_the_findings_the_adapter_expects_of_the_document_where_findings_names(
     );
     let produced = std::fs::read(&written).expect("the written findings");
     assert_eq!(
-        findings(&produced, RdfFormat::Turtle, BASE),
+        // A findings file is read against its own IRI, as the harness reads a
+        // committed oracle against the oracle's.
+        findings(
+            &produced,
+            RdfFormat::Turtle,
+            &cascade_bridge::file_iri(&written).expect("the written file's IRI")
+        ),
         expected_findings(),
         "{}",
+        String::from_utf8_lossy(&produced)
+    );
+}
+
+/// The whole adapter where a different checkout would stand, so an oracle
+/// written under one path can be read back under another.
+fn copied_to(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).expect("the directory");
+    for entry in std::fs::read_dir(from).expect("the directory") {
+        let entry = entry.expect("an entry");
+        let target = to.join(entry.file_name());
+        if entry.file_type().expect("a file type").is_dir() {
+            copied_to(&entry.path(), &target);
+        } else {
+            std::fs::copy(entry.path(), &target).expect("a copied file");
+        }
+    }
+}
+
+/// The failure the flag exists to prevent. An oracle is written once and read
+/// on every checkout afterwards, from whatever path that checkout stands at,
+/// so a finding naming its document absolutely holds where it was written and
+/// nowhere else — and the flag is worth nothing unless what it writes can be
+/// committed as it stands.
+#[test]
+fn writes_findings_the_adapter_can_commit_and_a_checkout_at_another_path_can_read() {
+    let elsewhere =
+        PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("another-checkout/tiny-adapter");
+    if elsewhere.exists() {
+        std::fs::remove_dir_all(&elsewhere).expect("a clean copy");
+    }
+    copied_to(&tiny(), &elsewhere);
+    let written = elsewhere.join("fixtures/findings/produced.ttl");
+    let run = cascade_bridge(&[
+        "convert",
+        &elsewhere.to_string_lossy(),
+        &elsewhere.join("fixtures/in/two.xml").to_string_lossy(),
+        "--findings",
+        &written.to_string_lossy(),
+    ]);
+    assert_eq!(
+        run.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let produced = std::fs::read(&written).expect("the written findings");
+    let oracle = tiny().join("fixtures/findings/two.ttl");
+    assert_eq!(
+        findings(
+            &produced,
+            RdfFormat::Turtle,
+            &cascade_bridge::file_iri(&oracle).expect("the oracle's IRI")
+        ),
+        expected_findings(),
+        "committed where the adapter's own oracle stands, it names that checkout's document: {}",
         String::from_utf8_lossy(&produced)
     );
 }
