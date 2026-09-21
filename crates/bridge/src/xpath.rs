@@ -1,6 +1,7 @@
 // Following an address, rather than only writing one. A finding's address is
 // an XPath, and what the finding is about is the node that XPath selects, so
-// an address selecting no node, or several, is reported, and two findings
+// an address selecting no node, or several, is reported where a conversion
+// wrote it and fails the entry where a comparison reads it, and two findings
 // whose addresses reach one node are compared as one however either is
 // spelled.
 //
@@ -391,12 +392,37 @@ fn selects(tree: &Tree, context: usize, written: &str) -> Option<Vec<usize>> {
     }
 }
 
+/// What an address selected, where it did not select the one node a finding is
+/// about.
+enum Missed {
+    Nodes(usize),
+    NoNodeSet,
+}
+
+impl std::fmt::Display for Missed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Nodes(0) => f.write_str("selects no node"),
+            Self::Nodes(count) => write!(f, "selects {count} nodes"),
+            Self::NoNodeSet => f.write_str("is no XPath, or selects no set of nodes"),
+        }
+    }
+}
+
+/// The node an address selects, or what it selected instead.
+fn followed(tree: &Tree, context: usize, written: &str) -> std::result::Result<usize, Missed> {
+    let Some(nodes) = selects(tree, context, written) else {
+        return Err(Missed::NoNodeSet);
+    };
+    match nodes.as_slice() {
+        [only] => Ok(*only),
+        several => Err(Missed::Nodes(several.len())),
+    }
+}
+
 /// The node an address selects, where it selects the one.
 fn one(tree: &Tree, context: usize, written: &str) -> Option<usize> {
-    match selects(tree, context, written)?.as_slice() {
-        [only] => Some(*only),
-        _ => None,
-    }
+    followed(tree, context, written).ok()
 }
 
 /// Each address the findings refine their record by, once however many
@@ -473,13 +499,48 @@ impl<'a> Followed<'a> {
         }
         Ok(reports)
     }
+
+    /// These findings with every address re-spelled as this Bridge spells the
+    /// node it selects, so two findings about one node are one finding however
+    /// either of them was spelled.
+    pub(crate) fn respelled(&self, findings: Vec<Quad>) -> Respelled {
+        let Some(tree) = self.tree() else {
+            return Respelled {
+                findings,
+                missed: BTreeSet::new(),
+            };
+        };
+        let (respell, missed) = respelling(tree, &findings);
+        let findings = findings
+            .into_iter()
+            .map(|quad| {
+                let spelled = match &quad.subject {
+                    NamedOrBlankNode::BlankNode(node) if quad.predicate.as_str() == RDF_VALUE => {
+                        respell.get(node).cloned()
+                    }
+                    _ => None,
+                };
+                match spelled {
+                    Some(address) => Quad::new(
+                        quad.subject,
+                        quad.predicate,
+                        Literal::new_simple_literal(address),
+                        quad.graph_name,
+                    ),
+                    None => quad,
+                }
+            })
+            .collect();
+        Respelled { findings, missed }
+    }
 }
 
 /// What each selector node of these findings is to be re-spelled as: a record
 /// selector by the node it selects of the document, and each address refining
-/// it by the node that one selects of the record. A selector reaching no one
-/// node is in nothing here, and stays as it was written.
-fn respelling(tree: &Tree, quads: &[Quad]) -> HashMap<BlankNode, String> {
+/// it by the node that one selects of the record. Beside it, each address that
+/// selected other than the one node, as the address and what it selected, once
+/// however many findings carry it.
+fn respelling(tree: &Tree, quads: &[Quad]) -> (HashMap<BlankNode, String>, BTreeSet<String>) {
     let mut refining: HashMap<&BlankNode, Vec<&BlankNode>> = HashMap::new();
     let mut refinement: HashSet<&BlankNode> = HashSet::new();
     let mut written: HashMap<&BlankNode, &str> = HashMap::new();
@@ -500,6 +561,7 @@ fn respelling(tree: &Tree, quads: &[Quad]) -> HashMap<BlankNode, String> {
     }
 
     let mut respell: HashMap<BlankNode, String> = HashMap::new();
+    let mut missed: BTreeSet<String> = BTreeSet::new();
     for quad in quads {
         let Term::BlankNode(selector) = &quad.object else {
             continue;
@@ -508,62 +570,46 @@ fn respelling(tree: &Tree, quads: &[Quad]) -> HashMap<BlankNode, String> {
         if quad.predicate.as_str() != OA_HAS_SELECTOR || refinement.contains(selector) {
             continue;
         }
-        let Some(record) = written.get(selector).and_then(|address| {
-            // An absolute address is read from the document node.
-            one(tree, DOCUMENT, address)
-        }) else {
+        let Some(address) = written.get(selector) else {
             continue;
+        };
+        // An absolute address is read from the document node.
+        let record = match followed(tree, DOCUMENT, address) {
+            Ok(node) => node,
+            Err(other) => {
+                // A refinement of a record this names no one of cannot be
+                // followed either, and says nothing a reader does not read here.
+                missed.insert(format!("{address:?} {other}"));
+                continue;
+            }
         };
         if let Some(spelled) = tree.spell_absolute(record) {
             respell.insert(selector.clone(), spelled);
         }
         for refined in refining.get(selector).into_iter().flatten() {
-            let Some(node) = written
-                .get(refined)
-                .and_then(|address| one(tree, record, address))
-            else {
+            let Some(address) = written.get(refined) else {
                 continue;
+            };
+            let node = match followed(tree, record, address) {
+                Ok(node) => node,
+                Err(other) => {
+                    missed.insert(format!("{address:?} {other}"));
+                    continue;
+                }
             };
             if let Some(spelled) = tree.spell_relative(node, record) {
                 respell.insert((*refined).clone(), spelled);
             }
         }
     }
-    respell
+    (respell, missed)
 }
 
-/// These findings with every address re-spelled as this Bridge spells the node
-/// it selects, so two findings about one node are one finding however either
-/// of them was spelled. An address reaching no one node is left as it was
-/// written, and compared by its characters as every address once was.
-pub(crate) fn respelled(quads: Vec<Quad>, xml: &str) -> Vec<Quad> {
-    let Some(tree) = Tree::of(xml) else {
-        return quads;
-    };
-    let respell = respelling(&tree, &quads);
-    if respell.is_empty() {
-        return quads;
-    }
-    quads
-        .into_iter()
-        .map(|quad| {
-            let spelled = match &quad.subject {
-                NamedOrBlankNode::BlankNode(node) if quad.predicate.as_str() == RDF_VALUE => {
-                    respell.get(node).cloned()
-                }
-                _ => None,
-            };
-            match spelled {
-                Some(address) => Quad::new(
-                    quad.subject,
-                    quad.predicate,
-                    Literal::new_simple_literal(address),
-                    quad.graph_name,
-                ),
-                None => quad,
-            }
-        })
-        .collect()
+/// Findings with every address re-spelled as this Bridge spells the node it
+/// selects, and every address that selected other than that one node.
+pub(crate) struct Respelled {
+    pub(crate) findings: Vec<Quad>,
+    pub(crate) missed: BTreeSet<String>,
 }
 
 #[cfg(test)]

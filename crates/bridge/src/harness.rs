@@ -214,22 +214,40 @@ impl Entry<'_> {
             // side is spelled as this Bridge spells that node before either
             // is compared with the other.
             let source = decode(&bytes)?;
-            let want = canonical_parts(xpath::respelled(want, &source))?;
-            let got = canonical_parts(xpath::respelled(run.findings, &source))?;
-            let missing = beyond(&want, &got);
-            let extra = beyond(&got, &want);
-            findings_ok = missing.is_empty() && extra.is_empty();
-            findings_text = if findings_ok {
-                format!("findings isomorphic ({wanted} annotation(s))")
+            let followed = xpath::Followed::of(&source);
+            let want = followed.respelled(want);
+            let got = followed.respelled(run.findings);
+            let missed: Vec<String> = want
+                .missed
+                .iter()
+                .map(|said| format!("expected {said}"))
+                .chain(got.missed.iter().map(|said| format!("produced {said}")))
+                .collect();
+            if !missed.is_empty() {
+                findings_ok = false;
+                findings_text = format!(
+                    "findings not compared: {} address(es) select other than one node of bridge:input, which is what a finding is about ({})",
+                    missed.len(),
+                    sample(&missed, 4, LINE)
+                );
             } else {
-                format!(
-                    "findings differ: {annotations} annotation(s) produced, {wanted} expected; {} finding(s) missing, {} extra (missing: {}; extra: {})",
-                    missing.len(),
-                    extra.len(),
-                    sample(&missing, 1, FINDING),
-                    sample(&extra, 1, FINDING)
-                )
-            };
+                let want = canonical_parts(want.findings)?;
+                let got = canonical_parts(got.findings)?;
+                let missing = beyond(&want, &got);
+                let extra = beyond(&got, &want);
+                findings_ok = missing.is_empty() && extra.is_empty();
+                findings_text = if findings_ok {
+                    format!("findings isomorphic ({wanted} annotation(s))")
+                } else {
+                    format!(
+                        "findings differ: {annotations} annotation(s) produced, {wanted} expected; {} finding(s) missing, {} extra (missing: {}; extra: {})",
+                        missing.len(),
+                        extra.len(),
+                        sample(&missing, 1, FINDING),
+                        sample(&extra, 1, FINDING)
+                    )
+                };
+            }
         }
 
         let graph_text = if graph_ok {

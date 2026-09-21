@@ -338,11 +338,14 @@ fn passes_a_refinement_spelled_another_correct_way() {
 }
 
 /// Without this, a comparison that made every address equal would pass the two
-/// above and be reported as the loosening they ask for.
+/// above and be reported as the loosening they ask for. The oracle's other
+/// record is the one moved, because both spellings must select a node for the
+/// findings to be compared at all.
 #[test]
 fn fails_an_address_that_selects_another_node_of_the_same_document() {
-    let (outcome, said) = judged(&variant(ORACLE, RECORD, "\"/catalog/item[2]\""), "pass");
+    let (outcome, said) = judged(&variant(ORACLE, "\"/catalog/item[2]\"", RECORD), "pass");
     assert_eq!(outcome, "failed", "{said}");
+    assert!(said.contains("findings differ"), "{said}");
 }
 
 /// The Bridge's own report of the address, as the oracle carries it beside the
