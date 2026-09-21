@@ -1,5 +1,5 @@
-# The statuses this adapter maps, each notation written as a key is: the source
-# phrase case-folded and whitespace-trimmed.
+# Each notation is written as a key is: the source phrase lowercased and
+# stripped of leading and trailing XML whitespace.
 @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
 @prefix ex:   <urn:example:catalog#> .
 

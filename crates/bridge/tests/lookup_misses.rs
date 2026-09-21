@@ -376,7 +376,8 @@ fn treats_a_value_differing_from_a_notation_only_by_case_or_by_edge_whitespace_a
     assert_eq!(
         missed(&findings(&notes(), "lookup-near-misses.xml")),
         [row("Retired", "/catalog/item[1]", "note[4]")],
-        "a key is the value case-folded and whitespace-trimmed, and a notation is written that way"
+        "a key is the value lowercased and stripped of leading and trailing XML whitespace, \
+         and a notation is written that way"
     );
 }
 
