@@ -5,10 +5,6 @@
 //
 // A crate naming no accounting gets no census, which is every adapter that
 // exists, so the whole of it has to be additive.
-//
-// No XPath evaluator is a dependency of this crate, so these assert the path
-// a census names and the address it is written at rather than what evaluating
-// either selects.
 use cascade_bridge::{
     convert, load_adapter, prepare, Conversion, DirectoryResolver, Resolver, Source,
 };

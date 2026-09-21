@@ -2,9 +2,6 @@
 // Bridge's own finding carries W3C's rule for the schema rule that was broken,
 // and selects the element it was broken on rather than the record it stood in.
 // No finding, from an adapter or from a Bridge, carries a sentence.
-//
-// No XPath evaluator is a dependency of this crate, so these assert the path
-// an address is written as rather than what evaluating it selects.
 use cascade_bridge::{
     convert, load_adapter, prepare, Conversion, DirectoryResolver, Resolver, Source,
 };
