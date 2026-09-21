@@ -21,3 +21,8 @@ ex:noteHasNoTerm a skos:Concept ;
   skos:prefLabel "a free-text note" ;
   skos:inScheme ex:gaps ;
   skos:broader bridge:noPredicate .
+
+ex:statusOutsideTheTable a skos:Concept ;
+  skos:prefLabel "a status the table does not map" ;
+  skos:inScheme ex:gaps ;
+  skos:broader bridge:valueNotMapped .

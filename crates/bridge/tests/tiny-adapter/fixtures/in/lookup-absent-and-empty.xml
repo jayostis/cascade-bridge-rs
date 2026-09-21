@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<catalog>
+  <item id="1"><title>No note at all</title></item>
+  <item id="2"><title>Second</title><note></note><note>   </note><note>Retired</note></item>
+</catalog>
