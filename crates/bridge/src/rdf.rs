@@ -241,7 +241,8 @@ pub fn serialise(
 
 /// The reference a file standing at `base` names `iri` by, where it can name
 /// it at all: the same scheme and authority, no query or fragment on either,
-/// and a path a run of "../" reaches from the file's own directory.
+/// no "." or ".." step on either, and a path a run of "../" reaches from the
+/// file's own directory.
 ///
 /// Nothing else is relative, and an IRI this cannot name is named in full.
 fn relative_to(base: &Iri<&str>, iri: &str) -> Option<String> {
@@ -264,6 +265,12 @@ fn relative_to(base: &Iri<&str>, iri: &str) -> Option<String> {
     let mut here: Vec<&str> = base.path().split('/').collect();
     here.pop()?;
     let there: Vec<&str> = target.path().split('/').collect();
+    // A reader removes dot segments once more when it resolves the reference,
+    // so a step this carried through would name a file neither IRI did.
+    let dotted = |steps: &[&str]| steps.iter().any(|step| matches!(*step, "." | ".."));
+    if dotted(&here) || dotted(&there) {
+        return None;
+    }
     let shared = here
         .iter()
         .zip(&there)
