@@ -691,3 +691,14 @@ fn looks_a_value_up_in_the_one_scheme_the_named_file_holds() {
         "the notations of the named file's scheme are the whole of what a Bridge reads from a map"
     );
 }
+
+#[test]
+fn reports_a_value_a_no_break_space_pads_though_the_map_holds_the_unpadded_key() {
+    let found = findings(&notes(), "lookup-a-value-padded-with-a-no-break-space.xml");
+    assert_eq!(
+        missed(&found),
+        [row("current\u{a0}", "/catalog/item[1]", "note[1]")],
+        "a mapping's trim is XPath's whitespace class, which is XML's S production and holds no \
+         no-break space, so a key trimmed of a wider set finds a notation the mapping cannot"
+    );
+}

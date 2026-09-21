@@ -77,10 +77,12 @@ fn declared(bytes: &[u8]) -> Option<String> {
     Some(value[..value.find(quote)?].to_owned())
 }
 
-/// XML's S production, and nothing else. A text child made only of these is
-/// dropped; a no-break space is a character and stays.
+/// XML's S production, and nothing else. A no-break space is a character.
+pub const XML_SPACE: [char; 4] = [' ', '\t', '\r', '\n'];
+
+/// A text child made only of XML's S production is dropped.
 pub fn is_xml_space(s: &str) -> bool {
-    s.bytes().all(|b| matches!(b, b' ' | b'\t' | b'\r' | b'\n'))
+    s.chars().all(|c| XML_SPACE.contains(&c))
 }
 
 /// XML normalises every line ending to a single line feed before a parser

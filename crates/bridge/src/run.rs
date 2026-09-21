@@ -9,7 +9,7 @@
 // document: a query's text is never handed to the engine twice, and a schema
 // is compiled once however many records it validates.
 use crate::annotation::{self, Minted, Record};
-use crate::decode::decode;
+use crate::decode::{decode, XML_SPACE};
 use crate::error::{Error, Result};
 use crate::lift::{lift_text, Paths, Valued};
 use crate::load::{subject, value, Adapter};
@@ -302,10 +302,10 @@ struct Lookup {
     notations: HashSet<String>,
 }
 
-/// A value's key: the value case-folded and whitespace-trimmed, which is the
-/// form a `skos:notation` is written in.
+/// A value's key: the value lowercased and trimmed of XML's S production,
+/// which is the form a `skos:notation` is written in.
 fn key(value: &str) -> String {
-    value.trim().to_lowercase()
+    value.trim_matches(XML_SPACE).to_lowercase()
 }
 
 /// What an adapter's accounting says about the paths of a record: which of
