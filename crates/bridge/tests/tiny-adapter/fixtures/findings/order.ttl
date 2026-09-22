@@ -10,7 +10,7 @@
     oa:hasSelector [
       a oa:XPathSelector ;
       rdf:value "/catalog/item[1]" ;
-      oa:refinedBy [ a oa:XPathSelector ; rdf:value "note" ]
+      oa:refinedBy [ a oa:XPathSelector ; rdf:value "note[1]" ]
     ]
   ] ;
   oa:hasBody ex:noteHasNoTerm ;
@@ -23,7 +23,7 @@
     oa:hasSelector [
       a oa:XPathSelector ;
       rdf:value "/catalog/item[1]" ;
-      oa:refinedBy [ a oa:XPathSelector ; rdf:value "note" ]
+      oa:refinedBy [ a oa:XPathSelector ; rdf:value "note[2]" ]
     ]
   ] ;
   oa:hasBody ex:noteHasNoTerm ;
@@ -45,7 +45,7 @@
     oa:hasSelector [
       a oa:XPathSelector ;
       rdf:value "/catalog/item[2]" ;
-      oa:refinedBy [ a oa:XPathSelector ; rdf:value "note" ]
+      oa:refinedBy [ a oa:XPathSelector ; rdf:value "note[1]" ]
     ]
   ] ;
   oa:hasBody ex:noteHasNoTerm ;

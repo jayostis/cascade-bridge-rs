@@ -37,7 +37,8 @@ repository is one implementation of it, never a second statement of it.
 ## Conventions
 
 - `cargo fmt --all`, `cargo clippy --all-targets -- -D warnings`, `cargo test`.
-  CI runs all three; there is no other build step.
+  CI runs all three, and `cargo test -- --ignored` where it has checked out the
+  counterpart a vector reads; there is no other build step.
 - Conventional commits. Impersonal. No archaeology: what a file used to be is
   git's job.
 - Why, never what. A comment restating the line below it goes.

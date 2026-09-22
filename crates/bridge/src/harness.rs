@@ -2,6 +2,7 @@
 // carries, as the rdfs:comment on that type in the specification's vocabulary
 // states it.
 use crate::annotation;
+use crate::decode::decode;
 use crate::error::{Error, Result};
 use crate::load::{as_subject, list, objects, subject, term_value, value, values, Adapter};
 use crate::rdf::{
@@ -11,6 +12,7 @@ use crate::rdf::{
 };
 use crate::resolver::Resolver;
 use crate::run::{convert, prepare, Prepared, Source};
+use crate::xpath;
 use oxigraph::model::{NamedOrBlankNode, Quad, Term};
 use oxrdfio::{RdfFormat, RdfParser};
 use std::collections::{HashMap, HashSet};
@@ -143,12 +145,13 @@ impl Entry<'_> {
             .map(|a| value(graph, a, BRIDGE_ENVELOPE))
             .transpose()?
             .flatten();
+        let bytes = self.resolver.read(&input)?;
         let run = convert(
             self.setup,
             Source {
                 iri: &input,
                 envelope: envelope.as_deref(),
-                xml: &self.resolver.read(&input)?,
+                xml: &bytes,
             },
         )?;
         let detect = if run.detected == Some(false) {
@@ -207,22 +210,44 @@ impl Entry<'_> {
             // A finding is a part of the graph no blank node reaches out of, so
             // it is compared as one. Canonicalising the graph whole relabels
             // every finding in it when one differs, and reports them all.
-            let want = canonical_parts(want)?;
-            let got = canonical_parts(run.findings)?;
-            let missing = beyond(&want, &got);
-            let extra = beyond(&got, &want);
-            findings_ok = missing.is_empty() && extra.is_empty();
-            findings_text = if findings_ok {
-                format!("findings isomorphic ({wanted} annotation(s))")
+            // Two addresses that select one node are one address, so each
+            // side is spelled as this Bridge spells that node before either
+            // is compared with the other.
+            let source = decode(&bytes)?;
+            let spelled = xpath::Spelled::of(&source);
+            let want = spelled.respelled(want);
+            let got = spelled.respelled(run.findings);
+            let missed: Vec<String> = want
+                .missed
+                .iter()
+                .map(|said| format!("expected {said}"))
+                .chain(got.missed.iter().map(|said| format!("produced {said}")))
+                .collect();
+            if !missed.is_empty() {
+                findings_ok = false;
+                findings_text = format!(
+                    "findings not compared: {} address(es) select other than one node of bridge:input, which is what a finding is about ({})",
+                    missed.len(),
+                    sample(&missed, 4, LINE)
+                );
             } else {
-                format!(
-                    "findings differ: {annotations} annotation(s) produced, {wanted} expected; {} finding(s) missing, {} extra (missing: {}; extra: {})",
-                    missing.len(),
-                    extra.len(),
-                    sample(&missing, 1, FINDING),
-                    sample(&extra, 1, FINDING)
-                )
-            };
+                let want = canonical_parts(want.findings)?;
+                let got = canonical_parts(got.findings)?;
+                let missing = beyond(&want, &got);
+                let extra = beyond(&got, &want);
+                findings_ok = missing.is_empty() && extra.is_empty();
+                findings_text = if findings_ok {
+                    format!("findings isomorphic ({wanted} annotation(s))")
+                } else {
+                    format!(
+                        "findings differ: {annotations} annotation(s) produced, {wanted} expected; {} finding(s) missing, {} extra (missing: {}; extra: {})",
+                        missing.len(),
+                        extra.len(),
+                        sample(&missing, 1, FINDING),
+                        sample(&extra, 1, FINDING)
+                    )
+                };
+            }
         }
 
         let graph_text = if graph_ok {
@@ -345,4 +370,25 @@ pub fn run_manifest(
         });
     }
     Ok(results)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::beyond;
+
+    fn findings(lines: &[&str]) -> Vec<String> {
+        lines.iter().map(|line| (*line).to_owned()).collect()
+    }
+
+    /// No adapter this engine tests writes one address for two nodes any more,
+    /// so no fixture reaches this: findings are a multiset all the same, and a
+    /// repeat a run produced that its oracle expects once is one extra.
+    #[test]
+    fn counts_a_finding_produced_twice_and_expected_once_as_one_extra() {
+        let once = findings(&["a finding"]);
+        let twice = findings(&["a finding", "a finding"]);
+        assert_eq!(beyond(&twice, &once), ["a finding"]);
+        assert_eq!(beyond(&once, &twice), Vec::<String>::new());
+        assert_eq!(beyond(&twice, &twice), Vec::<String>::new());
+    }
 }

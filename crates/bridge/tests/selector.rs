@@ -3,9 +3,6 @@
 // including the record, every step below the document element carrying its
 // place among its own siblings of that name. A finding about the document
 // rather than about a record stops at the document element's own step.
-//
-// No XPath evaluator is a dependency of this crate, so these assert the path
-// the lift writes rather than what evaluating it selects.
 use cascade_bridge::{
     convert, lift_slice, load_adapter, prepare, DirectoryResolver, Resolver, Source,
 };

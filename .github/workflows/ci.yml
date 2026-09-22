@@ -35,7 +35,27 @@ jobs:
     name: compatibility
     runs-on: ubuntu-latest
     steps:
+      # start checks this repository out only where it is not already there, and
+      # its first act is compatibility.json's release build, in this directory.
+      # Restoring the cache ahead of start is what lets the longest build in the
+      # job start from anything but cold.
+      - uses: actions/checkout@v7
+        with:
+          path: ${{ github.event.repository.name }}
+      - run: rustc --version
+        working-directory: ${{ github.event.repository.name }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ github.event.repository.name }}
+      # start leaves cascade-bridge-spec beside this checkout at the version the
+      # run picked, which is where the vector reads it from and the only place
+      # the two halves are one version: against a default branch, a pull request
+      # changing both would prove the new engine against the old expectations.
       - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
+      # cargo test skips what is #[ignore]d, and the vector is ignored because a
+      # checkout of this repository on its own cannot run it.
+      - run: cargo test -- --ignored
+        working-directory: ${{ github.event.repository.name }}
 
   ready-to-merge:
     name: ready-to-merge

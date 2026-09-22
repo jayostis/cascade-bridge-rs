@@ -17,6 +17,7 @@ mod rdf;
 mod resolver;
 mod run;
 mod validate;
+mod xpath;
 
 pub use earl::{earl_report, earl_report_at, ReportSubject};
 pub use error::{Error, Result};

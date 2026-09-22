@@ -140,7 +140,11 @@ fn moves_the_query_s_selector_under_the_record_s_own_position() {
 
     assert_eq!(
         selector_values(&findings),
-        ["\"/catalog/item[1]\"", "\"/catalog/item[2]\"", "\"note\""]
+        [
+            "\"/catalog/item[1]\"",
+            "\"/catalog/item[2]\"",
+            "\"note[1]\""
+        ]
     );
 }
 
@@ -158,12 +162,16 @@ fn gives_every_annotation_a_record_selector_of_its_own() {
 }
 
 #[test]
-fn counts_a_finding_a_record_produced_twice_twice() {
-    let notes = selector_values(&findings_for("order.xml"))
+fn gives_each_note_of_a_record_a_finding_at_that_note_s_own_address() {
+    let notes: Vec<String> = selector_values(&findings_for("order.xml"))
         .into_iter()
-        .filter(|value| value == "\"note\"")
-        .count();
-    assert_eq!(notes, 3, "two of one record's, one of the other's");
+        .filter(|value| value.starts_with("\"note"))
+        .collect();
+    assert_eq!(
+        notes,
+        ["\"note[1]\"", "\"note[1]\"", "\"note[2]\""],
+        "two of one record's notes and one of the other's, each at its own place"
+    );
 }
 
 /// The tiny adapter with the findings query that names a node inside the
@@ -172,7 +180,7 @@ struct WholeRecord {
     directory: Queries,
 }
 
-const SELECTOR: &str = " ;\n      oa:hasSelector [ a oa:XPathSelector ; rdf:value \"note\" ]";
+const SELECTOR: &str = " ;\n      oa:hasSelector [ a oa:XPathSelector ; rdf:value ?at ]";
 
 impl Resolver for WholeRecord {
     fn root(&self) -> &str {
@@ -198,7 +206,7 @@ fn selects_the_record_itself_for_a_query_that_writes_no_selector() {
     assert_eq!(objects(&findings, &format!("{OA}hasSelector")).len(), 2);
 }
 
-const TARGET: &str = "[\n      oa:hasSource bridge:thisRecord ;\n      oa:hasSelector [ a oa:XPathSelector ; rdf:value \"note\" ]\n    ]";
+const TARGET: &str = "[\n      oa:hasSource bridge:thisRecord ;\n      oa:hasSelector [ a oa:XPathSelector ; rdf:value ?at ]\n    ]";
 
 /// The tiny adapter with the findings query that builds a target of its own
 /// rewritten to name the record itself, which the specification forbids: one

@@ -75,6 +75,7 @@ terms! {
     BRIDGE_VALUE_NOT_MAPPED = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "valueNotMapped";
     BRIDGE_OCCURRENCES = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "occurrences";
     BRIDGE_PATH_NOT_ACCOUNTED = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "pathNotAccounted";
+    BRIDGE_ADDRESS_NOT_ONE_NODE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "addressNotOneNode";
     BRIDGE_INPUT = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "input";
     BRIDGE_EXPECTED_GRAPH = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "expectedGraph";
     BRIDGE_EXPECTED_FINDINGS = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "expectedFindings";

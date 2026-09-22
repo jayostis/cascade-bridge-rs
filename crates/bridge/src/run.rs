@@ -22,6 +22,7 @@ use crate::rdf::{
 };
 use crate::resolver::Resolver;
 use crate::validate::{self, Schema};
+use crate::xpath;
 use oxigraph::model::{GraphName, NamedOrBlankNode, Quad, Term};
 use oxigraph::sparql::{PreparedSparqlQuery, QueryResults, SparqlEvaluator};
 use oxigraph::store::Store;
@@ -745,6 +746,7 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
     // Decoding is the one stage that holds the whole document at once, so the
     // document schema below reads these characters rather than its own copy.
     let text = decode(source.xml)?;
+    let followed = xpath::Followed::default();
     let paths = match &prepared.accounting {
         Some(accounting) => Paths::Kept {
             valued: accounting.lookups.keys().cloned().collect(),
@@ -766,6 +768,7 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
         };
 
         let at = Instant::now();
+        let mark = findings.len();
         if let Some(schema) = &prepared.source_schema {
             for broken in schema.errors(&unit.xml)? {
                 findings.extend(annotation::violation(
@@ -852,6 +855,21 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
             )?);
         }
         ms.findings += at.elapsed();
+
+        let at = Instant::now();
+        // A record was read, so the document element was, and what a report
+        // selects is known without the envelope this document has yet to name.
+        let element = document_selector(lift.document_selector(), None);
+        let reports = followed.unresolved(
+            &Record {
+                source: source.iri,
+                selector: &element,
+            },
+            &unit.xml,
+            &findings[mark..],
+        )?;
+        findings.extend(reports);
+        ms.findings += at.elapsed();
     }
 
     let envelope = named.or_else(|| prepared.envelope_of(lift.document_element()));
@@ -867,6 +885,11 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
             source: source.iri,
             selector: &selector,
         };
+        // A finding about the document is about no record, and the address it
+        // refines the document by is written from the walk the validator made,
+        // as a record's own selector is from the lift's: this Bridge wrote it
+        // and no adapter did, so following it would cost a tree of the whole
+        // document to check what cannot be wrong.
         for broken in schema.errors(&text)? {
             findings.extend(annotation::violation(
                 &record,

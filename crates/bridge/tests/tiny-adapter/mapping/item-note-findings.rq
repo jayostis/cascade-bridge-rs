@@ -1,4 +1,5 @@
 PREFIX rdf:    <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX xsd:    <http://www.w3.org/2001/XMLSchema#>
 PREFIX sh:     <http://www.w3.org/ns/shacl#>
 PREFIX oa:     <http://www.w3.org/ns/oa#>
 PREFIX fx:     <http://sparql.xyz/facade-x/ns/>
@@ -6,17 +7,33 @@ PREFIX xyz:    <http://sparql.xyz/facade-x/data/>
 PREFIX bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#>
 PREFIX ex:     <urn:example:catalog#>
 
+# A finding is about one node, so its address selects one. A container's slot
+# numbers every child of every name, while a step numbers the siblings of its
+# own name, so the notes standing before this one are counted rather than read
+# off the slot: <item><title/><note/></item> holds note[1] at the second slot.
 CONSTRUCT {
   [] a oa:Annotation ;
     oa:hasTarget [
       oa:hasSource bridge:thisRecord ;
-      oa:hasSelector [ a oa:XPathSelector ; rdf:value "note" ]
+      oa:hasSelector [ a oa:XPathSelector ; rdf:value ?at ]
     ] ;
     oa:hasBody ex:noteHasNoTerm ;
     oa:motivatedBy oa:classifying ;
     sh:resultSeverity sh:Info .
 }
 WHERE {
-  ?item a fx:root, xyz:item ; ?slot ?note .
-  ?note a xyz:note .
+  {
+    SELECT ?note (COUNT(?earlier) AS ?before) WHERE {
+      ?item a fx:root, xyz:item ; ?slot ?note .
+      ?note a xyz:note .
+      OPTIONAL {
+        ?item ?sooner ?earlier .
+        ?earlier a xyz:note .
+        FILTER(xsd:integer(STRAFTER(STR(?sooner), STR(rdf:_)))
+             < xsd:integer(STRAFTER(STR(?slot), STR(rdf:_))))
+      }
+    }
+    GROUP BY ?note
+  }
+  BIND(CONCAT("note[", STR(?before + 1), "]") AS ?at)
 }
