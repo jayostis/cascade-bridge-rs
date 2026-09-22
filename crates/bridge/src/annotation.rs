@@ -242,8 +242,15 @@ pub fn lookup(
 
 /// What a findings query constructed, made about this record: bridge:thisRecord
 /// becomes the document, and each annotation's target becomes a node of its own
-/// carrying a record selector, the query's selector under it.
-pub fn about(record: &Record, query: &str, constructed: Vec<Quad>) -> Result<Vec<Quad>> {
+/// carrying a record selector, the query's selector under it. An annotation the
+/// template left without a severity takes the one the gap scheme declares for
+/// the concept its body names, and `sh:Info` where neither says.
+pub fn about(
+    record: &Record,
+    query: &str,
+    constructed: Vec<Quad>,
+    severities: &HashMap<String, String>,
+) -> Result<Vec<Quad>> {
     let source = NamedNode::new(record.source)?;
     let this_record = NamedNode::new(BRIDGE_THIS_RECORD)?;
     let named_record = |term: Term| match term {
@@ -375,6 +382,39 @@ pub fn about(record: &Record, query: &str, constructed: Vec<Quad>) -> Result<Vec
             keep(quad, &copied, &mut kept, &mut pending);
         }
     }
+
+    // Read in the graph's order rather than the annotation set's, so what a
+    // query produced twice comes out the same way round each run.
+    let severe: HashSet<&NamedOrBlankNode> = quads
+        .iter()
+        .filter(|q| q.predicate.as_str() == SH_RESULT_SEVERITY)
+        .map(|q| &q.subject)
+        .collect();
+    let mut declared = Vec::new();
+    for annotation in quads
+        .iter()
+        .filter(|q| q.predicate.as_str() == RDF_TYPE)
+        .filter(|q| matches!(&q.object, Term::NamedNode(n) if n.as_str() == OA_ANNOTATION))
+        .map(|q| &q.subject)
+        .filter(|annotation| !severe.contains(annotation))
+    {
+        let body = quads
+            .iter()
+            .find(|q| &q.subject == annotation && q.predicate.as_str() == OA_HAS_BODY)
+            .and_then(|q| match &q.object {
+                Term::NamedNode(body) => Some(body.as_str()),
+                _ => None,
+            });
+        let severity = body
+            .and_then(|body| severities.get(body))
+            .map_or(SH_INFO, String::as_str);
+        declared.push(triple(
+            annotation.clone(),
+            SH_RESULT_SEVERITY,
+            named(severity)?,
+        )?);
+    }
+    findings.extend(declared);
 
     for quad in quads {
         let moved = matches!(&quad.subject, NamedOrBlankNode::BlankNode(node)

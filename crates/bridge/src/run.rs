@@ -122,6 +122,10 @@ pub struct Prepared {
     envelopes: Vec<Envelope>,
     source_schema: Option<Schema>,
     accounting: Option<Accounting>,
+    /// The severity each gap concept declares, by the IRI a finding's body
+    /// names it by. An accounting entry carries its own in `Reported` and
+    /// `Lookup`; a findings query's annotation is given none, and reads here.
+    gap_severities: HashMap<String, String>,
 }
 
 impl Prepared {
@@ -716,6 +720,11 @@ pub fn prepare(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prepared> {
         }
     }
 
+    let gap_severities = scheme
+        .iter()
+        .filter_map(|(concept, gap)| Some((concept.clone(), gap.severity.clone()?)))
+        .collect();
+
     Ok(Prepared {
         unit,
         mappings,
@@ -725,6 +734,7 @@ pub fn prepare(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prepared> {
         prefixes,
         envelopes,
         source_schema,
+        gap_severities,
         accounting: adapter
             .source_accounting
             .as_deref()
@@ -852,6 +862,7 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
                 &record,
                 &findings_query.iri,
                 constructed,
+                &prepared.gap_severities,
             )?);
         }
         ms.findings += at.elapsed();
