@@ -1,5 +1,5 @@
-// cascade-bridge test <adapter-dir> [--earl <out.ttl>] [--datasets]
-// cascade-bridge convert <adapter-dir> <document.xml> [--out <file>] [--findings <file>] [--format turtle|ntriples]
+// cascade-bridge test <adapter-dir> [--vocabularies <directory>] [--earl <out.ttl>] [--datasets]
+// cascade-bridge convert <adapter-dir> <document.xml> [--vocabularies <directory>] [--out <file>] [--findings <file>] [--format turtle|ntriples]
 use cascade_bridge::{
     convert, earl_report, file_iri, load_adapter, prepare, run_manifest, serialise, serialise_at,
     DirectoryResolver, EntryResult, GraphFormat, Outcome, ReportSubject, RunOptions, Source,
@@ -8,8 +8,8 @@ use cascade_bridge::{
 use std::io::Write;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: cascade-bridge test <adapter-dir> [--earl <out.ttl>] [--datasets]
-       cascade-bridge convert <adapter-dir> <document.xml> [--out <file>] [--findings <file>] [--format turtle|ntriples]";
+const USAGE: &str = "usage: cascade-bridge test <adapter-dir> [--vocabularies <directory>] [--earl <out.ttl>] [--datasets]
+       cascade-bridge convert <adapter-dir> <document.xml> [--vocabularies <directory>] [--out <file>] [--findings <file>] [--format turtle|ntriples]";
 
 /// A run proves nothing when an entry failed or could not be run at all.
 const FAILING: [Outcome; 2] = [Outcome::Failed, Outcome::Inapplicable];
@@ -34,6 +34,7 @@ fn main() -> ExitCode {
 
 struct Test {
     directory: String,
+    vocabularies: Option<String>,
     earl: Option<String>,
     datasets: bool,
 }
@@ -41,9 +42,23 @@ struct Test {
 struct Convert {
     directory: String,
     document: String,
+    vocabularies: Option<String>,
     out: Option<String>,
     findings: Option<String>,
     format: GraphFormat,
+}
+
+/// The adapter's directory, and the checkout of `the-cascade-protocol/spec` the
+/// vocabulary files are read from where the command named one. Between them
+/// they are everything a run reads.
+fn resolver(directory: &str, vocabularies: Option<&str>) -> Result<DirectoryResolver, String> {
+    let resolver = DirectoryResolver::new(directory).map_err(|e| e.to_string())?;
+    match vocabularies {
+        Some(checkout) => resolver
+            .with_vocabularies(checkout)
+            .map_err(|e| e.to_string()),
+        None => Ok(resolver),
+    }
 }
 
 enum Command {
@@ -57,11 +72,13 @@ fn parse(argv: Vec<String>) -> Option<Command> {
         "test" => {
             let mut arguments = Test {
                 directory: argv.next()?,
+                vocabularies: None,
                 earl: None,
                 datasets: false,
             };
             while let Some(flag) = argv.next() {
                 match flag.as_str() {
+                    "--vocabularies" => arguments.vocabularies = Some(argv.next()?),
                     "--earl" => arguments.earl = Some(argv.next()?),
                     "--datasets" => arguments.datasets = true,
                     _ => return None,
@@ -73,12 +90,14 @@ fn parse(argv: Vec<String>) -> Option<Command> {
             let mut arguments = Convert {
                 directory: argv.next()?,
                 document: argv.next()?,
+                vocabularies: None,
                 out: None,
                 findings: None,
                 format: GraphFormat::Turtle,
             };
             while let Some(flag) = argv.next() {
                 match flag.as_str() {
+                    "--vocabularies" => arguments.vocabularies = Some(argv.next()?),
                     "--out" => arguments.out = Some(argv.next()?),
                     "--findings" => arguments.findings = Some(argv.next()?),
                     "--format" => arguments.format = GraphFormat::named(&argv.next()?)?,
@@ -104,7 +123,7 @@ fn run(argv: Vec<String>) -> Result<ExitCode, String> {
 
 fn test(arguments: Test) -> Result<ExitCode, String> {
     let subject = subject();
-    let resolver = DirectoryResolver::new(&arguments.directory).map_err(|e| e.to_string())?;
+    let resolver = resolver(&arguments.directory, arguments.vocabularies.as_deref())?;
     let adapter = load_adapter(&resolver).map_err(|e| e.to_string())?;
     println!(
         "Adapter  {}  ({})",
@@ -167,7 +186,7 @@ fn test(arguments: Test) -> Result<ExitCode, String> {
 /// Standard output carries the graph and nothing else, so a caller can pipe it
 /// into a store; everything the run has to say goes to standard error.
 fn convert_document(arguments: Convert) -> Result<ExitCode, String> {
-    let resolver = DirectoryResolver::new(&arguments.directory).map_err(|e| e.to_string())?;
+    let resolver = resolver(&arguments.directory, arguments.vocabularies.as_deref())?;
     let adapter = load_adapter(&resolver).map_err(|e| e.to_string())?;
     let prepared = prepare(&adapter, &resolver).map_err(|e| e.to_string())?;
     let document =

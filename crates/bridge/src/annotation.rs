@@ -10,8 +10,8 @@ use crate::error::{Error, Result};
 use crate::rdf::{
     BRIDGE_ADDRESS_NOT_ONE_NODE, BRIDGE_OCCURRENCES, BRIDGE_PATH_NOT_ACCOUNTED, BRIDGE_THIS_RECORD,
     OA_ANNOTATION, OA_CLASSIFYING, OA_HAS_BODY, OA_HAS_SELECTOR, OA_HAS_SOURCE, OA_HAS_TARGET,
-    OA_MOTIVATED_BY, OA_REFINED_BY, OA_XPATH_SELECTOR, RDF_TYPE, RDF_VALUE, SH_INFO,
-    SH_RESULT_SEVERITY, SH_VALUE, SH_VIOLATION,
+    OA_MOTIVATED_BY, OA_REFINED_BY, OA_XPATH_SELECTOR, RDF_TYPE, RDF_VALUE, SH_FOCUS_NODE, SH_INFO,
+    SH_RESULT_PATH, SH_RESULT_SEVERITY, SH_VALUE, SH_VIOLATION,
 };
 use oxrdf::vocab::xsd;
 use oxrdf::{BlankNode, GraphName, Literal, NamedNode, NamedOrBlankNode, Quad, Term};
@@ -112,8 +112,8 @@ fn copy(
 
 /// The finding a Bridge stage made itself: what it names as its body, the node
 /// inside the record it is addressed at where that is not the record itself,
-/// its severity, what its body alone cannot say, and how many nodes of the
-/// record it stands for.
+/// its severity, what its body alone cannot say, how many nodes of the record
+/// it stands for, and whatever else the stage names it by.
 fn finding(
     record: &Record,
     body: &str,
@@ -121,6 +121,7 @@ fn finding(
     severity: &str,
     value: Option<&str>,
     occurrences: usize,
+    carries: &[(&str, &str)],
 ) -> Result<Vec<Quad>> {
     let mut quads = Vec::new();
     let annotation = BlankNode::default();
@@ -168,6 +169,9 @@ fn finding(
             Literal::new_typed_literal(occurrences.to_string(), xsd::INTEGER),
         )?);
     }
+    for (predicate, iri) in carries {
+        quads.push(triple(annotation.clone(), predicate, named(iri)?)?);
+    }
     quads.push(triple(annotation, SH_RESULT_SEVERITY, named(severity)?)?);
     Ok(quads)
 }
@@ -175,7 +179,30 @@ fn finding(
 /// The rule a Bridge stage found broken, and the element inside the record it
 /// was broken on.
 pub fn violation(record: &Record, body: &str, within: Option<&str>) -> Result<Vec<Quad>> {
-    finding(record, body, within, SH_VIOLATION, None, 1)
+    finding(record, body, within, SH_VIOLATION, None, 1, &[])
+}
+
+/// One result the record's produced graph drew when it was read against the
+/// vocabulary's shapes: the constraint component it broke, at the path and the
+/// severity the result carries, naming the node the result is about where that
+/// node has a name to give. The record is addressed no more finely: the result
+/// is about a node of the graph, and which node of the source stands behind it
+/// is the mapping's to know and no one's to recover.
+pub fn drawn(
+    record: &Record,
+    body: &str,
+    path: Option<&str>,
+    focus: Option<&str>,
+    severity: &str,
+) -> Result<Vec<Quad>> {
+    let mut carries: Vec<(&str, &str)> = Vec::new();
+    if let Some(path) = path {
+        carries.push((SH_RESULT_PATH, path));
+    }
+    if let Some(focus) = focus {
+        carries.push((SH_FOCUS_NODE, focus));
+    }
+    finding(record, body, None, severity, None, 1, &carries)
 }
 
 /// An address a finding carries that this Bridge could not follow: it selects
@@ -191,6 +218,7 @@ pub fn address(document: &Record, written: &str) -> Result<Vec<Quad>> {
         SH_VIOLATION,
         Some(written),
         1,
+        &[],
     )
 }
 
@@ -209,6 +237,7 @@ pub fn unaccounted(
         SH_INFO,
         Some(path),
         occurrences,
+        &[],
     )
 }
 
@@ -222,7 +251,7 @@ pub fn gap(
     severity: &str,
     occurrences: usize,
 ) -> Result<Vec<Quad>> {
-    finding(record, gap, within, severity, Some(path), occurrences)
+    finding(record, gap, within, severity, Some(path), occurrences, &[])
 }
 
 /// The gap an entry's lookup names for a value the record holds at its path
@@ -237,7 +266,7 @@ pub fn lookup(
     severity: &str,
     occurrences: usize,
 ) -> Result<Vec<Quad>> {
-    finding(record, gap, within, severity, Some(value), occurrences)
+    finding(record, gap, within, severity, Some(value), occurrences, &[])
 }
 
 /// What a findings query constructed, made about this record: bridge:thisRecord

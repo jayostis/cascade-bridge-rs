@@ -30,11 +30,19 @@ pub fn file_iri(path: impl AsRef<Path>) -> Result<String> {
     Ok(path_to_file_iri(&resolved))
 }
 
-/// Resolve an adapter from a directory. Nothing outside it is readable.
+/// Resolve an adapter from a directory. Nothing outside it, and outside the
+/// checkout the engine command named, is readable.
 pub struct DirectoryResolver {
     root_iri: String,
     root_path: PathBuf,
-    vocabularies_iri: Option<String>,
+    vocabularies: Option<Directory>,
+}
+
+/// A directory a run may read, by the IRI its files are named by and the path a
+/// filesystem reaches them at.
+struct Directory {
+    iri: String,
+    path: PathBuf,
 }
 
 impl DirectoryResolver {
@@ -46,7 +54,7 @@ impl DirectoryResolver {
         Ok(Self {
             root_iri,
             root_path,
-            vocabularies_iri: None,
+            vocabularies: None,
         })
     }
 
@@ -58,9 +66,21 @@ impl DirectoryResolver {
         let mut iri = path_to_file_iri(&path);
         iri.push('/');
         Ok(Self {
-            vocabularies_iri: Some(iri),
+            vocabularies: Some(Directory { iri, path }),
             ..self
         })
+    }
+
+    /// The directories a run may read, the adapter's first.
+    fn readable(&self) -> impl Iterator<Item = (&str, &Path)> {
+        [
+            Some((self.root_iri.as_str(), self.root_path.as_path())),
+            self.vocabularies
+                .as_ref()
+                .map(|directory| (directory.iri.as_str(), directory.path.as_path())),
+        ]
+        .into_iter()
+        .flatten()
     }
 }
 
@@ -70,25 +90,31 @@ impl Resolver for DirectoryResolver {
     }
 
     fn vocabularies(&self) -> Option<&str> {
-        self.vocabularies_iri.as_deref()
+        self.vocabularies
+            .as_ref()
+            .map(|directory| directory.iri.as_str())
     }
 
     fn read(&self, iri: &str) -> Result<Vec<u8>> {
-        let outside = || Error::msg(format!("not inside the adapter: {iri}"));
         let bare = iri.split('#').next().unwrap_or(iri);
-        // A server in the IRI is a network host. One that is not the
-        // adapter's own is refused before the filesystem is asked, since
-        // asking would contact it.
-        if authority(bare) != authority(&self.root_iri) {
-            return Err(outside());
-        }
-        let path = file_iri_to_path(bare).ok_or_else(outside)?;
-        // The boundary is decided on the resolved filesystem path, never on
-        // the IRI string: percent-encoding hides "%2e%2e" from a prefix test
-        // and a symbolic link hides the destination from both.
-        if !resolve(&path).is_some_and(|p| p.starts_with(&self.root_path)) {
-            return Err(outside());
-        }
+        let inside = self.readable().find_map(|(root_iri, root)| {
+            // A server in the IRI is a network host. One that is not a
+            // readable directory's own is refused before the filesystem is
+            // asked, since asking would contact it.
+            if authority(bare) != authority(root_iri) {
+                return None;
+            }
+            // The boundary is decided on the resolved filesystem path, never
+            // on the IRI string: percent-encoding hides "%2e%2e" from a prefix
+            // test and a symbolic link hides the destination from both.
+            file_iri_to_path(bare).filter(|path| resolve(path).is_some_and(|p| p.starts_with(root)))
+        });
+        let Some(path) = inside else {
+            return Err(Error::msg(match self.vocabularies {
+                Some(_) => format!("not inside the adapter or the vocabularies: {iri}"),
+                None => format!("not inside the adapter: {iri}"),
+            }));
+        };
         Ok(fs::read(&path)?)
     }
 }

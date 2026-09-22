@@ -16,7 +16,9 @@ mod load;
 mod rdf;
 mod resolver;
 mod run;
+mod shapes;
 mod validate;
+mod vocabulary;
 mod xpath;
 
 pub use earl::{earl_report, earl_report_at, ReportSubject};

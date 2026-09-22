@@ -16,14 +16,15 @@ use crate::load::{subject, value, Adapter};
 use crate::rdf::{
     BRIDGE_CARRIED_IN_PART, BRIDGE_LOOKUP_IN, BRIDGE_LOOKUP_NAMES_GAP, BRIDGE_NAMES_GAP,
     BRIDGE_NO_HOME, BRIDGE_NO_PREDICATE, BRIDGE_PATH_ENTRY, BRIDGE_SOURCE_LACKS_REQUIRED,
-    BRIDGE_SOURCE_PATH, BRIDGE_VALUE_NOT_MAPPED, BRIDGE_VERDICT, RDF_TYPE, SCHEMA_ENCODING_FORMAT,
-    SH_INFO, SH_RESULT_SEVERITY, SH_VIOLATION, SH_WARNING, SKOS_BROADER, SKOS_CONCEPT_SCHEME,
-    SKOS_NOTATION,
+    BRIDGE_SOURCE_PATH, BRIDGE_STAMP_PREDICATE, BRIDGE_VALUE_NOT_MAPPED, BRIDGE_VERDICT, RDF_TYPE,
+    SCHEMA_ENCODING_FORMAT, SH_INFO, SH_RESULT_SEVERITY, SH_VIOLATION, SH_WARNING, SKOS_BROADER,
+    SKOS_CONCEPT_SCHEME, SKOS_NOTATION,
 };
 use crate::resolver::Resolver;
 use crate::validate::{self, Schema};
+use crate::vocabulary::Vocabulary;
 use crate::xpath;
-use oxigraph::model::{GraphName, NamedOrBlankNode, Quad, Term};
+use oxigraph::model::{GraphName, NamedOrBlankNode, Quad, Term, TermRef};
 use oxigraph::sparql::{PreparedSparqlQuery, QueryResults, SparqlEvaluator};
 use oxigraph::store::Store;
 use oxrdfio::{RdfFormat, RdfParser};
@@ -121,6 +122,9 @@ pub struct Prepared {
     pub prefixes: Vec<(String, String)>,
     envelopes: Vec<Envelope>,
     source_schema: Option<Schema>,
+    /// What each record's produced graph is read against, where the command
+    /// named a checkout to read it from.
+    vocabulary: Option<Vocabulary>,
     accounting: Option<Accounting>,
     /// The severity each gap concept declares, by the IRI a finding's body
     /// names it by. An accounting entry carries its own in `Reported` and
@@ -643,6 +647,21 @@ fn query(resolver: &dyn Resolver, iri: &str, expected: Form, what: &str) -> Resu
     })
 }
 
+/// The predicates the adapter's manifest stamps a produced graph with, which
+/// the adapter wrote for a Bridge rather than out of an ontology, and which no
+/// ontology is asked about.
+fn stamps(adapter: &Adapter) -> HashSet<String> {
+    adapter
+        .graph
+        .iter()
+        .filter(|triple| triple.predicate.as_str() == BRIDGE_STAMP_PREDICATE)
+        .filter_map(|triple| match triple.object {
+            TermRef::NamedNode(named) => Some(named.as_str().to_owned()),
+            _ => None,
+        })
+        .collect()
+}
+
 /// Read, parse and check everything an adapter runs, once, before any
 /// document.
 pub fn prepare(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prepared> {
@@ -725,6 +744,8 @@ pub fn prepare(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prepared> {
         .filter_map(|(concept, gap)| Some((concept.clone(), gap.severity.clone()?)))
         .collect();
 
+    let vocabulary = Vocabulary::read(&adapter.vocabulary_files, stamps(adapter), resolver)?;
+
     Ok(Prepared {
         unit,
         mappings,
@@ -734,6 +755,7 @@ pub fn prepare(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prepared> {
         prefixes,
         envelopes,
         source_schema,
+        vocabulary,
         gap_severities,
         accounting: adapter
             .source_accounting
@@ -850,10 +872,21 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
         ms.load += at.elapsed();
 
         let at = Instant::now();
+        let mut produced = Vec::new();
         for mapping in &prepared.mappings {
-            quads.extend(mapping.graph(&unit.store)?);
+            produced.extend(mapping.graph(&unit.store)?);
         }
         ms.mappings += at.elapsed();
+
+        // Reported, never enforced: what the shapes say of the record's graph
+        // is a finding about the record, and the graph is produced whatever
+        // they say.
+        let at = Instant::now();
+        if let Some(vocabulary) = &prepared.vocabulary {
+            findings.extend(vocabulary.findings(&record, &produced)?);
+        }
+        ms.validation += at.elapsed();
+        quads.extend(produced);
 
         let at = Instant::now();
         for findings_query in &prepared.findings_queries {

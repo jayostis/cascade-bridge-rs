@@ -20,6 +20,11 @@ terms! {
     RDF_REST = "http://www.w3.org/1999/02/22-rdf-syntax-ns#", "rest";
     RDF_NIL = "http://www.w3.org/1999/02/22-rdf-syntax-ns#", "nil";
     RDF_VALUE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#", "value";
+    RDF_PROPERTY = "http://www.w3.org/1999/02/22-rdf-syntax-ns#", "Property";
+
+    OWL_DATATYPE_PROPERTY = "http://www.w3.org/2002/07/owl#", "DatatypeProperty";
+    OWL_OBJECT_PROPERTY = "http://www.w3.org/2002/07/owl#", "ObjectProperty";
+    OWL_ANNOTATION_PROPERTY = "http://www.w3.org/2002/07/owl#", "AnnotationProperty";
 
     OA_ANNOTATION = "http://www.w3.org/ns/oa#", "Annotation";
     OA_HAS_TARGET = "http://www.w3.org/ns/oa#", "hasTarget";
@@ -32,6 +37,8 @@ terms! {
     OA_CLASSIFYING = "http://www.w3.org/ns/oa#", "classifying";
 
     SH_RESULT_SEVERITY = "http://www.w3.org/ns/shacl#", "resultSeverity";
+    SH_RESULT_PATH = "http://www.w3.org/ns/shacl#", "resultPath";
+    SH_FOCUS_NODE = "http://www.w3.org/ns/shacl#", "focusNode";
     SH_VALUE = "http://www.w3.org/ns/shacl#", "value";
     SH_WARNING = "http://www.w3.org/ns/shacl#", "Warning";
     SH_VIOLATION = "http://www.w3.org/ns/shacl#", "Violation";
@@ -57,6 +64,8 @@ terms! {
     BRIDGE_ENVELOPE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "envelope";
     BRIDGE_DOC_ROOT_ELEMENT_NAME = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "docRootElementName";
     BRIDGE_SOURCE_SCHEMA = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "sourceSchema";
+    BRIDGE_VOCABULARY_FILE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "vocabularyFile";
+    BRIDGE_PREDICATE_NOT_DECLARED = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "predicateNotDeclared";
     BRIDGE_DOCUMENT_SCHEMA = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "documentSchema";
     BRIDGE_THIS_RECORD = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "thisRecord";
     BRIDGE_SCHEMA_RULE_UNNAMED = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "schemaRuleUnnamed";
