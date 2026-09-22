@@ -169,3 +169,28 @@ fn normalises_an_attribute_value_as_xml_does_whatever_the_checkout() {
         );
     }
 }
+
+/// The record the lift writes out again is what a validator is handed and what
+/// an address is followed through, and XPath counts a comment and a processing
+/// instruction, so each stands in it where the document wrote it. Neither is a
+/// member of the graph: the characters either side of one are still a single
+/// text child there.
+#[test]
+fn writes_a_record_out_with_the_comments_and_instructions_it_held() {
+    let document =
+        b"<catalog><!-- before --><item>before<!-- inside --><?say it?>after<e/></item></catalog>";
+    let unit = lift_slice(document, Some("item"))
+        .expect("lift")
+        .next()
+        .expect("a unit")
+        .expect("a unit");
+    assert_eq!(
+        unit.xml,
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><item>before<!-- inside --><?say it?>after<e></e></item>"
+    );
+    let lines = canonical(unit.store.iter().map(|q| q.expect("quad")).collect());
+    assert!(
+        lines.iter().any(|line| line.contains("\"beforeafter\"")),
+        "{lines:?}"
+    );
+}

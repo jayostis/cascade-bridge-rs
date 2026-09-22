@@ -198,11 +198,11 @@ fn reports_an_address_two_findings_of_one_record_share_once() {
     );
 }
 
-/// A comment and a processing instruction are no part of what the lift
-/// rebuilds from a record, and an address that counts them is followed through
-/// the source, where they stand.
+/// A comment and a processing instruction are no part of the graph the lift
+/// builds, and XPath counts both, so the record the lift writes out again
+/// carries them where the document wrote them.
 #[test]
-fn follows_an_address_through_what_the_lift_leaves_out() {
+fn follows_an_address_through_what_the_graph_leaves_out() {
     for address in ["comment()[1]", "processing-instruction()[1]", "node()[2]"] {
         let counted = run(
             &variants(vec![
@@ -223,16 +223,29 @@ fn follows_an_address_through_what_the_lift_leaves_out() {
     }
 }
 
-/// An address is followed from the record through the whole source, so one
-/// that walks out of the record reaches the node it names rather than the edge
-/// of a record read on its own.
+/// A refinement selects one node of the record its selector names, so an
+/// address is followed through the record read as a document of its own, and
+/// one that walks out of the record reaches nothing the finding can be about.
+/// An address rooted at the document is one of those, the record being the
+/// root of what it is read from.
 #[test]
-fn follows_an_address_that_leaves_the_record() {
-    let outward = run(
-        &variant(NOTE_QUERY, NOTE, "rdf:value \"../item[2]\""),
-        "two.xml",
-    );
-    assert_eq!(reports(&outward.findings), Vec::<(String, String)>::new());
+fn reports_an_address_that_leaves_the_record() {
+    for address in [
+        "..",
+        "../item[2]",
+        "following-sibling::item[1]",
+        "/catalog/item[1]/note[1]",
+    ] {
+        let outward = run(
+            &variant(NOTE_QUERY, NOTE, &format!("rdf:value \"{address}\"")),
+            "two.xml",
+        );
+        assert_eq!(
+            reports(&outward.findings),
+            [("/catalog".to_owned(), address.to_owned())],
+            "{address}"
+        );
+    }
 }
 
 /// Every input the adapter committed, which its oracles are written against.
@@ -373,22 +386,22 @@ fn passes_a_refinement_of_the_record_itself_spelled_another_correct_way() {
     assert_eq!(outcome, "passed", "{said}");
 }
 
-/// An address is followed from the record through the whole source, so one
-/// that leaves the record is compared by the node it reaches out there, as one
-/// that stays is by the node it reaches inside.
+/// A refinement selects one node of its record where a comparison reads it as
+/// where a conversion writes it, so an address that walks out of the record
+/// fails the entry by the address and what it selected, rather than being
+/// compared by the node it reached out there.
 #[test]
-fn passes_a_refinement_that_leaves_the_record_spelled_another_correct_way() {
+fn fails_an_entry_whose_refinement_leaves_the_record() {
     let (outcome, said) = judged(&spelled("../item[2]", "following-sibling::item[1]"), "pass");
-    assert_eq!(outcome, "passed", "{said}");
-}
-
-/// Without this, a comparison that made every address leaving the record equal
-/// would pass `passes_a_refinement_that_leaves_the_record_spelled_another_correct_way`.
-#[test]
-fn fails_a_refinement_that_leaves_the_record_for_another_node() {
-    let (outcome, said) = judged(&spelled("../item[2]", "parent::catalog"), "pass");
     assert_eq!(outcome, "failed", "{said}");
-    assert!(said.contains("findings differ"), "{said}");
+    assert!(
+        said.contains("produced \"../item[2]\" selects no node"),
+        "{said}"
+    );
+    assert!(
+        said.contains("expected \"following-sibling::item[1]\" selects no node"),
+        "{said}"
+    );
 }
 
 /// The Bridge's own report of the address, as the oracle carries it beside the
