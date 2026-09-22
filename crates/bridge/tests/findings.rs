@@ -482,3 +482,176 @@ fn refuses_a_findings_query_that_names_the_annotation_it_constructs() {
         "the refusal names the term the query wrote: {refusal}"
     );
 }
+
+const SH: &str = "http://www.w3.org/ns/shacl#";
+
+/// The tiny adapter with its gap scheme and its findings query rewritten
+/// together: what a concept declares and what a template writes are the two
+/// halves of a finding's severity, and a test of one sets the other.
+struct Severities {
+    directory: Queries,
+    scheme: Vec<(String, String)>,
+    query: Vec<(String, String)>,
+}
+
+impl Severities {
+    fn new(scheme: &[(&str, &str)], query: &[(&str, &str)]) -> Self {
+        let owned = |pairs: &[(&str, &str)]| {
+            pairs
+                .iter()
+                .map(|(from, to)| ((*from).to_owned(), (*to).to_owned()))
+                .collect()
+        };
+        Self {
+            directory: tiny(),
+            scheme: owned(scheme),
+            query: owned(query),
+        }
+    }
+}
+
+impl Resolver for Severities {
+    fn root(&self) -> &str {
+        self.directory.root()
+    }
+
+    fn read(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
+        let bytes = self.directory.read(iri)?;
+        let replacements = if iri.ends_with("vocab/catalog-gaps.ttl") {
+            &self.scheme
+        } else if iri.ends_with("mapping/item-note-findings.rq") {
+            &self.query
+        } else {
+            return Ok(bytes);
+        };
+        let mut text = String::from_utf8(bytes).expect("utf-8");
+        for (from, to) in replacements {
+            assert!(text.contains(from), "{iri} holds {from:?}");
+            text = text.replace(from, to);
+        }
+        Ok(text.into_bytes())
+    }
+}
+
+/// The severity of the annotation whose body is this one, of the two findings
+/// two.xml draws: the note the query addresses, and the item with no title.
+fn severity_of(findings: &[Quad], body: &str) -> String {
+    let named = findings
+        .iter()
+        .filter(|q| q.predicate.as_str() == format!("{OA}hasBody"))
+        .filter(|q| matches!(&q.object, Term::NamedNode(n) if n.as_str() == body))
+        .map(|q| q.subject.clone())
+        .collect::<Vec<_>>();
+    assert_eq!(named.len(), 1, "one annotation bodies {body}");
+    let severities: Vec<String> = findings
+        .iter()
+        .filter(|q| q.subject == named[0])
+        .filter(|q| q.predicate.as_str() == format!("{SH}resultSeverity"))
+        .map(|q| q.object.to_string())
+        .collect();
+    assert_eq!(severities.len(), 1, "the finding carries one severity");
+    severities[0].clone()
+}
+
+/// The severity of the one annotation the query gave no body.
+fn severity_of_the_unbodied(findings: &[Quad]) -> String {
+    let bodied: Vec<String> = findings
+        .iter()
+        .filter(|q| q.predicate.as_str() == format!("{OA}hasBody"))
+        .map(|q| q.subject.to_string())
+        .collect();
+    let annotation = format!("{OA}Annotation");
+    let unbodied: Vec<_> = findings
+        .iter()
+        .filter(|q| q.predicate.as_str() == RDF_TYPE)
+        .filter(|q| matches!(&q.object, Term::NamedNode(n) if n.as_str() == annotation))
+        .map(|q| q.subject.clone())
+        .filter(|s| !bodied.contains(&s.to_string()))
+        .collect();
+    assert_eq!(unbodied.len(), 1, "one annotation carries no body");
+    let severities: Vec<String> = findings
+        .iter()
+        .filter(|q| q.subject == unbodied[0])
+        .filter(|q| q.predicate.as_str() == format!("{SH}resultSeverity"))
+        .map(|q| q.object.to_string())
+        .collect();
+    assert_eq!(severities.len(), 1, "the finding carries one severity");
+    severities[0].clone()
+}
+
+const NOTE_HAS_NO_TERM: &str = "urn:example:catalog#noteHasNoTerm";
+const WARNING_ON_THE_CONCEPT: (&str, &str) = (
+    "ex:noteHasNoTerm a skos:Concept ;",
+    "ex:noteHasNoTerm <http://www.w3.org/ns/shacl#resultSeverity> \
+     <http://www.w3.org/ns/shacl#Warning> .\n\nex:noteHasNoTerm a skos:Concept ;",
+);
+const NO_SEVERITY_IN_THE_TEMPLATE: (&str, &str) = (" ;\n    sh:resultSeverity sh:Info", "");
+
+#[test]
+fn takes_the_concept_s_severity_where_the_query_s_template_wrote_none() {
+    let findings = findings_through(
+        &Severities::new(&[WARNING_ON_THE_CONCEPT], &[NO_SEVERITY_IN_THE_TEMPLATE]),
+        "two.xml",
+    );
+    assert_eq!(
+        severity_of(&findings, NOTE_HAS_NO_TERM),
+        format!("<{SH}Warning>")
+    );
+}
+
+#[test]
+fn takes_sh_info_where_neither_the_query_s_template_nor_the_concept_says() {
+    let findings = findings_through(
+        &Severities::new(&[], &[NO_SEVERITY_IN_THE_TEMPLATE]),
+        "two.xml",
+    );
+    assert_eq!(
+        severity_of(&findings, NOTE_HAS_NO_TERM),
+        format!("<{SH}Info>")
+    );
+}
+
+#[test]
+fn takes_sh_info_for_a_body_the_gap_scheme_does_not_declare() {
+    let findings = findings_through(
+        &Severities::new(
+            &[WARNING_ON_THE_CONCEPT],
+            &[
+                NO_SEVERITY_IN_THE_TEMPLATE,
+                (
+                    "oa:hasBody ex:noteHasNoTerm",
+                    "oa:hasBody ex:noteIsNotATitle",
+                ),
+            ],
+        ),
+        "two.xml",
+    );
+    assert_eq!(
+        severity_of(&findings, "urn:example:catalog#noteIsNotATitle"),
+        format!("<{SH}Info>")
+    );
+}
+
+#[test]
+fn takes_sh_info_for_an_annotation_the_query_gave_no_body() {
+    let findings = findings_through(
+        &Severities::new(
+            &[WARNING_ON_THE_CONCEPT],
+            &[
+                NO_SEVERITY_IN_THE_TEMPLATE,
+                ("    oa:hasBody ex:noteHasNoTerm ;\n", ""),
+            ],
+        ),
+        "two.xml",
+    );
+    assert_eq!(severity_of_the_unbodied(&findings), format!("<{SH}Info>"));
+}
+
+#[test]
+fn keeps_the_severity_the_query_s_template_wrote_over_the_concept_s() {
+    let findings = findings_through(&Severities::new(&[WARNING_ON_THE_CONCEPT], &[]), "two.xml");
+    assert_eq!(
+        severity_of(&findings, NOTE_HAS_NO_TERM),
+        format!("<{SH}Info>")
+    );
+}
