@@ -746,7 +746,7 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
     // Decoding is the one stage that holds the whole document at once, so the
     // document schema below reads these characters rather than its own copy.
     let text = decode(source.xml)?;
-    let followed = xpath::Followed::of(&text);
+    let followed = xpath::Followed::default();
     let paths = match &prepared.accounting {
         Some(accounting) => Paths::Kept {
             valued: accounting.lookups.keys().cloned().collect(),
@@ -865,7 +865,7 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
                 source: source.iri,
                 selector: &element,
             },
-            xpath::Stands::Along(unit.path()),
+            &unit.xml,
             &findings[mark..],
         )?;
         findings.extend(reports);
@@ -885,7 +885,11 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
             source: source.iri,
             selector: &selector,
         };
-        let mark = findings.len();
+        // A finding about the document is about no record, and the address it
+        // refines the document by is written from the walk the validator made,
+        // as a record's own selector is from the lift's: this Bridge wrote it
+        // and no adapter did, so following it would cost a tree of the whole
+        // document to check what cannot be wrong.
         for broken in schema.errors(&text)? {
             findings.extend(annotation::violation(
                 &record,
@@ -893,12 +897,6 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
                 broken.within(),
             )?);
         }
-        let reports = followed.unresolved(
-            &record,
-            xpath::Stands::AtTheDocumentElement,
-            &findings[mark..],
-        )?;
-        findings.extend(reports);
     }
     ms.validation += at.elapsed();
 

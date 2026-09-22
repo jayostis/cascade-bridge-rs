@@ -214,9 +214,9 @@ impl Entry<'_> {
             // side is spelled as this Bridge spells that node before either
             // is compared with the other.
             let source = decode(&bytes)?;
-            let followed = xpath::Followed::of(&source);
-            let want = followed.respelled(want);
-            let got = followed.respelled(run.findings);
+            let spelled = xpath::Spelled::of(&source);
+            let want = spelled.respelled(want);
+            let got = spelled.respelled(run.findings);
             let missed: Vec<String> = want
                 .missed
                 .iter()

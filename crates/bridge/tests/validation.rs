@@ -135,3 +135,48 @@ fn refuses_a_schema_that_includes_a_file_outside_the_adapter() {
         "{error}"
     );
 }
+
+/// The tiny adapter with a comment and a processing instruction standing
+/// inside a record, which is where the lift now writes them out again.
+struct Aside {
+    directory: DirectoryResolver,
+}
+
+impl Resolver for Aside {
+    fn root(&self) -> &str {
+        self.directory.root()
+    }
+
+    fn read(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
+        let bytes = self.directory.read(iri)?;
+        if !iri.ends_with("fixtures/in/two.xml") {
+            return Ok(bytes);
+        }
+        let text = String::from_utf8(bytes).expect("utf-8");
+        Ok(text
+            .replace(
+                "<item id=\"1\">",
+                "<item id=\"1\"><!-- said of the first --><?say it again?>",
+            )
+            .into_bytes())
+    }
+}
+
+/// A comment and a processing instruction are not content, and the record's
+/// own type is element-only, so a validator handed the record with both in it
+/// draws what it drew without them: nothing.
+#[test]
+fn reports_nothing_about_a_record_carrying_a_comment_and_an_instruction() {
+    let plain = run(&tiny(), "two.xml");
+    let aside = run(&Aside { directory: tiny() }, "two.xml");
+    assert_eq!(
+        objects(&aside.findings, &format!("{SH}resultSeverity")),
+        objects(&plain.findings, &format!("{SH}resultSeverity"))
+    );
+    assert!(
+        !objects(&aside.findings, &format!("{SH}resultSeverity"))
+            .contains(&format!("<{SH}Violation>")),
+        "{:?}",
+        aside.findings
+    );
+}

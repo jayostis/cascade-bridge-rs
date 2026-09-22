@@ -282,12 +282,6 @@ impl Unit {
             .collect()
     }
 
-    /// The steps the lift opened to reach this record, which its selector is
-    /// written from and which reach it again with nothing followed.
-    pub(crate) fn path(&self) -> &[Step] {
-        &self.path
-    }
-
     pub(crate) fn occurrences(&self) -> &[Occurrence] {
         &self.occurrences
     }
@@ -758,9 +752,23 @@ impl<R: BufRead> Lift<R> {
                     let raw = normalise_line_endings(raw);
                     self.builder.text.push_str(&raw);
                 }
-                // Comments, processing instructions, the document type
-                // declaration and the XML declaration are dropped, and take no
-                // number: text on either side of one is a single text child.
+                // A comment and a processing instruction are no part of the
+                // graph and take no number there: text on either side of one
+                // is a single text child. They are part of the record, and
+                // XPath counts them, so a record written out again carries
+                // them where it read them.
+                Event::Comment(comment) => {
+                    let raw = comment.into_inner();
+                    let raw = std::str::from_utf8(&raw)?;
+                    self.builder.write(&format!("<!--{raw}-->"));
+                }
+                Event::PI(instruction) => {
+                    let raw = instruction.into_inner();
+                    let raw = std::str::from_utf8(&raw)?;
+                    self.builder.write(&format!("<?{raw}?>"));
+                }
+                // The document type declaration and the XML declaration stand
+                // outside every record, which is where they are dropped.
                 Event::Eof => {
                     self.done = true;
                     return Ok(None);
