@@ -40,6 +40,9 @@ fn reaches_every_outcome_and_fails_exactly_the_entries_built_to_fail() {
             ("findings-fail", "failed"),
             ("findings-repeated", "passed"),
             ("census", "passed"),
+            // This resolver was given no checkout, so the vocabulary that
+            // draws the entry's one expected finding is not read.
+            ("shapes", "failed"),
             ("input-only", "cantTell"),
             ("dataset", "untested"),
         ])

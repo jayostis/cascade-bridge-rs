@@ -1,5 +1,6 @@
 # The engine's own test subject: every outcome a harness can reach, each from
-# the smallest input that reaches it. Two entries must fail.
+# the smallest input that reaches it. Two entries must fail, and a third fails
+# wherever the engine command was given no checkout to read the vocabulary from.
 @prefix mf:     <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#> .
 @prefix bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
 @prefix prov:   <http://www.w3.org/ns/prov#> .
@@ -7,7 +8,7 @@
 <> a mf:Manifest ;
   bridge:adapter <../> ;
   bridge:stampPredicate prov:generatedAtTime ;
-  mf:entries ( <#pass> <#graph-fail> <#findings-fail> <#findings-repeated> <#census> <#input-only> <#dataset> ) .
+  mf:entries ( <#pass> <#graph-fail> <#findings-fail> <#findings-repeated> <#census> <#shapes> <#input-only> <#dataset> ) .
 
 # Passes only if the stamp in the expected graph is ignored.
 <#pass> a bridge:IsomorphicConversionTest ;
@@ -40,6 +41,15 @@
   mf:name "census" ;
   mf:action [ bridge:input <in/unaccounted-child.xml> ; bridge:envelope <../ro-crate-metadata.json#envelope-catalog> ] ;
   mf:result [ bridge:expectedGraph <expected/unaccounted-child.ttl> ; bridge:expectedFindings <findings/unaccounted-child.ttl> ] .
+
+# The only expected finding a vocabulary file draws, so this entry passes where
+# the engine command was given the checkout to read those files from and fails
+# where it was not: a command that takes the argument and drops it is one the
+# rest of this manifest cannot tell from a command that reads it.
+<#shapes> a bridge:IsomorphicConversionTest ;
+  mf:name "shapes" ;
+  mf:action [ bridge:input <in/output-fails-a-shape.xml> ; bridge:envelope <../ro-crate-metadata.json#envelope-catalog> ] ;
+  mf:result [ bridge:expectedGraph <expected/output-fails-a-shape.ttl> ; bridge:expectedFindings <findings/output-fails-a-shape.ttl> ] .
 
 <#input-only> a bridge:InputOnlyTest ;
   mf:name "input-only" ;
