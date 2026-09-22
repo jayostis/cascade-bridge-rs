@@ -214,6 +214,7 @@ fn iris(quad: &Quad) -> [Option<&str>; 3] {
             Term::NamedNode(n) => Some(n.as_str()),
             Term::Literal(l) => Some(l.datatype().as_str()),
             Term::BlankNode(_) => None,
+            Term::Triple(_) => None,
         },
     ]
 }

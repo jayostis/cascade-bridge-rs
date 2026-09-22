@@ -95,6 +95,7 @@ pub fn term_value(term: &Term) -> String {
         Term::NamedNode(n) => n.as_str().to_owned(),
         Term::BlankNode(b) => b.as_str().to_owned(),
         Term::Literal(l) => l.value().to_owned(),
+        Term::Triple(t) => t.to_string(),
     }
 }
 

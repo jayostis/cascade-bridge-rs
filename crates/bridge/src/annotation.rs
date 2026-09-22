@@ -286,6 +286,7 @@ pub fn about(
                 Term::NamedNode(n) => NamedOrBlankNode::from(n),
                 Term::BlankNode(b) => NamedOrBlankNode::from(b),
                 Term::Literal(_) => unreachable!("a literal is not a subject"),
+                Term::Triple(_) => unreachable!("a triple term is not a subject"),
             };
             Quad::new(
                 subject,
