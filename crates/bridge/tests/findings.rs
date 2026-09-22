@@ -655,3 +655,30 @@ fn keeps_the_severity_the_query_s_template_wrote_over_the_concept_s() {
         format!("<{SH}Info>")
     );
 }
+
+/// Two bodies on one annotation is not conforming output, the specification's
+/// `<#SourceFinding>` taking exactly one: what is under test is that the
+/// severity does not turn on which body a query happened to write first.
+#[test]
+fn takes_the_concept_s_severity_whichever_way_round_a_template_wrote_two_bodies() {
+    for bodies in [
+        "oa:hasBody ex:noteIsNotATitle, ex:noteHasNoTerm ;",
+        "oa:hasBody ex:noteHasNoTerm, ex:noteIsNotATitle ;",
+    ] {
+        let findings = findings_through(
+            &Severities::new(
+                &[WARNING_ON_THE_CONCEPT],
+                &[
+                    NO_SEVERITY_IN_THE_TEMPLATE,
+                    ("oa:hasBody ex:noteHasNoTerm ;", bodies),
+                ],
+            ),
+            "two.xml",
+        );
+        assert_eq!(
+            severity_of(&findings, NOTE_HAS_NO_TERM),
+            format!("<{SH}Warning>"),
+            "{bodies}"
+        );
+    }
+}

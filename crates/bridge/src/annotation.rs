@@ -383,13 +383,22 @@ pub fn about(
         }
     }
 
+    // Every annotation's severity and named bodies in one pass, so no
+    // annotation costs a pass of its own over the graph, and which severity a
+    // body declares does not turn on the order a query wrote its bodies in.
+    let mut severe: HashSet<&NamedOrBlankNode> = HashSet::new();
+    let mut bodies: HashMap<&NamedOrBlankNode, Vec<&str>> = HashMap::new();
+    for quad in &quads {
+        if quad.predicate.as_str() == SH_RESULT_SEVERITY {
+            severe.insert(&quad.subject);
+        } else if quad.predicate.as_str() == OA_HAS_BODY {
+            if let Term::NamedNode(body) = &quad.object {
+                bodies.entry(&quad.subject).or_default().push(body.as_str());
+            }
+        }
+    }
     // Read in the graph's order rather than the annotation set's, so what a
     // query produced twice comes out the same way round each run.
-    let severe: HashSet<&NamedOrBlankNode> = quads
-        .iter()
-        .filter(|q| q.predicate.as_str() == SH_RESULT_SEVERITY)
-        .map(|q| &q.subject)
-        .collect();
     let mut declared = Vec::new();
     for annotation in quads
         .iter()
@@ -398,15 +407,11 @@ pub fn about(
         .map(|q| &q.subject)
         .filter(|annotation| !severe.contains(annotation))
     {
-        let body = quads
-            .iter()
-            .find(|q| &q.subject == annotation && q.predicate.as_str() == OA_HAS_BODY)
-            .and_then(|q| match &q.object {
-                Term::NamedNode(body) => Some(body.as_str()),
-                _ => None,
-            });
-        let severity = body
-            .and_then(|body| severities.get(body))
+        let severity = bodies
+            .get(annotation)
+            .into_iter()
+            .flatten()
+            .find_map(|body| severities.get(*body))
             .map_or(SH_INFO, String::as_str);
         declared.push(triple(
             annotation.clone(),
