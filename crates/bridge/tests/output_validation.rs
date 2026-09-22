@@ -282,12 +282,14 @@ fn reads_the_vocabulary_from_the_directory_the_command_was_given() {
     );
 }
 
-/// The tiny adapter naming a vocabulary file that climbs out of the checkout.
-struct Climbing {
+/// The tiny adapter naming a vocabulary file somewhere other than where its
+/// shapes stand in the checkout.
+struct Names {
     directory: DirectoryResolver,
+    file: &'static str,
 }
 
-impl Resolver for Climbing {
+impl Resolver for Names {
     fn root(&self) -> &str {
         self.directory.root()
     }
@@ -303,13 +305,92 @@ impl Resolver for Climbing {
         }
         let text = String::from_utf8(bytes).expect("utf-8");
         assert!(text.contains(SHAPES), "the crate names its shapes file");
-        Ok(text.replace(SHAPES, "../boundary.rs").into_bytes())
+        Ok(text.replace(SHAPES, self.file).into_bytes())
     }
+
+    fn read_vocabulary(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
+        self.directory.read_vocabulary(iri)
+    }
+}
+
+/// What preparing the tiny adapter says of a crate naming this vocabulary
+/// file, which is nothing where it prepares.
+fn refusal(file: &'static str) -> String {
+    let resolver = Names {
+        directory: read_against_the_vocabulary(),
+        file,
+    };
+    let adapter = load_adapter(&resolver).expect("adapter");
+    prepare(&adapter, &resolver)
+        .err()
+        .map(|error| error.to_string())
+        .unwrap_or_default()
 }
 
 #[test]
 fn refuses_a_vocabulary_file_outside_the_checkout_and_outside_the_adapter() {
-    let resolver = Climbing {
+    let refused = refusal("../boundary.rs");
+    assert!(
+        refused.contains("not inside"),
+        "a vocabulary file that climbs out of the checkout and the adapter was read: {refused:?}"
+    );
+}
+
+#[test]
+fn refuses_a_vocabulary_file_that_is_a_file_of_the_adapter() {
+    let refused = refusal("../tiny-adapter/vocab/catalog-gaps.ttl");
+    assert!(
+        refused.contains("not inside"),
+        "the adapter was read against a file of its own rather than one at the vocabulary pin: \
+         {refused:?}"
+    );
+}
+
+/// The checkout's shapes with a severity of the vocabulary's own invention,
+/// which SHACL allows and the specification's finding shape has no room for.
+struct Critical {
+    directory: DirectoryResolver,
+}
+
+impl Critical {
+    const DECLARED: &'static str = "sh:severity sh:Warning";
+
+    fn invented(bytes: Vec<u8>) -> Vec<u8> {
+        let text = String::from_utf8(bytes).expect("utf-8");
+        assert!(
+            text.contains(Self::DECLARED),
+            "the shapes declare a severity of their own"
+        );
+        text.replace(Self::DECLARED, "sh:severity ex:Critical")
+            .into_bytes()
+    }
+}
+
+impl Resolver for Critical {
+    fn root(&self) -> &str {
+        self.directory.root()
+    }
+
+    fn vocabularies(&self) -> Option<&str> {
+        self.directory.vocabularies()
+    }
+
+    fn read(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
+        self.directory.read(iri)
+    }
+
+    fn read_vocabulary(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
+        let bytes = self.directory.read_vocabulary(iri)?;
+        match iri.ends_with("catalog.shapes.ttl") {
+            true => Ok(Self::invented(bytes)),
+            false => Ok(bytes),
+        }
+    }
+}
+
+#[test]
+fn refuses_a_shape_whose_severity_no_finding_can_carry() {
+    let resolver = Critical {
         directory: read_against_the_vocabulary(),
     };
     let adapter = load_adapter(&resolver).expect("adapter");
@@ -318,7 +399,60 @@ fn refuses_a_vocabulary_file_outside_the_checkout_and_outside_the_adapter() {
         .map(|error| error.to_string())
         .unwrap_or_default();
     assert!(
-        refused.contains("not inside"),
-        "a vocabulary file that climbs out of the checkout and the adapter was read: {refused:?}"
+        refused.contains("sh:Info, sh:Warning or sh:Violation"),
+        "a severity the specification's finding shape has no room for was compiled: {refused:?}"
+    );
+}
+
+/// The manifest with a stamp predicate on one entry, which the specification
+/// gives that entry alone and no conversion.
+struct EntryStamp {
+    directory: DirectoryResolver,
+}
+
+impl Resolver for EntryStamp {
+    fn root(&self) -> &str {
+        self.directory.root()
+    }
+
+    fn vocabularies(&self) -> Option<&str> {
+        self.directory.vocabularies()
+    }
+
+    fn read(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
+        let bytes = self.directory.read(iri)?;
+        if !iri.ends_with("fixtures/manifest.ttl") {
+            return Ok(bytes);
+        }
+        let text = String::from_utf8(bytes).expect("utf-8");
+        let entry = "<#pass> a bridge:IsomorphicConversionTest ;";
+        assert!(text.contains(entry), "the manifest lists the entry");
+        Ok(text
+            .replace(
+                entry,
+                &format!("{entry}\n  bridge:stampPredicate <{EX}colour> ;"),
+            )
+            .into_bytes())
+    }
+
+    fn read_vocabulary(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
+        self.directory.read_vocabulary(iri)
+    }
+}
+
+#[test]
+fn reports_a_predicate_one_entry_of_the_manifest_stamps_with() {
+    let resolver = EntryStamp {
+        directory: read_against_the_vocabulary(),
+    };
+    let (conversion, _) = run(&resolver, "a-predicate-no-ontology-declares.xml");
+    let paths: Vec<String> = output_findings(&conversion.findings)
+        .into_iter()
+        .map(|finding| finding.path)
+        .collect();
+    assert_eq!(
+        paths,
+        [format!("{EX}colour")],
+        "one entry's stamp is that entry's, not every conversion's"
     );
 }

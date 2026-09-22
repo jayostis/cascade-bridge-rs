@@ -36,6 +36,7 @@ terms! {
     OA_MOTIVATED_BY = "http://www.w3.org/ns/oa#", "motivatedBy";
     OA_CLASSIFYING = "http://www.w3.org/ns/oa#", "classifying";
 
+    SH_SEVERITY = "http://www.w3.org/ns/shacl#", "severity";
     SH_RESULT_SEVERITY = "http://www.w3.org/ns/shacl#", "resultSeverity";
     SH_RESULT_PATH = "http://www.w3.org/ns/shacl#", "resultPath";
     SH_FOCUS_NODE = "http://www.w3.org/ns/shacl#", "focusNode";

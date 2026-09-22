@@ -12,7 +12,7 @@ use crate::annotation::{self, Minted, Record};
 use crate::decode::{decode, XML_SPACE};
 use crate::error::{Error, Result};
 use crate::lift::{lift_text, Paths, Valued};
-use crate::load::{subject, value, Adapter};
+use crate::load::{subject, value, values, Adapter};
 use crate::rdf::{
     BRIDGE_CARRIED_IN_PART, BRIDGE_LOOKUP_IN, BRIDGE_LOOKUP_NAMES_GAP, BRIDGE_NAMES_GAP,
     BRIDGE_NO_HOME, BRIDGE_NO_PREDICATE, BRIDGE_PATH_ENTRY, BRIDGE_SOURCE_LACKS_REQUIRED,
@@ -24,7 +24,7 @@ use crate::resolver::Resolver;
 use crate::validate::{self, Schema};
 use crate::vocabulary::Vocabulary;
 use crate::xpath;
-use oxigraph::model::{GraphName, NamedOrBlankNode, Quad, Term, TermRef};
+use oxigraph::model::{GraphName, NamedOrBlankNode, Quad, Term};
 use oxigraph::sparql::{PreparedSparqlQuery, QueryResults, SparqlEvaluator};
 use oxigraph::store::Store;
 use oxrdfio::{RdfFormat, RdfParser};
@@ -647,19 +647,19 @@ fn query(resolver: &dyn Resolver, iri: &str, expected: Form, what: &str) -> Resu
     })
 }
 
-/// The predicates the adapter's manifest stamps a produced graph with, which
-/// the adapter wrote for a Bridge rather than out of an ontology, and which no
-/// ontology is asked about.
-fn stamps(adapter: &Adapter) -> HashSet<String> {
-    adapter
-        .graph
-        .iter()
-        .filter(|triple| triple.predicate.as_str() == BRIDGE_STAMP_PREDICATE)
-        .filter_map(|triple| match triple.object {
-            TermRef::NamedNode(named) => Some(named.as_str().to_owned()),
-            _ => None,
-        })
-        .collect()
+/// The predicates the adapter's test manifest stamps a produced graph with,
+/// which the adapter wrote for a Bridge rather than out of an ontology, and
+/// which no ontology is asked about. The set is the manifest's own: an entry
+/// that carries its own replaces it for that entry alone, where the harness
+/// compares it, and for no conversion.
+fn stamps(adapter: &Adapter) -> Result<HashSet<String>> {
+    Ok(values(
+        &adapter.graph,
+        &subject(&adapter.manifest)?,
+        BRIDGE_STAMP_PREDICATE,
+    )?
+    .into_iter()
+    .collect())
 }
 
 /// Read, parse and check everything an adapter runs, once, before any
@@ -744,7 +744,7 @@ pub fn prepare(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prepared> {
         .filter_map(|(concept, gap)| Some((concept.clone(), gap.severity.clone()?)))
         .collect();
 
-    let vocabulary = Vocabulary::read(&adapter.vocabulary_files, stamps(adapter), resolver)?;
+    let vocabulary = Vocabulary::read(&adapter.vocabulary_files, stamps(adapter)?, resolver)?;
 
     Ok(Prepared {
         unit,

@@ -6,10 +6,10 @@
 // export stays reachable and another engine takes this one's place by answering
 // the same two calls.
 use crate::error::{Error, Result};
-use crate::rdf::{SH_INFO, SH_VIOLATION, SH_WARNING};
+use crate::rdf::{SH_INFO, SH_SEVERITY, SH_VIOLATION, SH_WARNING};
 use oxrdf::Quad;
+use oxrdfio::{RdfFormat, RdfParser};
 use rudof_rdf::rdf_core::term::Object;
-use rudof_rdf::rdf_core::vocabs::ShaclVocab;
 use rudof_rdf::rdf_core::{BuildRDF, RDFFormat, SHACLPath};
 use rudof_rdf::rdf_impl::{OxigraphInMemory, ReaderMode};
 use shacl::ir::IRSchema;
@@ -43,6 +43,7 @@ impl Shapes {
     pub(crate) fn of(documents: &[Document]) -> Result<Self> {
         let mut graph = OxigraphInMemory::new();
         for (iri, bytes) in documents {
+            declares_a_reported_severity(iri, bytes)?;
             graph
                 .merge_from_reader(
                     &mut Cursor::new(bytes),
@@ -81,22 +82,50 @@ impl Shapes {
                 &ShaclConfig::new(),
             )
             .map_err(|e| Error::msg(format!("the produced graph: {e}")))?;
-        let mut drawn: Vec<Drawn> = report
-            .results()
-            .iter()
-            .map(|result| Drawn {
+        let mut drawn = Vec::new();
+        for result in report.results() {
+            drawn.push(Drawn {
                 component: term(result.constraint_component()),
-                severity: severity(result.severity()),
+                severity: severity(result.severity())?,
                 path: result.path().and_then(predicate),
                 focus: match result.focus_node() {
                     Object::Iri(iri) => Some(iri.as_str().to_owned()),
                     _ => None,
                 },
-            })
-            .collect();
+            });
+        }
         drawn.sort();
         Ok(drawn)
     }
+}
+
+/// The severities a finding carries, which are the specification's finding
+/// shape's and no more.
+const REPORTED: [&str; 3] = [SH_INFO, SH_WARNING, SH_VIOLATION];
+
+/// A shapes graph may give a shape a severity of its own; a finding has no room
+/// for one. The whole vocabulary is in hand here, so the run ends on the
+/// vocabulary rather than on the first record to fail that shape.
+fn declares_a_reported_severity(iri: &str, bytes: &[u8]) -> Result<()> {
+    for quad in RdfParser::from_format(RdfFormat::Turtle)
+        .with_base_iri(iri)?
+        .for_slice(bytes)
+    {
+        let quad = quad.map_err(|e| Error::msg(format!("{iri}: {e}")))?;
+        if quad.predicate.as_str() != SH_SEVERITY {
+            continue;
+        }
+        let reported = matches!(&quad.object, oxrdf::Term::NamedNode(named)
+            if REPORTED.contains(&named.as_str()));
+        if !reported {
+            return Err(Error::msg(format!(
+                "{iri}: a shape declares sh:severity {}; a finding carries sh:Info, sh:Warning or \
+                 sh:Violation",
+                quad.object
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn term(object: &Object) -> String {
@@ -106,14 +135,14 @@ fn term(object: &Object) -> String {
     }
 }
 
-fn severity(severity: &Severity) -> String {
+fn severity(severity: &Severity) -> Result<String> {
     match severity {
-        Severity::Info => SH_INFO.to_owned(),
-        Severity::Warning => SH_WARNING.to_owned(),
-        Severity::Violation => SH_VIOLATION.to_owned(),
-        Severity::Trace => ShaclVocab::SH_TRACE.to_owned(),
-        Severity::Debug => ShaclVocab::SH_DEBUG.to_owned(),
-        Severity::Generic(iri) => iri.as_str().to_owned(),
+        Severity::Info => Ok(SH_INFO.to_owned()),
+        Severity::Warning => Ok(SH_WARNING.to_owned()),
+        Severity::Violation => Ok(SH_VIOLATION.to_owned()),
+        _ => Err(Error::msg(
+            "a result carries a severity no finding does: sh:Info, sh:Warning or sh:Violation",
+        )),
     }
 }
 

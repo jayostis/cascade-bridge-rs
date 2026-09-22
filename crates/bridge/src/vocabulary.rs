@@ -53,7 +53,7 @@ impl Vocabulary {
                 .resolve(file)
                 .map_err(|e| Error::msg(format!("the crate names {file}: {e}")))?
                 .into_inner();
-            let bytes = resolver.read(&iri)?;
+            let bytes = resolver.read_vocabulary(&iri)?;
             documents.push((iri, bytes));
         }
         let mut exempt = stamps;

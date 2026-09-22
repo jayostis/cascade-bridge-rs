@@ -96,9 +96,11 @@ fn checkout() -> PathBuf {
 /// The checkout of `the-cascade-protocol/spec` the engine command was given is
 /// the second directory a run may read, and the last. An adapter's crate names
 /// a file in it by a path of a stranger's writing, so the same boundary is
-/// decided the same way there.
+/// decided the same way there. Neither directory is the other's: an ontology
+/// the adapter wrote itself is no ontology at the vocabulary pin, and a file of
+/// the checkout is no file of the crate.
 #[test]
-fn reads_the_vocabularies_it_was_given_and_refuses_what_is_in_neither_directory() {
+fn reads_each_directory_for_what_it_holds_and_refuses_what_is_in_neither() {
     let resolver = DirectoryResolver::new(tiny())
         .expect("resolver")
         .with_vocabularies(checkout())
@@ -107,21 +109,23 @@ fn reads_the_vocabularies_it_was_given_and_refuses_what_is_in_neither_directory(
         .vocabularies()
         .expect("the checkout the command named")
         .to_owned();
+    let shapes = format!("{vocabularies}ontologies/catalog/v1/catalog.shapes.ttl");
+    let crate_iri = format!("{}ro-crate-metadata.json", resolver.root());
 
-    assert!(resolver
-        .read(&format!(
-            "{vocabularies}ontologies/catalog/v1/catalog.shapes.ttl"
-        ))
-        .is_ok());
-    // The adapter stays readable; the widening is a second directory, not
-    // another one in its place.
-    assert!(resolver
-        .read(&format!("{}ro-crate-metadata.json", resolver.root()))
-        .is_ok());
+    assert!(resolver.read(&crate_iri).is_ok());
+    assert!(resolver.read_vocabulary(&shapes).is_ok());
+    assert!(
+        resolver.read(&shapes).is_err(),
+        "{shapes} was read as a file of the crate"
+    );
+    assert!(
+        resolver.read_vocabulary(&crate_iri).is_err(),
+        "{crate_iri} was read as a file of the vocabulary"
+    );
 
     for escape in ["../boundary.rs", "%2e%2e/boundary.rs"] {
         let iri = format!("{vocabularies}{escape}");
-        let refused = resolver.read(&iri);
+        let refused = resolver.read_vocabulary(&iri);
         assert!(
             refused.is_err(),
             "{iri} was readable from outside the vocabularies directory"
@@ -130,6 +134,19 @@ fn reads_the_vocabularies_it_was_given_and_refuses_what_is_in_neither_directory(
     assert!(resolver
         .read(&format!("{}../harness.rs", resolver.root()))
         .is_err());
+}
+
+/// A run given no checkout reads no vocabulary, and says so rather than
+/// reaching for a file of the adapter.
+#[test]
+fn reads_no_vocabulary_where_the_command_named_no_checkout() {
+    let resolver = DirectoryResolver::new(tiny()).expect("resolver");
+    let refused = resolver
+        .read_vocabulary(&format!("{}ro-crate-metadata.json", resolver.root()))
+        .err()
+        .map(|error| error.to_string())
+        .unwrap_or_default();
+    assert!(refused.contains("no vocabularies"), "{refused:?}");
 }
 
 /// Send and not Sync: a schema has carried a RefCell since long before this
