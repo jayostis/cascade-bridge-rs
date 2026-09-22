@@ -36,6 +36,18 @@
    bridge:verdict bridge:consumed .
 
 [] a bridge:PathEntry ;
+   bridge:sourcePath "/item/bin" ;
+   bridge:verdict bridge:carried .
+
+[] a bridge:PathEntry ;
+   bridge:sourcePath "/item/box" ;
+   bridge:verdict bridge:carried .
+
+[] a bridge:PathEntry ;
+   bridge:sourcePath "/item/tag" ;
+   bridge:verdict bridge:carried .
+
+[] a bridge:PathEntry ;
    bridge:sourcePath "/item/note" ;
    bridge:verdict bridge:noHome ;
    bridge:namesGap ex:noteHasNoTerm .

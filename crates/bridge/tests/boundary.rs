@@ -89,6 +89,49 @@ fn refuses_a_path_that_leaves_the_adapter_however_it_is_spelled() {
         .contains("not inside the adapter"));
 }
 
+fn checkout() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/tiny-vocabularies")
+}
+
+/// The checkout of `the-cascade-protocol/spec` the engine command was given is
+/// the second directory a run may read, and the last. An adapter's crate names
+/// a file in it by a path of a stranger's writing, so the same boundary is
+/// decided the same way there.
+#[test]
+fn reads_the_vocabularies_it_was_given_and_refuses_what_is_in_neither_directory() {
+    let resolver = DirectoryResolver::new(tiny())
+        .expect("resolver")
+        .with_vocabularies(checkout())
+        .expect("the vocabularies directory");
+    let vocabularies = resolver
+        .vocabularies()
+        .expect("the checkout the command named")
+        .to_owned();
+
+    assert!(resolver
+        .read(&format!(
+            "{vocabularies}ontologies/catalog/v1/catalog.shapes.ttl"
+        ))
+        .is_ok());
+    // The adapter stays readable; the widening is a second directory, not
+    // another one in its place.
+    assert!(resolver
+        .read(&format!("{}ro-crate-metadata.json", resolver.root()))
+        .is_ok());
+
+    for escape in ["../boundary.rs", "%2e%2e/boundary.rs"] {
+        let iri = format!("{vocabularies}{escape}");
+        let refused = resolver.read(&iri);
+        assert!(
+            refused.is_err(),
+            "{iri} was readable from outside the vocabularies directory"
+        );
+    }
+    assert!(resolver
+        .read(&format!("{}../harness.rs", resolver.root()))
+        .is_err());
+}
+
 /// Send and not Sync: a schema has carried a RefCell since long before this
 /// test, so a prepared adapter has never been shared between threads, only
 /// moved to one.

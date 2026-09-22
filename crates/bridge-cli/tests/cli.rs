@@ -63,6 +63,95 @@ fn prints_a_line_per_entry_and_exits_non_zero_when_an_entry_fails() {
     );
 }
 
+/// Where the engine command's `--vocabularies` argument points: the picked
+/// checkout of `the-cascade-protocol/spec`, which the compatibility tooling
+/// appends as it appends `--earl`.
+fn vocabularies() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../bridge/tests/tiny-vocabularies")
+}
+
+/// The constraint component the checkout's shapes draw on the tiny adapter's
+/// produced graph, which nothing else in a run writes.
+const MAX_LENGTH: &str = "http://www.w3.org/ns/shacl#MaxLengthConstraintComponent";
+
+#[test]
+fn offers_the_vocabularies_directory_on_both_commands() {
+    let run = cascade_bridge(&["validate"]);
+    let stderr = String::from_utf8_lossy(&run.stderr);
+    assert_eq!(
+        stderr.matches("--vocabularies <directory>").count(),
+        2,
+        "{stderr}"
+    );
+}
+
+#[test]
+fn runs_the_manifest_against_the_vocabularies_directory_it_was_given() {
+    let run = cascade_bridge(&[
+        "test",
+        &tiny().to_string_lossy(),
+        "--vocabularies",
+        &vocabularies().to_string_lossy(),
+    ]);
+    let stdout = String::from_utf8(run.stdout).expect("utf-8");
+    assert_eq!(
+        run.status.code(),
+        Some(1),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert!(
+        stdout.contains("3 passed, 2 failed, 1 cantTell, 1 untested"),
+        "the vocabulary the adapter's own entries are read against draws nothing on them: {stdout}"
+    );
+}
+
+#[test]
+fn writes_what_the_shapes_draw_only_where_it_was_given_the_vocabularies_directory() {
+    let document = tiny().join("fixtures/in/output-fails-a-shape.xml");
+    let against =
+        PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("cascade-bridge-vocabularies.ttl");
+    let run = cascade_bridge(&[
+        "convert",
+        &tiny().to_string_lossy(),
+        &document.to_string_lossy(),
+        "--findings",
+        &against.to_string_lossy(),
+        "--vocabularies",
+        &vocabularies().to_string_lossy(),
+    ]);
+    assert_eq!(
+        run.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let produced = std::fs::read(&against).expect("the written findings");
+    let lines = findings(&produced, RdfFormat::Turtle, BASE);
+    assert!(
+        lines.iter().any(|line| line.contains(MAX_LENGTH)),
+        "{lines:?}"
+    );
+
+    let bare = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("cascade-bridge-no-vocabulary.ttl");
+    cascade_bridge(&[
+        "convert",
+        &tiny().to_string_lossy(),
+        &document.to_string_lossy(),
+        "--findings",
+        &bare.to_string_lossy(),
+    ]);
+    let without = findings(
+        &std::fs::read(&bare).expect("the written findings"),
+        RdfFormat::Turtle,
+        BASE,
+    );
+    assert!(
+        !without.iter().any(|line| line.contains(MAX_LENGTH)),
+        "no checkout was named, so there is nothing to read the graph against: {without:?}"
+    );
+}
+
 #[test]
 fn refuses_an_unknown_command_with_a_usage_line() {
     let run = cascade_bridge(&["validate"]);

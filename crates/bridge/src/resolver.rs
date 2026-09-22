@@ -12,6 +12,13 @@ pub trait Resolver {
     /// The adapter's root, the IRI the crate's root entity resolves to,
     /// ending in "/".
     fn root(&self) -> &str;
+    /// The root of the picked `the-cascade-protocol/spec` checkout the engine
+    /// command was given, ending in "/", where it was given one. A path the
+    /// crate's `bridge:vocabularyFile` names resolves against this and against
+    /// nothing else.
+    fn vocabularies(&self) -> Option<&str> {
+        None
+    }
     fn read(&self, iri: &str) -> Result<Vec<u8>>;
 }
 
@@ -27,6 +34,7 @@ pub fn file_iri(path: impl AsRef<Path>) -> Result<String> {
 pub struct DirectoryResolver {
     root_iri: String,
     root_path: PathBuf,
+    vocabularies_iri: Option<String>,
 }
 
 impl DirectoryResolver {
@@ -38,6 +46,20 @@ impl DirectoryResolver {
         Ok(Self {
             root_iri,
             root_path,
+            vocabularies_iri: None,
+        })
+    }
+
+    /// The checkout of `the-cascade-protocol/spec` the engine command named,
+    /// widening what is readable to that directory and to nothing else.
+    pub fn with_vocabularies(self, dir: impl AsRef<Path>) -> Result<Self> {
+        let path = fs::canonicalize(dir.as_ref())
+            .map_err(|e| Error::msg(format!("{}: {e}", dir.as_ref().display())))?;
+        let mut iri = path_to_file_iri(&path);
+        iri.push('/');
+        Ok(Self {
+            vocabularies_iri: Some(iri),
+            ..self
         })
     }
 }
@@ -45,6 +67,10 @@ impl DirectoryResolver {
 impl Resolver for DirectoryResolver {
     fn root(&self) -> &str {
         &self.root_iri
+    }
+
+    fn vocabularies(&self) -> Option<&str> {
+        self.vocabularies_iri.as_deref()
     }
 
     fn read(&self, iri: &str) -> Result<Vec<u8>> {

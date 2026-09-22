@@ -1,0 +1,13 @@
+# A checkout of the-cascade-protocol/spec as the engine command is given one,
+# holding the one vocabulary the tiny adapter is read against.
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix ex:  <urn:example:catalog#> .
+
+<urn:example:catalog#> a owl:Ontology .
+
+ex:Item a owl:Class .
+ex:Shelf a owl:Class .
+
+ex:title a owl:DatatypeProperty .
+ex:code a owl:DatatypeProperty .
+ex:shelf a owl:ObjectProperty .

@@ -1,0 +1,24 @@
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix sh:  <http://www.w3.org/ns/shacl#> .
+@prefix ex:  <urn:example:catalog#> .
+
+<> a owl:Ontology .
+
+# A severity of its own, so a finding carrying the result's rather than one
+# the Bridge chose is the only way the tests below come out right.
+<#Item> a sh:NodeShape ;
+  sh:targetClass ex:Item ;
+  sh:property [
+    sh:path ex:code ;
+    sh:maxLength 3 ;
+    sh:severity sh:Warning
+  ] .
+
+# A shelf is a blank node of the produced graph, which is where a result with
+# a focus node no finding can name comes from.
+<#Shelf> a sh:NodeShape ;
+  sh:targetClass ex:Shelf ;
+  sh:property [
+    sh:path ex:code ;
+    sh:minCount 1
+  ] .

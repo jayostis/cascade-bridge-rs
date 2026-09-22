@@ -12,6 +12,7 @@
       "bridge:gapScheme": "bridge:gapScheme",
       "bridge:sourceAccounting": "bridge:sourceAccounting",
       "bridge:mapping": "bridge:mapping",
+      "bridge:vocabularyFile": "bridge:vocabularyFile",
       "bridge:findingsQuery": "bridge:findingsQuery",
       "bridge:detectQuery": "bridge:detectQuery",
       "bridge:testManifest": "bridge:testManifest"
@@ -35,7 +36,16 @@
       "bridge:gapScheme": { "@id": "vocab/catalog-gaps.ttl" },
       "bridge:sourceAccounting": { "@id": "vocab/catalog-accounting.ttl" },
       "bridge:envelope": { "@id": "#envelope-catalog" },
-      "bridge:mapping": { "@id": "mapping/item.rq" },
+      "bridge:vocabularyFile": [
+        "ontologies/catalog/v1/catalog.ttl",
+        "ontologies/catalog/v1/catalog.shapes.ttl"
+      ],
+      "bridge:mapping": [
+        { "@id": "mapping/item.rq" },
+        { "@id": "mapping/item-code.rq" },
+        { "@id": "mapping/item-shelf.rq" },
+        { "@id": "mapping/item-tag.rq" }
+      ],
       "bridge:findingsQuery": [
         { "@id": "mapping/item-findings.rq" },
         { "@id": "mapping/item-note-findings.rq" }
