@@ -195,15 +195,8 @@ pub fn canonical_parts(quads: impl IntoIterator<Item = Quad>) -> Result<Vec<Stri
     Ok(written)
 }
 
-/// How many blank nodes one first degree may cover and the part still be
-/// handed to RDFC-1.0.
-const ALIKE: usize = 8;
-
-/// What each blank node of the part is at first degree: the quads naming it,
-/// its own label told from any other and neither spelled out. RDFC-1.0 labels
-/// a node no other node shares this with outright, and tries every permutation
-/// of the nodes that do.
-fn first_degrees(part: &[Quad]) -> HashMap<String, Vec<&str>> {
+/// Every quad of the part that names each of its blank nodes.
+fn naming(part: &[Quad]) -> HashMap<&str, Vec<&Quad>> {
     let mut naming: HashMap<&str, Vec<&Quad>> = HashMap::new();
     for quad in part {
         if let NamedOrBlankNode::BlankNode(blank) = &quad.subject {
@@ -213,52 +206,135 @@ fn first_degrees(part: &[Quad]) -> HashMap<String, Vec<&str>> {
             naming.entry(blank.as_str()).or_default().push(quad);
         }
     }
-    let mut degrees: HashMap<String, Vec<&str>> = HashMap::new();
-    for (node, quads) in naming {
-        let mark = |blank: &BlankNode| {
-            if blank.as_str() == node {
-                "_:this"
-            } else {
-                "_:other"
-            }
-            .to_owned()
-        };
-        let mut lines: Vec<String> = quads
-            .iter()
-            .map(|quad| {
-                format!(
-                    "{} {} {} .",
-                    match &quad.subject {
-                        NamedOrBlankNode::BlankNode(blank) => mark(blank),
-                        named => named.to_string(),
-                    },
-                    quad.predicate,
-                    match &quad.object {
-                        Term::BlankNode(blank) => mark(blank),
-                        other => other.to_string(),
-                    }
-                )
-            })
-            .collect();
-        lines.sort();
-        degrees.entry(lines.join("\n")).or_default().push(node);
-    }
-    degrees
+    naming
 }
 
-/// The part's quads in RDFC-1.0's order under RDFC-1.0's labels, which are a
-/// function of the part and of nothing else in the graph.
-fn canonical(part: Vec<Quad>) -> Vec<Quad> {
-    let mut dataset = Dataset::new();
-    for quad in part {
-        dataset.insert(&quad);
+/// A quad as one blank node of it sees it: that node told from any other and
+/// neither spelled out, so the line says what the part says of the node and
+/// not what the run minted for it.
+fn masked(quad: &Quad, node: &str) -> String {
+    let mark = |blank: &BlankNode| {
+        if blank.as_str() == node {
+            "_:this"
+        } else {
+            "_:other"
+        }
+        .to_owned()
+    };
+    format!(
+        "{} {} {} .",
+        match &quad.subject {
+            NamedOrBlankNode::BlankNode(blank) => mark(blank),
+            named => named.to_string(),
+        },
+        quad.predicate,
+        match &quad.object {
+            Term::BlankNode(blank) => mark(blank),
+            other => other.to_string(),
+        }
+    )
+}
+
+/// The blank node at the other end of a quad this one stands in, as it is
+/// described so far, and which end of the quad it stands at.
+fn company(quad: &Quad, node: &str, described: &HashMap<&str, String>) -> Vec<String> {
+    let (NamedOrBlankNode::BlankNode(subject), Term::BlankNode(object)) =
+        (&quad.subject, &quad.object)
+    else {
+        return Vec::new();
+    };
+    let mut company = Vec::new();
+    if subject.as_str() == node {
+        company.push(format!(
+            "> {} {}",
+            quad.predicate,
+            described[object.as_str()]
+        ));
     }
-    dataset.canonicalize(CanonicalizationAlgorithm::Rdfc10 {
-        hash_algorithm: CanonicalizationHashAlgorithm::Sha256,
-    });
-    let mut quads: Vec<Quad> = dataset.iter().map(|quad| quad.into_owned()).collect();
-    quads.sort_by_key(Quad::to_string);
-    quads
+    if object.as_str() == node {
+        company.push(format!(
+            "< {} {}",
+            quad.predicate,
+            described[subject.as_str()]
+        ));
+    }
+    company
+}
+
+/// How many nodes of the part stand apart: a round that adds none has nothing
+/// left to tell.
+fn apart(described: &HashMap<&str, String>) -> usize {
+    described.values().collect::<HashSet<&String>>().len()
+}
+
+/// Where the part puts each of its blank nodes.
+///
+/// A node is described by the quads naming it, and then round by round by the
+/// company those quads keep, until a round tells apart no two nodes the one
+/// before it did not. Nodes one description still covers stand alike in the
+/// part: swapping their labels maps the written file onto itself, because what
+/// is written is the sorted set of labelled quads. So one of them is marked as
+/// the one it is and the rounds resume, and nothing has to be searched for.
+/// The nodes are numbered in the order their descriptions sort in.
+fn places(part: &[Quad]) -> HashMap<&str, usize> {
+    let naming = naming(part);
+    let mut described: HashMap<&str, String> = naming
+        .iter()
+        .map(|(node, quads)| {
+            let mut lines: Vec<String> = quads.iter().map(|quad| masked(quad, node)).collect();
+            lines.sort();
+            (*node, digest(&lines.join("\n")))
+        })
+        .collect();
+
+    loop {
+        loop {
+            let before = apart(&described);
+            described = naming
+                .iter()
+                .map(|(node, quads)| {
+                    let mut around: Vec<String> = quads
+                        .iter()
+                        .flat_map(|quad| company(quad, node, &described))
+                        .collect();
+                    around.sort();
+                    (
+                        *node,
+                        digest(&format!("{}\n{}", described[node], around.join("\n"))),
+                    )
+                })
+                .collect();
+            if apart(&described) == before {
+                break;
+            }
+        }
+
+        let mut alike: HashMap<&String, Vec<&str>> = HashMap::new();
+        for (node, description) in &described {
+            alike.entry(description).or_default().push(node);
+        }
+        let Some(one) = alike
+            .into_iter()
+            .filter(|(_, nodes)| nodes.len() > 1)
+            .min_by(|one, two| one.0.cmp(two.0))
+            .and_then(|(_, nodes)| nodes.into_iter().min())
+        else {
+            break;
+        };
+        let marked = digest(&format!("alone\n{}", described[one]));
+        described.insert(one, marked);
+    }
+
+    let mut ordered: Vec<(&String, &str)> = described
+        .iter()
+        .map(|(node, description)| (description, *node))
+        .collect();
+    ordered.sort();
+    ordered
+        .into_iter()
+        .enumerate()
+        .map(|(place, (_, node))| (node, place))
+        .collect()
 }
 
 /// What a part is, in the characters a blank node's label is spelled with.
@@ -284,42 +360,37 @@ fn text(quads: &[Quad]) -> String {
         .join("\n")
 }
 
-/// The part's quads in an order the part decides, and what the part is taken
-/// to be.
-///
-/// RDFC-1.0 gives both where it returns at all: the label it assigns a blank
-/// node is a function of the part. Its Hash N-Degree Quads step tries every
-/// permutation of the blank nodes one first degree covers, and builds them all
-/// before it tries any, so a document of sibling records alike in every triple
-/// exhausts memory on a path that used to be linear. Past `ALIKE` such nodes
-/// the part is therefore written as it stands, and what it is taken to be is
-/// the first degrees it holds.
-///
-/// A part written that way is written under the labels the run minted, so its
-/// own bytes vary from run to run. What it is taken to be does not, so every
-/// other part of the graph keeps both its labels and its place in the file,
-/// and a regenerated oracle's diff still names the part that could not be
-/// answered for rather than every part there is.
+/// The part's quads under the numbers the part gives its blank nodes and in
+/// the order they sort in, and what the part is thereby taken to be.
 fn fixed(part: Vec<Quad>) -> (String, Vec<Quad>) {
-    let degrees = first_degrees(&part);
-    if degrees.values().all(|alike| alike.len() <= ALIKE) {
-        let quads = canonical(part);
-        return (text(&quads), quads);
-    }
-    let mut taken: Vec<String> = degrees
-        .into_iter()
-        .map(|(degree, alike)| format!("{} {degree}", alike.len()))
+    let places = places(&part);
+    let placed =
+        |blank: &BlankNode| BlankNode::new_unchecked(format!("c{}", places[blank.as_str()]));
+    let mut quads: Vec<Quad> = part
+        .iter()
+        .map(|quad| {
+            Quad::new(
+                match &quad.subject {
+                    NamedOrBlankNode::BlankNode(blank) => NamedOrBlankNode::from(placed(blank)),
+                    iri => iri.clone(),
+                },
+                quad.predicate.clone(),
+                match &quad.object {
+                    Term::BlankNode(blank) => Term::from(placed(blank)),
+                    other => other.clone(),
+                },
+                quad.graph_name.clone(),
+            )
+        })
         .collect();
-    taken.sort();
-    let mut quads = part;
     quads.sort_by_key(Quad::to_string);
-    (taken.join("\n"), quads)
+    (text(&quads), quads)
 }
 
 /// The graph written under labels a run cannot vary and in an order it cannot
-/// vary: every blank node is labelled by the part of the graph it stands in,
-/// canonicalised on its own, and the parts are written in the order their
-/// canonical form sorts in.
+/// vary: every blank node is numbered by where the part of the graph it stands
+/// in puts it, labelled by that part, and the parts are written in the order
+/// their own text sorts in.
 ///
 /// The label is a function of the part, so a finding the graph gains leaves the
 /// labels of every other finding where they were, and a digest recorded for the
@@ -333,13 +404,13 @@ fn stable(quads: &[Quad]) -> Result<Vec<Quad>> {
 
     let mut copies: HashMap<String, usize> = HashMap::new();
     let mut written = Vec::with_capacity(quads.len());
-    for (text, canonical) in &parts {
+    for (text, placed) in &parts {
         // Which copy this is, counted over the digest rather than the part, so
         // that two parts a digest cannot tell apart are still two nodes.
         let part = digest(text);
         let copy = *copies.entry(part.clone()).or_default();
         let node = |blank: &BlankNode| under(blank.as_str(), &part, copy);
-        for quad in canonical {
+        for quad in placed {
             written.push(Quad::new(
                 match &quad.subject {
                     NamedOrBlankNode::BlankNode(blank) => NamedOrBlankNode::from(node(blank)?),
@@ -545,7 +616,8 @@ pub fn serialise_at(
 mod tests {
     use super::{relative_to, serialise, GraphFormat};
     use oxiri::Iri;
-    use oxrdf::{BlankNode, GraphName, Literal, NamedNode, Quad};
+    use oxrdf::{BlankNode, GraphName, Literal, NamedNode, NamedOrBlankNode, Quad, Term};
+    use std::collections::BTreeSet;
 
     const ORACLE: &str = "file:///checkout/fixtures/findings/two.ttl";
 
@@ -582,17 +654,23 @@ mod tests {
         quads
     }
 
-    /// RDFC-1.0 tries every permutation of the blank nodes one first degree
-    /// covers and builds them all before it tries any, so a document of
-    /// sibling records alike in every triple costs the memory of the machine
-    /// on the path `convert` writes `--out` and `--findings` down. A graph
-    /// written without every triple in it would be the same defect answered
-    /// with a shorter file.
+    /// The shape an algorithm that solves isomorphism permutes: nothing in
+    /// the part tells one child of a record from another, so every ordering
+    /// of them is a candidate and building them all costs the memory of the
+    /// machine. Numbering by description asks for no ordering but one, so the
+    /// graph two runs build out of two sets of minted labels is one text —
+    /// with every triple in it, a shorter file being the same defect answered
+    /// by writing less of the graph.
     #[test]
-    fn writes_a_record_of_children_no_first_degree_tells_apart() {
-        let written =
-            serialise(&record(13), GraphFormat::NTriples, &[]).expect("the record as text");
-        assert_eq!(written.lines().count(), 13 * 14 + 1, "{written}");
+    fn writes_a_record_of_children_nothing_tells_apart_the_same_way_each_run() {
+        let written = || {
+            let mut quads = record(13);
+            quads.extend(note());
+            serialise(&quads, GraphFormat::NTriples, &[]).expect("the graph as text")
+        };
+        let one = written();
+        assert_eq!(one.lines().count(), 13 * 14 + 1 + 2, "{one}");
+        assert_eq!(one, written());
     }
 
     /// Two blank nodes joined to each other and to nothing else, with a
@@ -614,26 +692,33 @@ mod tests {
         ]
     }
 
-    /// A part past the bound is written under the labels the run minted, and
-    /// those vary. What must not vary with them is the rest of the file: a
-    /// regenerated oracle's diff is worth reading only where it names the part
-    /// that changed rather than every part there is.
+    /// No part is handed over to the labels the run minted. A file carrying
+    /// one would vary run to run in exactly the lines that part holds, and a
+    /// digest recorded for it would never be reproduced.
     #[test]
-    fn leaves_every_other_part_where_it_was_when_one_part_is_past_the_bound() {
-        let written = || {
-            let mut quads = record(13);
-            quads.extend(note());
-            serialise(&quads, GraphFormat::NTriples, &[])
-                .expect("the graph as text")
-                .lines()
-                .enumerate()
-                .filter(|(_, line)| line.contains("#note"))
-                .map(|(at, line)| format!("{at} {line}"))
-                .collect::<Vec<String>>()
-        };
-        let one = written();
-        assert_eq!(one.len(), 2, "{one:?}");
-        assert_eq!(one, written());
+    fn writes_no_part_under_a_label_a_run_minted() {
+        let mut quads = record(13);
+        quads.extend(note());
+        let minted: BTreeSet<String> = quads
+            .iter()
+            .flat_map(|quad| {
+                [
+                    match &quad.subject {
+                        NamedOrBlankNode::BlankNode(blank) => Some(blank.as_str().to_owned()),
+                        _ => None,
+                    },
+                    match &quad.object {
+                        Term::BlankNode(blank) => Some(blank.as_str().to_owned()),
+                        _ => None,
+                    },
+                ]
+            })
+            .flatten()
+            .collect();
+        let written = serialise(&quads, GraphFormat::NTriples, &[]).expect("the graph as text");
+        for label in minted {
+            assert!(!written.contains(&format!("_:{label} ")), "{label}");
+        }
     }
 
     fn named(iri: &str) -> Option<String> {
