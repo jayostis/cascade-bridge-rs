@@ -456,3 +456,114 @@ fn exits_non_zero_and_writes_no_graph_when_the_findings_file_cannot_be_written()
     assert!(stderr.contains("findings.ttl"), "{stderr}");
     assert!(!stderr.contains("usage:"), "{stderr}");
 }
+
+/// The namespaces nearly every IRI of a findings graph is in, none of which a
+/// mapping query has reason to declare.
+const OA: &str = "http://www.w3.org/ns/oa#";
+const SH: &str = "http://www.w3.org/ns/shacl#";
+/// The tiny adapter's gap scheme names its gaps here.
+const GAPS: &str = "urn:example:catalog#";
+
+/// A committed oracle is what a reviewer reads, so a findings file names
+/// what it can by a prefix rather than in full.
+#[test]
+fn writes_findings_under_the_prefixes_a_findings_graph_uses() {
+    let document = tiny().join("fixtures/in/two.xml");
+    let written =
+        PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("cascade-bridge-findings-prefixed.ttl");
+    let run = cascade_bridge(&[
+        "convert",
+        &tiny().to_string_lossy(),
+        &document.to_string_lossy(),
+        "--findings",
+        &written.to_string_lossy(),
+    ]);
+    assert_eq!(
+        run.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let text =
+        String::from_utf8(std::fs::read(&written).expect("the written findings")).expect("utf-8");
+    let declared = |namespace: &str| {
+        text.lines().find_map(|line| {
+            let rest = line.strip_prefix("@prefix ")?;
+            let (name, iri) = rest.split_once(':')?;
+            (iri.trim().trim_end_matches('.').trim() == format!("<{namespace}>"))
+                .then(|| name.trim().to_owned())
+        })
+    };
+    for (namespace, used) in [
+        (OA, "hasTarget"),
+        (SH, "resultSeverity"),
+        (GAPS, "noteHasNoTerm"),
+    ] {
+        let name = declared(namespace)
+            .unwrap_or_else(|| panic!("no prefix declared for {namespace}:\n{text}"));
+        assert!(
+            text.contains(&format!("{name}:{used}")),
+            "{namespace} is declared as {name}: and not used:\n{text}"
+        );
+        assert!(
+            !text.contains(&format!("<{namespace}")),
+            "an IRI in {namespace} is written in full:\n{text}"
+        );
+    }
+    assert_eq!(declared(OA).as_deref(), Some("oa"), "{text}");
+    assert_eq!(declared(SH).as_deref(), Some("sh"), "{text}");
+}
+
+/// Prefixes spell a graph; they may not change a triple of it. N-Triples
+/// names every IRI in full, so it is the graph a Turtle findings file has to
+/// read back to, for every document the tiny adapter finds something in.
+#[test]
+fn writes_the_same_findings_graph_as_turtle_as_it_does_as_n_triples() {
+    let fixtures = tiny().join("fixtures/in");
+    let mut documents: Vec<PathBuf> = std::fs::read_dir(&fixtures)
+        .expect("the documents")
+        .map(|entry| entry.expect("an entry").path())
+        .collect();
+    documents.sort();
+    let scratch = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("cascade-bridge-findings-graphs");
+    std::fs::create_dir_all(&scratch).expect("the directory");
+    let mut compared = 0;
+    for document in &documents {
+        let stem = document.file_stem().expect("a name").to_string_lossy();
+        let written = |extension: &str, format: &str| {
+            let path = scratch.join(format!("{stem}.{extension}"));
+            let run = cascade_bridge(&[
+                "convert",
+                &tiny().to_string_lossy(),
+                &document.to_string_lossy(),
+                "--out",
+                &scratch.join(format!("{stem}.graph")).to_string_lossy(),
+                "--findings",
+                &path.to_string_lossy(),
+                "--format",
+                format,
+            ]);
+            (run.status.code() == Some(0)).then(|| std::fs::read(&path).expect("the findings"))
+        };
+        let (Some(turtle), Some(ntriples)) = (written("ttl", "turtle"), written("nt", "ntriples"))
+        else {
+            continue;
+        };
+        let at = cascade_bridge::file_iri(scratch.join(format!("{stem}.ttl"))).expect("an IRI");
+        let as_ntriples = findings(&ntriples, RdfFormat::NTriples, BASE);
+        if as_ntriples.is_empty() {
+            continue;
+        }
+        assert_eq!(
+            findings(&turtle, RdfFormat::Turtle, &at),
+            as_ntriples,
+            "{}",
+            String::from_utf8_lossy(&turtle)
+        );
+        compared += 1;
+    }
+    assert!(
+        compared > 3,
+        "only {compared} documents had findings to compare"
+    );
+}
