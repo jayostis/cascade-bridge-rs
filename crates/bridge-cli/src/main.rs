@@ -251,7 +251,7 @@ fn convert_document(arguments: Convert) -> Result<ExitCode, String> {
         let written = serialise_at(
             &conversion.findings,
             arguments.format,
-            &prepared.prefixes,
+            &prepared.findings_prefixes,
             Some(&at),
         )
         .map_err(|e| e.to_string())?;

@@ -181,6 +181,7 @@ pub struct Converted {
     conversion: Conversion,
     format: GraphFormat,
     prefixes: Vec<(String, String)>,
+    findings_prefixes: Vec<(String, String)>,
     summary: String,
 }
 
@@ -202,7 +203,7 @@ impl Converted {
         serialise_at(
             &self.conversion.findings,
             self.format,
-            &self.prefixes,
+            &self.findings_prefixes,
             Some(at),
         )
         .map_err(thrown)
@@ -261,6 +262,7 @@ pub fn convert(
         conversion,
         format,
         prefixes: prepared.prefixes,
+        findings_prefixes: prepared.findings_prefixes,
         summary,
     })
 }
