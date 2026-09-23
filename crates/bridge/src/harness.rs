@@ -16,7 +16,9 @@ use crate::xpath;
 use oxigraph::model::{NamedOrBlankNode, Quad, Term};
 use oxrdfio::{RdfFormat, RdfParser};
 use std::collections::{HashMap, HashSet};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+// std's clock panics on wasm32-unknown-unknown, where this one asks the host.
+use web_time::Instant;
 
 pub const OFFERED_PROFILES: [&str; 1] = [BRIDGE_SPARQL_1_1];
 

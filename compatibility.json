@@ -1,6 +1,16 @@
 {
   "@context": "https://ns.cascadeprotocol.org/bridge/v1-draft/compatibility.jsonld",
-  "setup": ["cargo", "build", "--release", "--locked", "-p", "cascade-bridge-cli"],
-  "command": ["cargo", "run", "--release", "--locked", "-q", "-p", "cascade-bridge-cli", "--"],
+  "host": [
+    {
+      "name": "native",
+      "setup": ["cargo", "build", "--release", "--locked", "-p", "cascade-bridge-cli"],
+      "command": ["cargo", "run", "--release", "--locked", "-q", "-p", "cascade-bridge-cli", "--"]
+    },
+    {
+      "name": "node",
+      "setup": ["sh", "hosts/node/setup.sh"],
+      "command": ["node", "hosts/node/cascade-bridge.mjs"]
+    }
+  ],
   "mustPassWith": ["https://github.com/jayostis/cascade-bridge-adapter-clinvar"]
 }

@@ -1,0 +1,18 @@
+[package]
+name = "cascade-bridge-wasm"
+description = "The library for a host that hands it bytes by IRI: test and convert, built for wasm32-unknown-unknown."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+cascade-bridge = { path = "../bridge", version = "=0.1.0" }
+# SPARQL's clock: without this it is std's, which panics on
+# wasm32-unknown-unknown, and with it the host's Date.
+oxsdatatypes = { version = "=0.2.3", features = ["js"] }
+wasm-bindgen = "=0.2.128"
