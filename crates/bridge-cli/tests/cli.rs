@@ -506,7 +506,10 @@ fn writes_findings_under_the_prefixes_a_findings_graph_uses() {
             "{namespace} is declared as {name}: and not used:\n{text}"
         );
         assert!(
-            !text.contains(&format!("<{namespace}")),
+            !text
+                .lines()
+                .filter(|line| !line.starts_with("@prefix "))
+                .any(|line| line.contains(&format!("<{namespace}"))),
             "an IRI in {namespace} is written in full:\n{text}"
         );
     }
