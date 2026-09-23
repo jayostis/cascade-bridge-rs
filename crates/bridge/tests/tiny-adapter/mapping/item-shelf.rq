@@ -1,0 +1,10 @@
+PREFIX fx:  <http://sparql.xyz/facade-x/ns/>
+PREFIX xyz: <http://sparql.xyz/facade-x/data/>
+PREFIX ex:  <urn:example:catalog#>
+
+CONSTRUCT { ?s ex:shelf [ a ex:Shelf ] . }
+WHERE {
+  ?item a fx:root, xyz:item ; xyz:id ?id ; ?slot ?box .
+  ?box a xyz:box .
+  BIND(IRI(CONCAT("urn:example:item:", ?id)) AS ?s)
+}

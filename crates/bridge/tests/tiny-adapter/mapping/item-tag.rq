@@ -1,0 +1,16 @@
+PREFIX rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX xsd:  <http://www.w3.org/2001/XMLSchema#>
+PREFIX fx:   <http://sparql.xyz/facade-x/ns/>
+PREFIX xyz:  <http://sparql.xyz/facade-x/data/>
+PREFIX prov: <http://www.w3.org/ns/prov#>
+PREFIX ex:   <urn:example:catalog#>
+
+CONSTRUCT {
+  ?s ex:colour ?colour ;
+     prov:generatedAtTime "2026-01-01T00:00:00Z"^^xsd:dateTime .
+}
+WHERE {
+  ?item a fx:root, xyz:item ; xyz:id ?id ; ?slot ?tag .
+  ?tag a xyz:tag ; rdf:_1 ?colour .
+  BIND(IRI(CONCAT("urn:example:item:", ?id)) AS ?s)
+}

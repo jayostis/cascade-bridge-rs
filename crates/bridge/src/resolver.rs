@@ -12,7 +12,21 @@ pub trait Resolver {
     /// The adapter's root, the IRI the crate's root entity resolves to,
     /// ending in "/".
     fn root(&self) -> &str;
+    /// The root of the picked `the-cascade-protocol/spec` checkout the engine
+    /// command was given, ending in "/", where it was given one. A path the
+    /// crate's `bridge:vocabularyFile` names resolves against this and against
+    /// nothing else.
+    fn vocabularies(&self) -> Option<&str> {
+        None
+    }
+    /// A file of the crate, which is a file of the adapter and no other.
     fn read(&self, iri: &str) -> Result<Vec<u8>>;
+    /// A file of the vocabulary, which stands in the checkout and no other:
+    /// an adapter read against an ontology of its own writing declares its own
+    /// predicates, and a crate read from the checkout reads a stranger's.
+    fn read_vocabulary(&self, iri: &str) -> Result<Vec<u8>> {
+        Err(Error::msg(format!("this host reads no vocabulary: {iri}")))
+    }
 }
 
 /// The IRI a file on this machine is named by, for a document a caller holds
@@ -23,47 +37,89 @@ pub fn file_iri(path: impl AsRef<Path>) -> Result<String> {
     Ok(path_to_file_iri(&resolved))
 }
 
-/// Resolve an adapter from a directory. Nothing outside it is readable.
+/// Resolve an adapter from a directory. Nothing outside it, and outside the
+/// checkout the engine command named, is readable, and neither directory
+/// answers for the other.
 pub struct DirectoryResolver {
-    root_iri: String,
-    root_path: PathBuf,
+    adapter: Directory,
+    vocabularies: Option<Directory>,
+}
+
+/// A directory a run may read, by the IRI its files are named by and the path a
+/// filesystem reaches them at.
+struct Directory {
+    iri: String,
+    path: PathBuf,
+}
+
+impl Directory {
+    fn at(dir: impl AsRef<Path>) -> Result<Self> {
+        let path = fs::canonicalize(dir.as_ref())
+            .map_err(|e| Error::msg(format!("{}: {e}", dir.as_ref().display())))?;
+        let mut iri = path_to_file_iri(&path);
+        iri.push('/');
+        Ok(Self { iri, path })
+    }
+
+    fn read(&self, iri: &str, what: &str) -> Result<Vec<u8>> {
+        let bare = iri.split('#').next().unwrap_or(iri);
+        // A server in the IRI is a network host. One that is not this
+        // directory's own is refused before the filesystem is asked, since
+        // asking would contact it.
+        let inside = (authority(bare) == authority(&self.iri))
+            .then(|| file_iri_to_path(bare))
+            .flatten()
+            // The boundary is decided on the resolved filesystem path, never
+            // on the IRI string: percent-encoding hides "%2e%2e" from a prefix
+            // test and a symbolic link hides the destination from both.
+            .filter(|path| resolve(path).is_some_and(|p| p.starts_with(&self.path)));
+        let Some(path) = inside else {
+            return Err(Error::msg(format!("not inside {what}: {iri}")));
+        };
+        Ok(fs::read(&path)?)
+    }
 }
 
 impl DirectoryResolver {
     pub fn new(dir: impl AsRef<Path>) -> Result<Self> {
-        let root_path = fs::canonicalize(dir.as_ref())
-            .map_err(|e| Error::msg(format!("{}: {e}", dir.as_ref().display())))?;
-        let mut root_iri = path_to_file_iri(&root_path);
-        root_iri.push('/');
         Ok(Self {
-            root_iri,
-            root_path,
+            adapter: Directory::at(dir)?,
+            vocabularies: None,
+        })
+    }
+
+    /// The checkout of `the-cascade-protocol/spec` the engine command named,
+    /// which is where a vocabulary file is read from and the only place.
+    pub fn with_vocabularies(self, dir: impl AsRef<Path>) -> Result<Self> {
+        Ok(Self {
+            vocabularies: Some(Directory::at(dir)?),
+            ..self
         })
     }
 }
 
 impl Resolver for DirectoryResolver {
     fn root(&self) -> &str {
-        &self.root_iri
+        &self.adapter.iri
+    }
+
+    fn vocabularies(&self) -> Option<&str> {
+        self.vocabularies
+            .as_ref()
+            .map(|directory| directory.iri.as_str())
     }
 
     fn read(&self, iri: &str) -> Result<Vec<u8>> {
-        let outside = || Error::msg(format!("not inside the adapter: {iri}"));
-        let bare = iri.split('#').next().unwrap_or(iri);
-        // A server in the IRI is a network host. One that is not the
-        // adapter's own is refused before the filesystem is asked, since
-        // asking would contact it.
-        if authority(bare) != authority(&self.root_iri) {
-            return Err(outside());
+        self.adapter.read(iri, "the adapter")
+    }
+
+    fn read_vocabulary(&self, iri: &str) -> Result<Vec<u8>> {
+        match &self.vocabularies {
+            Some(directory) => directory.read(iri, "the vocabularies"),
+            None => Err(Error::msg(format!(
+                "the command named no vocabularies: {iri}"
+            ))),
         }
-        let path = file_iri_to_path(bare).ok_or_else(outside)?;
-        // The boundary is decided on the resolved filesystem path, never on
-        // the IRI string: percent-encoding hides "%2e%2e" from a prefix test
-        // and a symbolic link hides the destination from both.
-        if !resolve(&path).is_some_and(|p| p.starts_with(&self.root_path)) {
-            return Err(outside());
-        }
-        Ok(fs::read(&path)?)
     }
 }
 

@@ -44,8 +44,8 @@ impl Resolver for Mapping {
                 "\"bridge:mapping\": \"bridge:mapping\",\n      \"bridge:table\": \"bridge:table\"",
             )
             .replace(
-                "\"bridge:mapping\": { \"@id\": \"mapping/item.rq\" },",
-                "\"bridge:mapping\": { \"@id\": \"mapping/item.rq\" },\n      \"bridge:table\": { \"@id\": \"table/catalog.ttl\" },",
+                "\"bridge:detectQuery\": { \"@id\": \"mapping/detect.rq\" },",
+                "\"bridge:table\": { \"@id\": \"table/catalog.ttl\" },\n      \"bridge:detectQuery\": { \"@id\": \"mapping/detect.rq\" },",
             )
             .replace(
                 "{\n      \"@id\": \"#envelope-catalog\",",

@@ -6,8 +6,8 @@ use crate::rdf::{
     BRIDGE_ADAPTER, BRIDGE_DETECT_QUERY, BRIDGE_DOCUMENT_SCHEMA, BRIDGE_DOC_ROOT_ELEMENT_NAME,
     BRIDGE_ELEMENT_NAME_OF_EACH_RECORD, BRIDGE_ENVELOPE, BRIDGE_FINDINGS_QUERY, BRIDGE_GAP_SCHEME,
     BRIDGE_MAPPING, BRIDGE_REQUIRES_PROFILE, BRIDGE_SOURCE_ACCOUNTING, BRIDGE_SOURCE_SCHEMA,
-    BRIDGE_TABLE, BRIDGE_TEST_MANIFEST, RDF_FIRST, RDF_NIL, RDF_REST, RDF_TYPE, SCHEMA_ABOUT,
-    SCHEMA_IDENTIFIER, SCHEMA_NAME,
+    BRIDGE_TABLE, BRIDGE_TEST_MANIFEST, BRIDGE_VOCABULARY_FILE, RDF_FIRST, RDF_NIL, RDF_REST,
+    RDF_TYPE, SCHEMA_ABOUT, SCHEMA_IDENTIFIER, SCHEMA_NAME,
 };
 use crate::resolver::Resolver;
 use oxrdf::{Graph, NamedNode, NamedOrBlankNode, Term, Triple};
@@ -52,6 +52,9 @@ pub struct Adapter {
     pub identifier: Option<String>,
     pub element_name_of_each_record: Option<String>,
     pub source_schema: Option<String>,
+    /// The vocabulary files the produced graph is read against, as paths in the
+    /// checkout the engine command is given rather than files of the crate.
+    pub vocabulary_files: Vec<String>,
     pub source_accounting: Option<String>,
     pub gap_scheme: Option<String>,
     pub required_profiles: Vec<String>,
@@ -95,6 +98,7 @@ pub fn term_value(term: &Term) -> String {
         Term::NamedNode(n) => n.as_str().to_owned(),
         Term::BlankNode(b) => b.as_str().to_owned(),
         Term::Literal(l) => l.value().to_owned(),
+        Term::Triple(t) => t.to_string(),
     }
 }
 
@@ -200,6 +204,7 @@ pub fn load_adapter(resolver: &dyn Resolver) -> Result<Adapter> {
             BRIDGE_ELEMENT_NAME_OF_EACH_RECORD,
         )?,
         source_schema: value(&graph, &root_subject, BRIDGE_SOURCE_SCHEMA)?,
+        vocabulary_files: values(&graph, &root_subject, BRIDGE_VOCABULARY_FILE)?,
         source_accounting: value(&graph, &root_subject, BRIDGE_SOURCE_ACCOUNTING)?,
         gap_scheme: value(&graph, &root_subject, BRIDGE_GAP_SCHEME)?,
         required_profiles: values(&graph, &root_subject, BRIDGE_REQUIRES_PROFILE)?,

@@ -1,0 +1,5 @@
+@prefix ex: <urn:example:catalog#> .
+
+<urn:example:item:1> a ex:Item ;
+  ex:title "ok" ;
+  ex:code "longer" .
