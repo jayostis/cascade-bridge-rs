@@ -486,13 +486,22 @@ fn writes_findings_under_the_prefixes_a_findings_graph_uses() {
     );
     let text =
         String::from_utf8(std::fs::read(&written).expect("the written findings")).expect("utf-8");
+    let mut parsed = RdfParser::from_format(RdfFormat::Turtle)
+        .with_base_iri(cascade_bridge::file_iri(&written).expect("an IRI"))
+        .expect("base")
+        .for_slice(text.as_bytes());
+    for quad in parsed.by_ref() {
+        quad.expect("the findings parse as Turtle");
+    }
+    let prefixes: Vec<(String, String)> = parsed
+        .prefixes()
+        .map(|(name, iri)| (name.to_owned(), iri.to_owned()))
+        .collect();
     let declared = |namespace: &str| {
-        text.lines().find_map(|line| {
-            let rest = line.strip_prefix("@prefix ")?;
-            let (name, iri) = rest.split_once(':')?;
-            (iri.trim().trim_end_matches('.').trim() == format!("<{namespace}>"))
-                .then(|| name.trim().to_owned())
-        })
+        prefixes
+            .iter()
+            .find(|(_, iri)| iri == namespace)
+            .map(|(name, _)| name.clone())
     };
     for (namespace, used) in [
         (OA, "hasTarget"),
@@ -505,12 +514,10 @@ fn writes_findings_under_the_prefixes_a_findings_graph_uses() {
             text.contains(&format!("{name}:{used}")),
             "{namespace} is declared as {name}: and not used:\n{text}"
         );
-        assert!(
-            !text
-                .lines()
-                .filter(|line| !line.starts_with("@prefix "))
-                .any(|line| line.contains(&format!("<{namespace}"))),
-            "an IRI in {namespace} is written in full:\n{text}"
+        assert_eq!(
+            text.matches(&format!("<{namespace}")).count(),
+            1,
+            "an IRI in {namespace} is written in full beside its prefix declaration:\n{text}"
         );
     }
     assert_eq!(declared(OA).as_deref(), Some("oa"), "{text}");
@@ -546,12 +553,16 @@ fn writes_the_same_findings_graph_as_turtle_as_it_does_as_n_triples() {
                 "--format",
                 format,
             ]);
-            (run.status.code() == Some(0)).then(|| std::fs::read(&path).expect("the findings"))
+            assert_eq!(
+                run.status.code(),
+                Some(0),
+                "{} as {format}: {}",
+                document.display(),
+                String::from_utf8_lossy(&run.stderr)
+            );
+            std::fs::read(&path).expect("the findings")
         };
-        let (Some(turtle), Some(ntriples)) = (written("ttl", "turtle"), written("nt", "ntriples"))
-        else {
-            continue;
-        };
+        let (turtle, ntriples) = (written("ttl", "turtle"), written("nt", "ntriples"));
         let at = cascade_bridge::file_iri(scratch.join(format!("{stem}.ttl"))).expect("an IRI");
         let as_ntriples = findings(&ntriples, RdfFormat::NTriples, BASE);
         if as_ntriples.is_empty() {
