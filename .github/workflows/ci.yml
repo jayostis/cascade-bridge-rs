@@ -27,6 +27,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
       - run: cargo clippy --all-targets -- -D warnings
+      # The node host's setup is the wasm32 build, which fails here before the
+      # compatibility run reaches it; node_host.rs runs the module it leaves.
+      - run: sh hosts/node/setup.sh
+      - run: node hosts/node/check-imports.mjs hosts/node/imports.txt
       - run: cargo test
 
   # The names are required status checks on main: a renamed job leaves every

@@ -31,7 +31,9 @@ use oxrdfio::{RdfFormat, RdfParser};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+// std's clock panics on wasm32-unknown-unknown, where this one asks the host.
+use web_time::Instant;
 
 /// The form a query's own text declares, decided when it is parsed. Deciding
 /// it from a result instead accepts a SELECT that matched nothing as a

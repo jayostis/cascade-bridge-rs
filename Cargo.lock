@@ -168,6 +168,7 @@ dependencies = [
  "rudof_rdf",
  "shacl",
  "spargebra",
+ "web-time",
  "xpath-eval",
  "xsd-schema",
 ]
@@ -179,6 +180,15 @@ dependencies = [
  "cascade-bridge",
  "oxrdf",
  "oxrdfio",
+]
+
+[[package]]
+name = "cascade-bridge-wasm"
+version = "0.1.0"
+dependencies = [
+ "cascade-bridge",
+ "oxsdatatypes",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -1242,6 +1252,7 @@ version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c17c2ae62ac34fda465f6331105906c0e17b4e088dac3249e1f229b962062503"
 dependencies = [
+ "js-sys",
  "thiserror 2.0.20",
 ]
 
