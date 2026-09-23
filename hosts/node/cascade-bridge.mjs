@@ -10,7 +10,7 @@
 // cascade-bridge convert <adapter-dir> <document.xml> [--vocabularies <directory>] [--out <file>] [--findings <file>] [--format turtle|ntriples]
 import { closeSync, openSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 const USAGE = `usage: cascade-bridge test <adapter-dir> [--vocabularies <directory>] [--earl <out.ttl>] [--datasets]
        cascade-bridge convert <adapter-dir> <document.xml> [--vocabularies <directory>] [--out <file>] [--findings <file>] [--format turtle|ntriples]`;
@@ -111,7 +111,8 @@ class Directory {
       : undefined;
     const at = path === undefined ? undefined : reached(path);
     const within = at === undefined ? undefined : relative(this.path, at);
-    if (within === undefined || within.startsWith("..") || isAbsolute(within)) {
+    const outside = within === ".." || within?.startsWith(`..${sep}`);
+    if (within === undefined || outside || isAbsolute(within)) {
       throw `not inside ${what}: ${iri}`;
     }
     try {
@@ -238,5 +239,12 @@ function main(argv) {
     return 2;
   }
 }
+
+// The reader of a pipe may go away mid-graph, and a caller is owed one of the
+// statuses this command documents rather than an uncaught exception.
+process.stdout.on("error", (e) => {
+  process.stderr.write(`cascade-bridge: standard output: ${e.message}\n`);
+  process.exitCode = 2;
+});
 
 process.exitCode = main(process.argv.slice(2));

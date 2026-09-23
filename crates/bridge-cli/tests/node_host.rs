@@ -8,7 +8,7 @@ use oxrdf::{NamedOrBlankNode, Term};
 use oxrdfio::{RdfFormat, RdfParser};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
 use std::sync::OnceLock;
 
 const BASE: &str = "urn:example:base";
@@ -101,9 +101,9 @@ fn graph(path: &Path) -> BTreeSet<String> {
     canonical(&std::fs::read(path).expect("the written graph"), BASE)
 }
 
-fn converts_as_the_native_command_does(document: &str, extra: &[&str]) {
-    let adapter = tiny().to_string_lossy().into_owned();
-    let document = tiny().join("fixtures/in").join(document);
+fn converts_as_the_native_command_does(adapter: &Path, document: &str, extra: &[&str]) {
+    let document = adapter.join("fixtures/in").join(document);
+    let adapter = adapter.to_string_lossy().into_owned();
     let document = document.to_string_lossy().into_owned();
     let stem = Path::new(&document)
         .file_stem()
@@ -149,16 +149,77 @@ fn converts_as_the_native_command_does(document: &str, extra: &[&str]) {
 
 #[test]
 fn the_node_host_converts_a_document_to_the_graph_and_findings_the_native_command_writes() {
-    converts_as_the_native_command_does("two.xml", &[]);
+    converts_as_the_native_command_does(&tiny(), "two.xml", &[]);
 }
 
 #[test]
 fn the_node_host_writes_the_findings_the_native_command_draws_from_the_vocabularies_shapes() {
     let vocabularies = vocabularies().to_string_lossy().into_owned();
     converts_as_the_native_command_does(
+        &tiny(),
         "output-fails-a-shape.xml",
         &["--vocabularies", &vocabularies],
     );
+}
+
+fn copy_directory(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).expect("the copy's directory");
+    for entry in std::fs::read_dir(from).expect("the directory to copy") {
+        let entry = entry.expect("an entry");
+        let path = entry.path();
+        let target = to.join(entry.file_name());
+        if path.is_dir() {
+            copy_directory(&path, &target);
+        } else {
+            std::fs::copy(&path, &target).expect("a copied file");
+        }
+    }
+}
+
+#[test]
+fn the_node_host_reads_a_directory_inside_the_adapter_whose_name_begins_with_two_dots() {
+    let adapter = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("node-host/dotted-adapter");
+    let _ = std::fs::remove_dir_all(&adapter);
+    copy_directory(&tiny(), &adapter);
+    std::fs::rename(adapter.join("mapping"), adapter.join("..mapping"))
+        .expect("the renamed mapping");
+    let metadata = adapter.join("ro-crate-metadata.json");
+    let text = std::fs::read_to_string(&metadata).expect("the metadata");
+    std::fs::write(&metadata, text.replace("\"mapping/", "\"..mapping/")).expect("the metadata");
+    converts_as_the_native_command_does(&adapter, "two.xml", &[]);
+}
+
+/// A run whose standard output is closed before the graph is written to it.
+fn convert_into_a_closed_pipe(mut command: Command) -> Output {
+    let adapter = tiny().to_string_lossy().into_owned();
+    let document = tiny().join("fixtures/in/two.xml");
+    let mut child = command
+        .args(["convert", &adapter, &document.to_string_lossy()])
+        .current_dir(workspace())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn the command");
+    drop(child.stdout.take());
+    child.wait_with_output().expect("the command's end")
+}
+
+#[test]
+fn the_node_host_exits_as_the_native_command_does_when_standard_output_is_closed() {
+    set_up();
+    let native_run = convert_into_a_closed_pipe(Command::new(env!("CARGO_BIN_EXE_cascade-bridge")));
+    let mut node = Command::new("node");
+    node.arg(node_host_directory().join("cascade-bridge.mjs"));
+    let node_run = convert_into_a_closed_pipe(node);
+    let said = String::from_utf8_lossy(&node_run.stderr);
+    assert_eq!(
+        native_run.status.code(),
+        Some(2),
+        "{}",
+        String::from_utf8_lossy(&native_run.stderr)
+    );
+    assert_eq!(node_run.status.code(), native_run.status.code(), "{said}");
+    assert!(said.contains("standard output"), "{said}");
 }
 
 /// Each entry's outcome, by the test's IRI or, for an entry with none, by the
