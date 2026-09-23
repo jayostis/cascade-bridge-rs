@@ -3,8 +3,9 @@
 use crate::error::Result;
 use oxiri::Iri;
 use oxrdf::dataset::{CanonicalizationAlgorithm, CanonicalizationHashAlgorithm};
-use oxrdf::{Dataset, NamedNode, NamedOrBlankNode, Quad, Term};
+use oxrdf::{BlankNode, Dataset, NamedNode, NamedOrBlankNode, Quad, Term};
 use oxrdfio::{RdfFormat, RdfSerializer};
+use sha2::{Digest, Sha256};
 use std::borrow::Cow;
 use std::collections::{BTreeSet, HashMap, HashSet};
 
@@ -149,12 +150,12 @@ fn blank_of(quad: &Quad) -> Option<&str> {
     }
 }
 
-/// Each part of a graph no blank node reaches out of, canonicalised on its own
-/// and written as one line. A blank node bijection maps such a part onto such a
-/// part, so two graphs are isomorphic exactly when these multisets are equal —
-/// and what differs is then one whole part, rather than every line a
-/// relabelling moved.
-pub fn canonical_parts(quads: impl IntoIterator<Item = Quad>) -> Result<Vec<String>> {
+/// Each part of a graph no blank node reaches out of, and each quad naming no
+/// blank node on its own. A blank node bijection maps such a part onto such a
+/// part, so what tells two graphs apart is a whole part rather than every line
+/// a relabelling moved, and what a part says is what a label of its nodes can
+/// be derived from.
+fn cut(quads: impl IntoIterator<Item = Quad>) -> Vec<Vec<Quad>> {
     let quads: HashSet<Quad> = quads.into_iter().collect();
     let mut joined = Joined::default();
     for quad in &quads {
@@ -173,9 +174,16 @@ pub fn canonical_parts(quads: impl IntoIterator<Item = Quad>) -> Result<Vec<Stri
         };
         parts.entry(key).or_default().push(quad);
     }
+    parts.into_values().collect()
+}
 
+/// Each part of a graph no blank node reaches out of, canonicalised on its own
+/// and written as one line. Two graphs are isomorphic exactly when these
+/// multisets are equal.
+pub fn canonical_parts(quads: impl IntoIterator<Item = Quad>) -> Result<Vec<String>> {
+    let parts = cut(quads);
     let mut written: Vec<String> = Vec::with_capacity(parts.len());
-    for part in parts.into_values() {
+    for part in parts {
         written.push(
             canonical_lines(part)?
                 .into_iter()
@@ -184,6 +192,85 @@ pub fn canonical_parts(quads: impl IntoIterator<Item = Quad>) -> Result<Vec<Stri
         );
     }
     written.sort();
+    Ok(written)
+}
+
+/// The part's quads in RDFC-1.0's order under RDFC-1.0's labels, which are a
+/// function of the part and of nothing else in the graph.
+fn canonical(part: Vec<Quad>) -> Vec<Quad> {
+    let mut dataset = Dataset::new();
+    for quad in part {
+        dataset.insert(&quad);
+    }
+    dataset.canonicalize(CanonicalizationAlgorithm::Rdfc10 {
+        hash_algorithm: CanonicalizationHashAlgorithm::Sha256,
+    });
+    let mut quads: Vec<Quad> = dataset.iter().map(|quad| quad.into_owned()).collect();
+    quads.sort_by_key(Quad::to_string);
+    quads
+}
+
+/// What a part is, in the characters a blank node's label is spelled with.
+fn digest(text: &str) -> String {
+    Sha256::digest(text.as_bytes())
+        .iter()
+        .take(8)
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+/// The blank node a label stands for once the part it stands in is named.
+fn under(label: &str, part: &str, copy: usize) -> Result<BlankNode> {
+    Ok(BlankNode::new(format!("b{part}_{copy}_{label}"))?)
+}
+
+/// The graph written under labels a run cannot vary and in an order it cannot
+/// vary: every blank node is labelled by the part of the graph it stands in,
+/// canonicalised on its own, and the parts are written in the order their
+/// canonical form sorts in.
+///
+/// The label is a function of the part, so a finding the graph gains leaves the
+/// labels of every other finding where they were, and a digest recorded for the
+/// file is one re-running the Bridge reproduces. Two parts alike in every
+/// triple are two parts still: which copy this is stands in the label, so
+/// findings that differ in nothing are written as the two nodes they are.
+fn stable(quads: &[Quad]) -> Result<Vec<Quad>> {
+    let mut parts: Vec<(String, Vec<Quad>)> = Vec::new();
+    for part in cut(quads.iter().cloned()) {
+        let canonical = canonical(part);
+        let text = canonical
+            .iter()
+            .map(Quad::to_string)
+            .collect::<Vec<String>>()
+            .join("\n");
+        parts.push((text, canonical));
+    }
+    parts.sort_by(|one, two| one.0.cmp(&two.0));
+
+    let mut copies: HashMap<String, usize> = HashMap::new();
+    let mut written = Vec::with_capacity(quads.len());
+    for (text, canonical) in &parts {
+        // Which copy this is, counted over the digest rather than the part, so
+        // that two parts a digest cannot tell apart are still two nodes.
+        let part = digest(text);
+        let copy = *copies.entry(part.clone()).or_default();
+        let node = |blank: &BlankNode| under(blank.as_str(), &part, copy);
+        for quad in canonical {
+            written.push(Quad::new(
+                match &quad.subject {
+                    NamedOrBlankNode::BlankNode(blank) => NamedOrBlankNode::from(node(blank)?),
+                    iri => iri.clone(),
+                },
+                quad.predicate.clone(),
+                match &quad.object {
+                    Term::BlankNode(blank) => Term::from(node(blank)?),
+                    other => other.clone(),
+                },
+                quad.graph_name.clone(),
+            ));
+        }
+        copies.insert(part, copy + 1);
+    }
     Ok(written)
 }
 
@@ -352,6 +439,7 @@ pub fn serialise_at(
         (Some(at), GraphFormat::Turtle) => Cow::Owned(relative(quads, &Iri::parse(at)?)),
         _ => Cow::Borrowed(quads),
     };
+    let named = stable(&named)?;
     let namespaces = namespaces(&named);
     let mut serializer = RdfSerializer::from_format(format.format());
     for (prefix, namespace) in prefixes {

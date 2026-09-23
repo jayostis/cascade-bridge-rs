@@ -20,6 +20,7 @@ quick-xml = "=0.37.5"
 # client and an async runtime, for endpoints this Bridge never reaches.
 rudof_rdf = { git = "https://github.com/jayostis/rudof", rev = "1b6af3ba209ee731e1c4f5996557b84e2aaf7d29", default-features = false }
 shacl = { git = "https://github.com/jayostis/rudof", rev = "1b6af3ba209ee731e1c4f5996557b84e2aaf7d29", default-features = false }
+sha2 = { version = "=0.11.0", default-features = false }
 spargebra = { version = "=0.4.7", features = ["sep-0002", "sep-0006"] }
 xpath-eval = "=0.2.2"
 xsd-schema = "=0.2.0"

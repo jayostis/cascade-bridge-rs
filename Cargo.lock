@@ -166,6 +166,7 @@ dependencies = [
  "oxsdatatypes",
  "quick-xml 0.37.5",
  "rudof_rdf",
+ "sha2",
  "shacl",
  "spargebra",
  "xpath-eval",
