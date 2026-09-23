@@ -544,9 +544,18 @@ fn regenerates_the_adapter_s_own_oracles_byte_for_byte_and_leaves_the_run_where_
             })
             .collect::<Vec<String>>()
     };
-    let first = regenerated();
-    let second = regenerated();
-    assert_eq!(first, second);
+    // The copy keeps the layout an oracle names its input by, so what the
+    // regeneration writes is what the committed file holds, byte for byte,
+    // until the serialiser stops writing what was committed.
+    let committed: Vec<String> = ORACLES
+        .iter()
+        .map(|name| {
+            std::fs::read_to_string(tiny().join(format!("fixtures/findings/{name}.ttl")))
+                .expect("the committed oracle")
+        })
+        .collect();
+    assert_eq!(regenerated(), committed);
+    assert_eq!(regenerated(), committed);
 
     let run = cascade_bridge(&[
         "test",
