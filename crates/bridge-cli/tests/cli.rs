@@ -456,3 +456,107 @@ fn exits_non_zero_and_writes_no_graph_when_the_findings_file_cannot_be_written()
     assert!(stderr.contains("findings.ttl"), "{stderr}");
     assert!(!stderr.contains("usage:"), "{stderr}");
 }
+
+/// The bytes the command leaves at `path`, converting `document` through the
+/// tiny adapter against the checkout, so a second run can be compared with a
+/// first over the same path the way an author regenerates a file in place.
+fn written_at(flag: &str, document: &Path, path: &Path) -> String {
+    let run = cascade_bridge(&[
+        "convert",
+        &tiny().to_string_lossy(),
+        &document.to_string_lossy(),
+        flag,
+        &path.to_string_lossy(),
+        "--vocabularies",
+        &vocabularies().to_string_lossy(),
+    ]);
+    assert_eq!(
+        run.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    std::fs::read_to_string(path).expect("the written file")
+}
+
+/// The defect a committed oracle's digest turns on: one binary, one input, one
+/// adapter, seconds apart, and a different file each time.
+#[test]
+fn writes_one_input_s_findings_as_the_same_bytes_on_every_run() {
+    let document = tiny().join("fixtures/in/two.xml");
+    let path = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("cascade-bridge-findings-twice.ttl");
+    let first = written_at("--findings", &document, &path);
+    let second = written_at("--findings", &document, &path);
+    assert_eq!(first, second);
+}
+
+#[test]
+fn writes_one_input_s_graph_as_the_same_bytes_on_every_run() {
+    // The one input whose produced graph carries a blank node, which is what
+    // there is here to write down two ways.
+    let document = tiny().join("fixtures/in/output-fails-two-shapes.xml");
+    let path = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("cascade-bridge-out-twice.ttl");
+    let first = written_at("--out", &document, &path);
+    assert!(first.contains("_:"), "{first}");
+    let second = written_at("--out", &document, &path);
+    assert_eq!(first, second);
+}
+
+/// The oracles of `fixtures/findings/` this adapter's own run writes, each
+/// named as its input is. `order-missing-a-note-finding` is not among them: it
+/// is an oracle written wrong on purpose, and regenerating it would take the
+/// entry that reads it green.
+const ORACLES: [&str; 4] = ["two", "order", "unaccounted-child", "output-fails-a-shape"];
+
+/// What the two rules of an adapter's `fixtures/` ask of a generator together:
+/// an oracle is the Bridge's own output committed unedited, and a regeneration
+/// that changed nothing is a regeneration that changed no byte.
+#[test]
+fn regenerates_the_adapter_s_own_oracles_byte_for_byte_and_leaves_the_run_where_it_was() {
+    let elsewhere = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("regenerated/tiny-adapter");
+    if elsewhere.exists() {
+        std::fs::remove_dir_all(&elsewhere).expect("a clean copy");
+    }
+    copied_to(&tiny(), &elsewhere);
+    let regenerated = || {
+        ORACLES
+            .iter()
+            .map(|name| {
+                let oracle = elsewhere.join(format!("fixtures/findings/{name}.ttl"));
+                let run = cascade_bridge(&[
+                    "convert",
+                    &elsewhere.to_string_lossy(),
+                    &elsewhere
+                        .join(format!("fixtures/in/{name}.xml"))
+                        .to_string_lossy(),
+                    "--findings",
+                    &oracle.to_string_lossy(),
+                    "--vocabularies",
+                    &vocabularies().to_string_lossy(),
+                ]);
+                assert_eq!(
+                    run.status.code(),
+                    Some(0),
+                    "{}",
+                    String::from_utf8_lossy(&run.stderr)
+                );
+                std::fs::read_to_string(&oracle).expect("the regenerated oracle")
+            })
+            .collect::<Vec<String>>()
+    };
+    let first = regenerated();
+    let second = regenerated();
+    assert_eq!(first, second);
+
+    let run = cascade_bridge(&[
+        "test",
+        &elsewhere.to_string_lossy(),
+        "--vocabularies",
+        &vocabularies().to_string_lossy(),
+    ]);
+    let stdout = String::from_utf8(run.stdout).expect("utf-8");
+    assert!(
+        stdout.contains("4 passed, 2 failed, 1 cantTell, 1 untested"),
+        "the oracles a run regenerated are the oracles that run judges: {stdout}"
+    );
+}
