@@ -529,6 +529,8 @@ fn entries(resolver: &dyn Resolver, iri: &str) -> Result<Vec<Entry>> {
     Ok(entries)
 }
 
+type Prefixes = Vec<(String, String)>;
+
 /// Each concept of an adapter's gap scheme, by the IRI an entry names it by. A
 /// crate that names a scheme and cannot show it is refused here, as its
 /// accounting is, and so is one whose concept declares a severity outside the
@@ -541,10 +543,7 @@ fn entries(resolver: &dyn Resolver, iri: &str) -> Result<Vec<Entry>> {
 ///
 /// The prefixes the file declares come with it, as the names its gaps are
 /// written under.
-fn gap_scheme(
-    resolver: &dyn Resolver,
-    iri: &str,
-) -> Result<(HashMap<String, Gap>, Vec<(String, String)>)> {
+fn gap_scheme(resolver: &dyn Resolver, iri: &str) -> Result<(HashMap<String, Gap>, Prefixes)> {
     let bytes = resolver
         .read(iri)
         .map_err(|e| Error::msg(format!("{iri}: {e}")))?;
