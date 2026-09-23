@@ -305,15 +305,12 @@ fn produces_the_graph_for_a_document_no_tree_can_be_built_from() {
 /// the record one of them is about.
 const ORACLE: &str = "fixtures/findings/two.ttl";
 const RECORD: &str = "\"/catalog/item[1]\"";
-/// The oracle's copy of the finding the findings query writes, whole. The
-/// census finding of the same record names the same node, so what a shorter
-/// anchor would reach is both of them.
-const QUERY_FINDING: &str = r#"rdf:value "note[1]" ]
-    ]
-  ] ;
-  oa:hasBody ex:noteHasNoTerm ;
-  oa:motivatedBy oa:classifying ;
-  sh:resultSeverity sh:Info ."#;
+/// The node the finding the findings query writes is addressed at, in the
+/// oracle's own text. The census finding of the same record addresses the same
+/// node in the same words, and what tells the two apart is the label of the
+/// part each finding is written as.
+const QUERY_FINDING: &str =
+    "_:b6d15b946ec9af5eb_0_c14n2 a <http://www.w3.org/ns/oa#XPathSelector> ;\n\trdf:value \"note[1]\" .";
 
 /// That finding with its address spelled another way.
 fn query_finding(address: &str) -> String {
@@ -404,9 +401,15 @@ fn fails_an_entry_whose_refinement_leaves_the_record() {
     );
 }
 
+/// The line a written oracle begins with, and where a finding added by hand
+/// goes: what follows it names the rdf: it declares.
+const PROLOGUE: &str = "@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .";
+
 /// The Bridge's own report of the address, as the oracle carries it beside the
-/// finding whose address it is about.
-const REPORTED: &str = "@prefix ex:  <urn:example:catalog#> .
+/// finding whose address it is about. It is written here rather than produced,
+/// so it declares the names it spells its own terms with.
+const REPORTED: &str = "@prefix oa: <http://www.w3.org/ns/oa#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
 
 [] a oa:Annotation ;
   oa:hasTarget [
@@ -428,11 +431,7 @@ fn fails_an_entry_whose_address_selects_no_node() {
         &variants(vec![
             (NOTE_QUERY, NOTE, "rdf:value \"nowhere\"".to_owned()),
             (ORACLE, QUERY_FINDING, query_finding("nowhere")),
-            (
-                ORACLE,
-                "@prefix ex:  <urn:example:catalog#> .",
-                REPORTED.to_owned(),
-            ),
+            (ORACLE, PROLOGUE, format!("{PROLOGUE}\n{REPORTED}")),
         ]),
         "pass",
     );
