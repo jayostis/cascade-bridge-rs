@@ -102,6 +102,12 @@ fn graph(path: &Path) -> BTreeSet<String> {
 }
 
 fn converts_as_the_native_command_does(adapter: &Path, document: &str, extra: &[&str]) {
+    // Cases run in parallel, so each adapter's files are named apart.
+    let named = adapter
+        .file_name()
+        .expect("a name")
+        .to_string_lossy()
+        .into_owned();
     let document = adapter.join("fixtures/in").join(document);
     let adapter = adapter.to_string_lossy().into_owned();
     let document = document.to_string_lossy().into_owned();
@@ -112,8 +118,8 @@ fn converts_as_the_native_command_does(adapter: &Path, document: &str, extra: &[
         .into_owned();
     let mut written = BTreeMap::new();
     for host in ["native", "node"] {
-        let out = scratch(&format!("{stem}-{host}-graph.ttl"));
-        let found = scratch(&format!("{stem}-{host}-findings.ttl"));
+        let out = scratch(&format!("{named}-{stem}-{host}-graph.ttl"));
+        let found = scratch(&format!("{named}-{stem}-{host}-findings.ttl"));
         let mut arguments = vec![
             "convert".to_owned(),
             adapter.clone(),
