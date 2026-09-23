@@ -1,14 +1,14 @@
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 @prefix ex: <urn:example:catalog#> .
-_:b664b02aad0848e9d_0_c14n0 a <http://www.w3.org/ns/oa#Annotation> ;
+_:b296d8da384916e35_0_c0 a <http://www.w3.org/ns/oa#Annotation> ;
 	<http://www.w3.org/ns/oa#hasBody> <http://www.w3.org/ns/shacl#MaxLengthConstraintComponent> ;
-	<http://www.w3.org/ns/oa#hasTarget> _:b664b02aad0848e9d_0_c14n2 ;
+	<http://www.w3.org/ns/oa#hasTarget> _:b296d8da384916e35_0_c2 ;
 	<http://www.w3.org/ns/oa#motivatedBy> <http://www.w3.org/ns/oa#classifying> ;
 	<http://www.w3.org/ns/shacl#focusNode> <urn:example:item:1> ;
 	<http://www.w3.org/ns/shacl#resultPath> ex:code ;
 	<http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Warning> .
-_:b664b02aad0848e9d_0_c14n1 a <http://www.w3.org/ns/oa#XPathSelector> ;
+_:b296d8da384916e35_0_c1 a <http://www.w3.org/ns/oa#XPathSelector> ;
 	rdf:value "/catalog/item[1]" .
-_:b664b02aad0848e9d_0_c14n2 <http://www.w3.org/ns/oa#hasSelector> _:b664b02aad0848e9d_0_c14n1 ;
+_:b296d8da384916e35_0_c2 <http://www.w3.org/ns/oa#hasSelector> _:b296d8da384916e35_0_c1 ;
 	<http://www.w3.org/ns/oa#hasSource> <../in/output-fails-a-shape.xml> .

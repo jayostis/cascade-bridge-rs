@@ -1,15 +1,15 @@
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
-_:b99d0db58fdf7c77d_0_c14n0 a <http://www.w3.org/ns/oa#XPathSelector> ;
+_:b5a5ac1c95ed3fa32_0_c0 a <http://www.w3.org/ns/oa#XPathSelector> ;
 	rdf:value "/catalog/item[1]" ;
-	<http://www.w3.org/ns/oa#refinedBy> _:b99d0db58fdf7c77d_0_c14n3 .
-_:b99d0db58fdf7c77d_0_c14n1 a <http://www.w3.org/ns/oa#Annotation> ;
+	<http://www.w3.org/ns/oa#refinedBy> _:b5a5ac1c95ed3fa32_0_c3 .
+_:b5a5ac1c95ed3fa32_0_c1 <http://www.w3.org/ns/oa#hasSelector> _:b5a5ac1c95ed3fa32_0_c0 ;
+	<http://www.w3.org/ns/oa#hasSource> <../in/unaccounted-child.xml> .
+_:b5a5ac1c95ed3fa32_0_c2 a <http://www.w3.org/ns/oa#Annotation> ;
 	<http://www.w3.org/ns/oa#hasBody> <https://ns.cascadeprotocol.org/bridge/v1-draft#pathNotAccounted> ;
-	<http://www.w3.org/ns/oa#hasTarget> _:b99d0db58fdf7c77d_0_c14n2 ;
+	<http://www.w3.org/ns/oa#hasTarget> _:b5a5ac1c95ed3fa32_0_c1 ;
 	<http://www.w3.org/ns/oa#motivatedBy> <http://www.w3.org/ns/oa#classifying> ;
 	<http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Info> ;
 	<http://www.w3.org/ns/shacl#value> "/item/novelty" .
-_:b99d0db58fdf7c77d_0_c14n2 <http://www.w3.org/ns/oa#hasSelector> _:b99d0db58fdf7c77d_0_c14n0 ;
-	<http://www.w3.org/ns/oa#hasSource> <../in/unaccounted-child.xml> .
-_:b99d0db58fdf7c77d_0_c14n3 a <http://www.w3.org/ns/oa#XPathSelector> ;
+_:b5a5ac1c95ed3fa32_0_c3 a <http://www.w3.org/ns/oa#XPathSelector> ;
 	rdf:value "novelty[1]" .

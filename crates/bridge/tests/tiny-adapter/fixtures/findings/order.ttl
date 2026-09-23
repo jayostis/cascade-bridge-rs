@@ -1,75 +1,75 @@
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 @prefix ex: <urn:example:catalog#> .
-_:be3eee35cb1dae09b_0_c14n0 a <http://www.w3.org/ns/oa#Annotation> ;
-	<http://www.w3.org/ns/oa#hasBody> ex:noteHasNoTerm ;
-	<http://www.w3.org/ns/oa#hasTarget> _:be3eee35cb1dae09b_0_c14n3 ;
+_:b5ad3827fbbcd0c42_0_c0 a <http://www.w3.org/ns/oa#Annotation> ;
+	<http://www.w3.org/ns/oa#hasBody> ex:itemHasNoTitle ;
+	<http://www.w3.org/ns/oa#hasTarget> _:b5ad3827fbbcd0c42_0_c1 ;
 	<http://www.w3.org/ns/oa#motivatedBy> <http://www.w3.org/ns/oa#classifying> ;
-	<http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Info> .
-_:be3eee35cb1dae09b_0_c14n1 a <http://www.w3.org/ns/oa#XPathSelector> ;
-	rdf:value "/catalog/item[2]" ;
-	<http://www.w3.org/ns/oa#refinedBy> _:be3eee35cb1dae09b_0_c14n2 .
-_:be3eee35cb1dae09b_0_c14n2 a <http://www.w3.org/ns/oa#XPathSelector> ;
-	rdf:value "note[1]" .
-_:be3eee35cb1dae09b_0_c14n3 <http://www.w3.org/ns/oa#hasSelector> _:be3eee35cb1dae09b_0_c14n1 ;
+	<http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Warning> .
+_:b5ad3827fbbcd0c42_0_c1 <http://www.w3.org/ns/oa#hasSelector> _:b5ad3827fbbcd0c42_0_c2 ;
 	<http://www.w3.org/ns/oa#hasSource> <../in/order.xml> .
-_:b90ffbf391dbcd78e_0_c14n0 a <http://www.w3.org/ns/oa#XPathSelector> ;
-	rdf:value "/catalog/item[1]" ;
-	<http://www.w3.org/ns/oa#refinedBy> _:b90ffbf391dbcd78e_0_c14n1 .
-_:b90ffbf391dbcd78e_0_c14n1 a <http://www.w3.org/ns/oa#XPathSelector> ;
+_:b5ad3827fbbcd0c42_0_c2 a <http://www.w3.org/ns/oa#XPathSelector> ;
+	rdf:value "/catalog/item[1]" .
+_:bd8808d3dca26126e_0_c0 a <http://www.w3.org/ns/oa#XPathSelector> ;
 	rdf:value "note[1]" .
-_:b90ffbf391dbcd78e_0_c14n2 <http://www.w3.org/ns/oa#hasSelector> _:b90ffbf391dbcd78e_0_c14n0 ;
-	<http://www.w3.org/ns/oa#hasSource> <../in/order.xml> .
-_:b90ffbf391dbcd78e_0_c14n3 a <http://www.w3.org/ns/oa#Annotation> ;
+_:bd8808d3dca26126e_0_c1 a <http://www.w3.org/ns/oa#Annotation> ;
 	<http://www.w3.org/ns/oa#hasBody> ex:noteHasNoTerm ;
-	<http://www.w3.org/ns/oa#hasTarget> _:b90ffbf391dbcd78e_0_c14n2 ;
+	<http://www.w3.org/ns/oa#hasTarget> _:bd8808d3dca26126e_0_c3 ;
 	<http://www.w3.org/ns/oa#motivatedBy> <http://www.w3.org/ns/oa#classifying> ;
 	<http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Info> ;
 	<http://www.w3.org/ns/shacl#value> "/item/note" ;
 	<https://ns.cascadeprotocol.org/bridge/v1-draft#occurrences> 2 .
-_:b94379bb86c2bacbb_0_c14n0 a <http://www.w3.org/ns/oa#XPathSelector> ;
+_:bd8808d3dca26126e_0_c2 a <http://www.w3.org/ns/oa#XPathSelector> ;
 	rdf:value "/catalog/item[1]" ;
-	<http://www.w3.org/ns/oa#refinedBy> _:b94379bb86c2bacbb_0_c14n2 .
-_:b94379bb86c2bacbb_0_c14n1 a <http://www.w3.org/ns/oa#Annotation> ;
-	<http://www.w3.org/ns/oa#hasBody> ex:noteHasNoTerm ;
-	<http://www.w3.org/ns/oa#hasTarget> _:b94379bb86c2bacbb_0_c14n3 ;
-	<http://www.w3.org/ns/oa#motivatedBy> <http://www.w3.org/ns/oa#classifying> ;
-	<http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Info> .
-_:b94379bb86c2bacbb_0_c14n2 a <http://www.w3.org/ns/oa#XPathSelector> ;
+	<http://www.w3.org/ns/oa#refinedBy> _:bd8808d3dca26126e_0_c0 .
+_:bd8808d3dca26126e_0_c3 <http://www.w3.org/ns/oa#hasSelector> _:bd8808d3dca26126e_0_c2 ;
+	<http://www.w3.org/ns/oa#hasSource> <../in/order.xml> .
+_:b7feb678db4568680_0_c0 a <http://www.w3.org/ns/oa#XPathSelector> ;
 	rdf:value "note[1]" .
-_:b94379bb86c2bacbb_0_c14n3 <http://www.w3.org/ns/oa#hasSelector> _:b94379bb86c2bacbb_0_c14n0 ;
-	<http://www.w3.org/ns/oa#hasSource> <../in/order.xml> .
-_:b9ff47453b5eb681e_0_c14n0 a <http://www.w3.org/ns/oa#XPathSelector> ;
-	rdf:value "/catalog/item[1]" ;
-	<http://www.w3.org/ns/oa#refinedBy> _:b9ff47453b5eb681e_0_c14n3 .
-_:b9ff47453b5eb681e_0_c14n1 a <http://www.w3.org/ns/oa#Annotation> ;
+_:b7feb678db4568680_0_c1 a <http://www.w3.org/ns/oa#Annotation> ;
 	<http://www.w3.org/ns/oa#hasBody> ex:noteHasNoTerm ;
-	<http://www.w3.org/ns/oa#hasTarget> _:b9ff47453b5eb681e_0_c14n2 ;
-	<http://www.w3.org/ns/oa#motivatedBy> <http://www.w3.org/ns/oa#classifying> ;
-	<http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Info> .
-_:b9ff47453b5eb681e_0_c14n2 <http://www.w3.org/ns/oa#hasSelector> _:b9ff47453b5eb681e_0_c14n0 ;
-	<http://www.w3.org/ns/oa#hasSource> <../in/order.xml> .
-_:b9ff47453b5eb681e_0_c14n3 a <http://www.w3.org/ns/oa#XPathSelector> ;
-	rdf:value "note[2]" .
-_:b7f24ac459552fa90_0_c14n0 a <http://www.w3.org/ns/oa#XPathSelector> ;
-	rdf:value "/catalog/item[2]" ;
-	<http://www.w3.org/ns/oa#refinedBy> _:b7f24ac459552fa90_0_c14n2 .
-_:b7f24ac459552fa90_0_c14n1 a <http://www.w3.org/ns/oa#Annotation> ;
-	<http://www.w3.org/ns/oa#hasBody> ex:noteHasNoTerm ;
-	<http://www.w3.org/ns/oa#hasTarget> _:b7f24ac459552fa90_0_c14n3 ;
+	<http://www.w3.org/ns/oa#hasTarget> _:b7feb678db4568680_0_c3 ;
 	<http://www.w3.org/ns/oa#motivatedBy> <http://www.w3.org/ns/oa#classifying> ;
 	<http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Info> ;
 	<http://www.w3.org/ns/shacl#value> "/item/note" .
-_:b7f24ac459552fa90_0_c14n2 a <http://www.w3.org/ns/oa#XPathSelector> ;
+_:b7feb678db4568680_0_c2 a <http://www.w3.org/ns/oa#XPathSelector> ;
+	rdf:value "/catalog/item[2]" ;
+	<http://www.w3.org/ns/oa#refinedBy> _:b7feb678db4568680_0_c0 .
+_:b7feb678db4568680_0_c3 <http://www.w3.org/ns/oa#hasSelector> _:b7feb678db4568680_0_c2 ;
+	<http://www.w3.org/ns/oa#hasSource> <../in/order.xml> .
+_:b849704b6a2b5088b_0_c0 a <http://www.w3.org/ns/oa#XPathSelector> ;
 	rdf:value "note[1]" .
-_:b7f24ac459552fa90_0_c14n3 <http://www.w3.org/ns/oa#hasSelector> _:b7f24ac459552fa90_0_c14n0 ;
-	<http://www.w3.org/ns/oa#hasSource> <../in/order.xml> .
-_:b9e4bc298f1a0b204_0_c14n0 <http://www.w3.org/ns/oa#hasSelector> _:b9e4bc298f1a0b204_0_c14n1 ;
-	<http://www.w3.org/ns/oa#hasSource> <../in/order.xml> .
-_:b9e4bc298f1a0b204_0_c14n1 a <http://www.w3.org/ns/oa#XPathSelector> ;
-	rdf:value "/catalog/item[1]" .
-_:b9e4bc298f1a0b204_0_c14n2 a <http://www.w3.org/ns/oa#Annotation> ;
-	<http://www.w3.org/ns/oa#hasBody> ex:itemHasNoTitle ;
-	<http://www.w3.org/ns/oa#hasTarget> _:b9e4bc298f1a0b204_0_c14n0 ;
+_:b849704b6a2b5088b_0_c1 a <http://www.w3.org/ns/oa#XPathSelector> ;
+	rdf:value "/catalog/item[1]" ;
+	<http://www.w3.org/ns/oa#refinedBy> _:b849704b6a2b5088b_0_c0 .
+_:b849704b6a2b5088b_0_c2 a <http://www.w3.org/ns/oa#Annotation> ;
+	<http://www.w3.org/ns/oa#hasBody> ex:noteHasNoTerm ;
+	<http://www.w3.org/ns/oa#hasTarget> _:b849704b6a2b5088b_0_c3 ;
 	<http://www.w3.org/ns/oa#motivatedBy> <http://www.w3.org/ns/oa#classifying> ;
-	<http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Warning> .
+	<http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Info> .
+_:b849704b6a2b5088b_0_c3 <http://www.w3.org/ns/oa#hasSelector> _:b849704b6a2b5088b_0_c1 ;
+	<http://www.w3.org/ns/oa#hasSource> <../in/order.xml> .
+_:b4325c1086132683a_0_c0 a <http://www.w3.org/ns/oa#XPathSelector> ;
+	rdf:value "note[1]" .
+_:b4325c1086132683a_0_c1 a <http://www.w3.org/ns/oa#XPathSelector> ;
+	rdf:value "/catalog/item[2]" ;
+	<http://www.w3.org/ns/oa#refinedBy> _:b4325c1086132683a_0_c0 .
+_:b4325c1086132683a_0_c2 <http://www.w3.org/ns/oa#hasSelector> _:b4325c1086132683a_0_c1 ;
+	<http://www.w3.org/ns/oa#hasSource> <../in/order.xml> .
+_:b4325c1086132683a_0_c3 a <http://www.w3.org/ns/oa#Annotation> ;
+	<http://www.w3.org/ns/oa#hasBody> ex:noteHasNoTerm ;
+	<http://www.w3.org/ns/oa#hasTarget> _:b4325c1086132683a_0_c2 ;
+	<http://www.w3.org/ns/oa#motivatedBy> <http://www.w3.org/ns/oa#classifying> ;
+	<http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Info> .
+_:b77e06d41ed1f73f7_0_c0 a <http://www.w3.org/ns/oa#XPathSelector> ;
+	rdf:value "note[2]" .
+_:b77e06d41ed1f73f7_0_c1 a <http://www.w3.org/ns/oa#XPathSelector> ;
+	rdf:value "/catalog/item[1]" ;
+	<http://www.w3.org/ns/oa#refinedBy> _:b77e06d41ed1f73f7_0_c0 .
+_:b77e06d41ed1f73f7_0_c2 a <http://www.w3.org/ns/oa#Annotation> ;
+	<http://www.w3.org/ns/oa#hasBody> ex:noteHasNoTerm ;
+	<http://www.w3.org/ns/oa#hasTarget> _:b77e06d41ed1f73f7_0_c3 ;
+	<http://www.w3.org/ns/oa#motivatedBy> <http://www.w3.org/ns/oa#classifying> ;
+	<http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Info> .
+_:b77e06d41ed1f73f7_0_c3 <http://www.w3.org/ns/oa#hasSelector> _:b77e06d41ed1f73f7_0_c1 ;
+	<http://www.w3.org/ns/oa#hasSource> <../in/order.xml> .
