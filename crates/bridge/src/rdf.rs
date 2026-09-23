@@ -101,6 +101,14 @@ terms! {
     MF_NAME = "http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#", "name";
 }
 
+/// The names every findings graph is written under, whatever the adapter.
+pub const FINDINGS_PREFIXES: [(&str, &str); 4] = [
+    ("rdf", "http://www.w3.org/1999/02/22-rdf-syntax-ns#"),
+    ("oa", "http://www.w3.org/ns/oa#"),
+    ("sh", "http://www.w3.org/ns/shacl#"),
+    ("bridge", "https://ns.cascadeprotocol.org/bridge/v1-draft#"),
+];
+
 /// RDFC-1.0 canonical N-Quads, one line per quad, duplicates removed: two
 /// graphs are isomorphic exactly when these are equal.
 pub fn canonical_lines(quads: impl IntoIterator<Item = Quad>) -> Result<BTreeSet<String>> {

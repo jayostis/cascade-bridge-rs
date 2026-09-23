@@ -16,9 +16,9 @@ use crate::load::{subject, value, values, Adapter};
 use crate::rdf::{
     BRIDGE_CARRIED_IN_PART, BRIDGE_LOOKUP_IN, BRIDGE_LOOKUP_NAMES_GAP, BRIDGE_NAMES_GAP,
     BRIDGE_NO_HOME, BRIDGE_NO_PREDICATE, BRIDGE_PATH_ENTRY, BRIDGE_SOURCE_LACKS_REQUIRED,
-    BRIDGE_SOURCE_PATH, BRIDGE_STAMP_PREDICATE, BRIDGE_VALUE_NOT_MAPPED, BRIDGE_VERDICT, RDF_TYPE,
-    SCHEMA_ENCODING_FORMAT, SH_INFO, SH_RESULT_SEVERITY, SH_VIOLATION, SH_WARNING, SKOS_BROADER,
-    SKOS_CONCEPT_SCHEME, SKOS_NOTATION,
+    BRIDGE_SOURCE_PATH, BRIDGE_STAMP_PREDICATE, BRIDGE_VALUE_NOT_MAPPED, BRIDGE_VERDICT,
+    FINDINGS_PREFIXES, RDF_TYPE, SCHEMA_ENCODING_FORMAT, SH_INFO, SH_RESULT_SEVERITY, SH_VIOLATION,
+    SH_WARNING, SKOS_BROADER, SKOS_CONCEPT_SCHEME, SKOS_NOTATION,
 };
 use crate::resolver::Resolver;
 use crate::validate::{self, Schema};
@@ -122,6 +122,9 @@ pub struct Prepared {
     /// Every name the mappings give a namespace, the first binding of a name
     /// winning, as a query's own prologue binds it.
     pub prefixes: Vec<(String, String)>,
+    /// The names a findings graph is written under: the fixed ones, then those
+    /// the gap scheme declares that neither rename nor rebind them.
+    pub findings_prefixes: Vec<(String, String)>,
     envelopes: Vec<Envelope>,
     source_schema: Option<Schema>,
     /// What each record's produced graph is read against, where the command
@@ -535,15 +538,21 @@ fn entries(resolver: &dyn Resolver, iri: &str) -> Result<Vec<Entry>> {
 /// the parse order deciding how loud the gap is — and one declaring two
 /// `skos:broader` for the same reason one step harder, where the parse order
 /// would decide whether the gap reports at all.
-fn gap_scheme(resolver: &dyn Resolver, iri: &str) -> Result<HashMap<String, Gap>> {
+///
+/// The prefixes the file declares come with it, as the names its gaps are
+/// written under.
+fn gap_scheme(
+    resolver: &dyn Resolver,
+    iri: &str,
+) -> Result<(HashMap<String, Gap>, Vec<(String, String)>)> {
     let bytes = resolver
         .read(iri)
         .map_err(|e| Error::msg(format!("{iri}: {e}")))?;
     let mut scheme: HashMap<String, Gap> = HashMap::new();
-    for quad in RdfParser::from_format(RdfFormat::Turtle)
+    let mut parser = RdfParser::from_format(RdfFormat::Turtle)
         .with_base_iri(iri)?
-        .for_slice(&bytes)
-    {
+        .for_slice(&bytes);
+    for quad in parser.by_ref() {
         let quad = quad.map_err(|e| Error::msg(format!("{iri}: {e}")))?;
         let NamedOrBlankNode::NamedNode(concept) = &quad.subject else {
             continue;
@@ -583,7 +592,11 @@ fn gap_scheme(resolver: &dyn Resolver, iri: &str) -> Result<HashMap<String, Gap>
             declared.severity = Some(object.as_str().to_owned());
         }
     }
-    Ok(scheme)
+    let prefixes = parser
+        .prefixes()
+        .map(|(name, namespace)| (name.to_owned(), namespace.to_owned()))
+        .collect();
+    Ok((scheme, prefixes))
 }
 
 /// Every `skos:notation` a concept map carries, which is the whole of what a
@@ -727,7 +740,7 @@ pub fn prepare(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prepared> {
         });
     }
 
-    let scheme = adapter
+    let (scheme, gap_prefixes) = adapter
         .gap_scheme
         .as_deref()
         .map(|iri| gap_scheme(resolver, iri))
@@ -738,6 +751,19 @@ pub fn prepare(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prepared> {
     for (name, namespace) in mappings.iter().flat_map(|m| m.prefixes.iter()) {
         if !prefixes.iter().any(|(taken, _)| taken == name) {
             prefixes.push((name.clone(), namespace.clone()));
+        }
+    }
+
+    let mut findings_prefixes: Vec<(String, String)> = FINDINGS_PREFIXES
+        .iter()
+        .map(|(name, namespace)| ((*name).to_owned(), (*namespace).to_owned()))
+        .collect();
+    for (name, namespace) in gap_prefixes {
+        if !findings_prefixes
+            .iter()
+            .any(|(taken, bound)| *taken == name || *bound == namespace)
+        {
+            findings_prefixes.push((name, namespace));
         }
     }
 
@@ -755,6 +781,7 @@ pub fn prepare(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prepared> {
         detect,
         tables,
         prefixes,
+        findings_prefixes,
         envelopes,
         source_schema,
         vocabulary,
