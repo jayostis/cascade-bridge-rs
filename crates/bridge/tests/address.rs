@@ -310,7 +310,7 @@ const RECORD: &str = "\"/catalog/item[1]\"";
 /// node in the same words, and what tells the two apart is the label of the
 /// part each finding is written as.
 const QUERY_FINDING: &str =
-    "_:b6d15b946ec9af5eb_0_c14n2 a <http://www.w3.org/ns/oa#XPathSelector> ;\n\trdf:value \"note[1]\" .";
+    "_:b6c03d10cfc4b4590_0_c0 a <http://www.w3.org/ns/oa#XPathSelector> ;\n\trdf:value \"note[1]\" .";
 
 /// That finding with its address spelled another way.
 fn query_finding(address: &str) -> String {
