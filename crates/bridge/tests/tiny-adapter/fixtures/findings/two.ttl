@@ -1,40 +1,37 @@
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
-@prefix sh:  <http://www.w3.org/ns/shacl#> .
-@prefix oa:  <http://www.w3.org/ns/oa#> .
-@prefix ex:  <urn:example:catalog#> .
-
-[] a oa:Annotation ;
-  oa:hasTarget [
-    oa:hasSource <../in/two.xml> ;
-    oa:hasSelector [
-      a oa:XPathSelector ;
-      rdf:value "/catalog/item[1]" ;
-      oa:refinedBy [ a oa:XPathSelector ; rdf:value "note[1]" ]
-    ]
-  ] ;
-  oa:hasBody ex:noteHasNoTerm ;
-  oa:motivatedBy oa:classifying ;
-  sh:resultSeverity sh:Info .
-
-[] a oa:Annotation ;
-  oa:hasTarget [
-    oa:hasSource <../in/two.xml> ;
-    oa:hasSelector [ a oa:XPathSelector ; rdf:value "/catalog/item[2]" ]
-  ] ;
-  oa:hasBody ex:itemHasNoTitle ;
-  oa:motivatedBy oa:classifying ;
-  sh:resultSeverity sh:Warning .
-
-[] a oa:Annotation ;
-  oa:hasTarget [
-    oa:hasSource <../in/two.xml> ;
-    oa:hasSelector [
-      a oa:XPathSelector ;
-      rdf:value "/catalog/item[1]" ;
-      oa:refinedBy [ a oa:XPathSelector ; rdf:value "note[1]" ]
-    ]
-  ] ;
-  oa:hasBody ex:noteHasNoTerm ;
-  oa:motivatedBy oa:classifying ;
-  sh:value "/item/note" ;
-  sh:resultSeverity sh:Info .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex: <urn:example:catalog#> .
+_:b26baea82663435bd_0_c14n0 a <http://www.w3.org/ns/oa#XPathSelector> ;
+	rdf:value "/catalog/item[1]" ;
+	<http://www.w3.org/ns/oa#refinedBy> _:b26baea82663435bd_0_c14n2 .
+_:b26baea82663435bd_0_c14n1 a <http://www.w3.org/ns/oa#Annotation> ;
+	<http://www.w3.org/ns/oa#hasBody> ex:noteHasNoTerm ;
+	<http://www.w3.org/ns/oa#hasTarget> _:b26baea82663435bd_0_c14n3 ;
+	<http://www.w3.org/ns/oa#motivatedBy> <http://www.w3.org/ns/oa#classifying> ;
+	<http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Info> ;
+	<http://www.w3.org/ns/shacl#value> "/item/note" .
+_:b26baea82663435bd_0_c14n2 a <http://www.w3.org/ns/oa#XPathSelector> ;
+	rdf:value "note[1]" .
+_:b26baea82663435bd_0_c14n3 <http://www.w3.org/ns/oa#hasSelector> _:b26baea82663435bd_0_c14n0 ;
+	<http://www.w3.org/ns/oa#hasSource> <../in/two.xml> .
+_:b6d15b946ec9af5eb_0_c14n0 a <http://www.w3.org/ns/oa#XPathSelector> ;
+	rdf:value "/catalog/item[1]" ;
+	<http://www.w3.org/ns/oa#refinedBy> _:b6d15b946ec9af5eb_0_c14n2 .
+_:b6d15b946ec9af5eb_0_c14n1 a <http://www.w3.org/ns/oa#Annotation> ;
+	<http://www.w3.org/ns/oa#hasBody> ex:noteHasNoTerm ;
+	<http://www.w3.org/ns/oa#hasTarget> _:b6d15b946ec9af5eb_0_c14n3 ;
+	<http://www.w3.org/ns/oa#motivatedBy> <http://www.w3.org/ns/oa#classifying> ;
+	<http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Info> .
+_:b6d15b946ec9af5eb_0_c14n2 a <http://www.w3.org/ns/oa#XPathSelector> ;
+	rdf:value "note[1]" .
+_:b6d15b946ec9af5eb_0_c14n3 <http://www.w3.org/ns/oa#hasSelector> _:b6d15b946ec9af5eb_0_c14n0 ;
+	<http://www.w3.org/ns/oa#hasSource> <../in/two.xml> .
+_:b67986923b78c29dd_0_c14n0 <http://www.w3.org/ns/oa#hasSelector> _:b67986923b78c29dd_0_c14n1 ;
+	<http://www.w3.org/ns/oa#hasSource> <../in/two.xml> .
+_:b67986923b78c29dd_0_c14n1 a <http://www.w3.org/ns/oa#XPathSelector> ;
+	rdf:value "/catalog/item[2]" .
+_:b67986923b78c29dd_0_c14n2 a <http://www.w3.org/ns/oa#Annotation> ;
+	<http://www.w3.org/ns/oa#hasBody> ex:itemHasNoTitle ;
+	<http://www.w3.org/ns/oa#hasTarget> _:b67986923b78c29dd_0_c14n0 ;
+	<http://www.w3.org/ns/oa#motivatedBy> <http://www.w3.org/ns/oa#classifying> ;
+	<http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Warning> .

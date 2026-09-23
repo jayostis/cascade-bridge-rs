@@ -1,82 +1,75 @@
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
-@prefix sh:  <http://www.w3.org/ns/shacl#> .
-@prefix oa:  <http://www.w3.org/ns/oa#> .
-@prefix bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
-@prefix ex:  <urn:example:catalog#> .
-
-[] a oa:Annotation ;
-  oa:hasTarget [
-    oa:hasSource <../in/order.xml> ;
-    oa:hasSelector [
-      a oa:XPathSelector ;
-      rdf:value "/catalog/item[1]" ;
-      oa:refinedBy [ a oa:XPathSelector ; rdf:value "note[1]" ]
-    ]
-  ] ;
-  oa:hasBody ex:noteHasNoTerm ;
-  oa:motivatedBy oa:classifying ;
-  sh:resultSeverity sh:Info .
-
-[] a oa:Annotation ;
-  oa:hasTarget [
-    oa:hasSource <../in/order.xml> ;
-    oa:hasSelector [
-      a oa:XPathSelector ;
-      rdf:value "/catalog/item[1]" ;
-      oa:refinedBy [ a oa:XPathSelector ; rdf:value "note[2]" ]
-    ]
-  ] ;
-  oa:hasBody ex:noteHasNoTerm ;
-  oa:motivatedBy oa:classifying ;
-  sh:resultSeverity sh:Info .
-
-[] a oa:Annotation ;
-  oa:hasTarget [
-    oa:hasSource <../in/order.xml> ;
-    oa:hasSelector [ a oa:XPathSelector ; rdf:value "/catalog/item[1]" ]
-  ] ;
-  oa:hasBody ex:itemHasNoTitle ;
-  oa:motivatedBy oa:classifying ;
-  sh:resultSeverity sh:Warning .
-
-[] a oa:Annotation ;
-  oa:hasTarget [
-    oa:hasSource <../in/order.xml> ;
-    oa:hasSelector [
-      a oa:XPathSelector ;
-      rdf:value "/catalog/item[2]" ;
-      oa:refinedBy [ a oa:XPathSelector ; rdf:value "note[1]" ]
-    ]
-  ] ;
-  oa:hasBody ex:noteHasNoTerm ;
-  oa:motivatedBy oa:classifying ;
-  sh:resultSeverity sh:Info .
-
-[] a oa:Annotation ;
-  oa:hasTarget [
-    oa:hasSource <../in/order.xml> ;
-    oa:hasSelector [
-      a oa:XPathSelector ;
-      rdf:value "/catalog/item[1]" ;
-      oa:refinedBy [ a oa:XPathSelector ; rdf:value "note[1]" ]
-    ]
-  ] ;
-  oa:hasBody ex:noteHasNoTerm ;
-  oa:motivatedBy oa:classifying ;
-  sh:value "/item/note" ;
-  bridge:occurrences 2 ;
-  sh:resultSeverity sh:Info .
-
-[] a oa:Annotation ;
-  oa:hasTarget [
-    oa:hasSource <../in/order.xml> ;
-    oa:hasSelector [
-      a oa:XPathSelector ;
-      rdf:value "/catalog/item[2]" ;
-      oa:refinedBy [ a oa:XPathSelector ; rdf:value "note[1]" ]
-    ]
-  ] ;
-  oa:hasBody ex:noteHasNoTerm ;
-  oa:motivatedBy oa:classifying ;
-  sh:value "/item/note" ;
-  sh:resultSeverity sh:Info .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex: <urn:example:catalog#> .
+_:be3eee35cb1dae09b_0_c14n0 a <http://www.w3.org/ns/oa#Annotation> ;
+	<http://www.w3.org/ns/oa#hasBody> ex:noteHasNoTerm ;
+	<http://www.w3.org/ns/oa#hasTarget> _:be3eee35cb1dae09b_0_c14n3 ;
+	<http://www.w3.org/ns/oa#motivatedBy> <http://www.w3.org/ns/oa#classifying> ;
+	<http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Info> .
+_:be3eee35cb1dae09b_0_c14n1 a <http://www.w3.org/ns/oa#XPathSelector> ;
+	rdf:value "/catalog/item[2]" ;
+	<http://www.w3.org/ns/oa#refinedBy> _:be3eee35cb1dae09b_0_c14n2 .
+_:be3eee35cb1dae09b_0_c14n2 a <http://www.w3.org/ns/oa#XPathSelector> ;
+	rdf:value "note[1]" .
+_:be3eee35cb1dae09b_0_c14n3 <http://www.w3.org/ns/oa#hasSelector> _:be3eee35cb1dae09b_0_c14n1 ;
+	<http://www.w3.org/ns/oa#hasSource> <../in/order.xml> .
+_:b90ffbf391dbcd78e_0_c14n0 a <http://www.w3.org/ns/oa#XPathSelector> ;
+	rdf:value "/catalog/item[1]" ;
+	<http://www.w3.org/ns/oa#refinedBy> _:b90ffbf391dbcd78e_0_c14n1 .
+_:b90ffbf391dbcd78e_0_c14n1 a <http://www.w3.org/ns/oa#XPathSelector> ;
+	rdf:value "note[1]" .
+_:b90ffbf391dbcd78e_0_c14n2 <http://www.w3.org/ns/oa#hasSelector> _:b90ffbf391dbcd78e_0_c14n0 ;
+	<http://www.w3.org/ns/oa#hasSource> <../in/order.xml> .
+_:b90ffbf391dbcd78e_0_c14n3 a <http://www.w3.org/ns/oa#Annotation> ;
+	<http://www.w3.org/ns/oa#hasBody> ex:noteHasNoTerm ;
+	<http://www.w3.org/ns/oa#hasTarget> _:b90ffbf391dbcd78e_0_c14n2 ;
+	<http://www.w3.org/ns/oa#motivatedBy> <http://www.w3.org/ns/oa#classifying> ;
+	<http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Info> ;
+	<http://www.w3.org/ns/shacl#value> "/item/note" ;
+	<https://ns.cascadeprotocol.org/bridge/v1-draft#occurrences> 2 .
+_:b94379bb86c2bacbb_0_c14n0 a <http://www.w3.org/ns/oa#XPathSelector> ;
+	rdf:value "/catalog/item[1]" ;
+	<http://www.w3.org/ns/oa#refinedBy> _:b94379bb86c2bacbb_0_c14n2 .
+_:b94379bb86c2bacbb_0_c14n1 a <http://www.w3.org/ns/oa#Annotation> ;
+	<http://www.w3.org/ns/oa#hasBody> ex:noteHasNoTerm ;
+	<http://www.w3.org/ns/oa#hasTarget> _:b94379bb86c2bacbb_0_c14n3 ;
+	<http://www.w3.org/ns/oa#motivatedBy> <http://www.w3.org/ns/oa#classifying> ;
+	<http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Info> .
+_:b94379bb86c2bacbb_0_c14n2 a <http://www.w3.org/ns/oa#XPathSelector> ;
+	rdf:value "note[1]" .
+_:b94379bb86c2bacbb_0_c14n3 <http://www.w3.org/ns/oa#hasSelector> _:b94379bb86c2bacbb_0_c14n0 ;
+	<http://www.w3.org/ns/oa#hasSource> <../in/order.xml> .
+_:b9ff47453b5eb681e_0_c14n0 a <http://www.w3.org/ns/oa#XPathSelector> ;
+	rdf:value "/catalog/item[1]" ;
+	<http://www.w3.org/ns/oa#refinedBy> _:b9ff47453b5eb681e_0_c14n3 .
+_:b9ff47453b5eb681e_0_c14n1 a <http://www.w3.org/ns/oa#Annotation> ;
+	<http://www.w3.org/ns/oa#hasBody> ex:noteHasNoTerm ;
+	<http://www.w3.org/ns/oa#hasTarget> _:b9ff47453b5eb681e_0_c14n2 ;
+	<http://www.w3.org/ns/oa#motivatedBy> <http://www.w3.org/ns/oa#classifying> ;
+	<http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Info> .
+_:b9ff47453b5eb681e_0_c14n2 <http://www.w3.org/ns/oa#hasSelector> _:b9ff47453b5eb681e_0_c14n0 ;
+	<http://www.w3.org/ns/oa#hasSource> <../in/order.xml> .
+_:b9ff47453b5eb681e_0_c14n3 a <http://www.w3.org/ns/oa#XPathSelector> ;
+	rdf:value "note[2]" .
+_:b7f24ac459552fa90_0_c14n0 a <http://www.w3.org/ns/oa#XPathSelector> ;
+	rdf:value "/catalog/item[2]" ;
+	<http://www.w3.org/ns/oa#refinedBy> _:b7f24ac459552fa90_0_c14n2 .
+_:b7f24ac459552fa90_0_c14n1 a <http://www.w3.org/ns/oa#Annotation> ;
+	<http://www.w3.org/ns/oa#hasBody> ex:noteHasNoTerm ;
+	<http://www.w3.org/ns/oa#hasTarget> _:b7f24ac459552fa90_0_c14n3 ;
+	<http://www.w3.org/ns/oa#motivatedBy> <http://www.w3.org/ns/oa#classifying> ;
+	<http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Info> ;
+	<http://www.w3.org/ns/shacl#value> "/item/note" .
+_:b7f24ac459552fa90_0_c14n2 a <http://www.w3.org/ns/oa#XPathSelector> ;
+	rdf:value "note[1]" .
+_:b7f24ac459552fa90_0_c14n3 <http://www.w3.org/ns/oa#hasSelector> _:b7f24ac459552fa90_0_c14n0 ;
+	<http://www.w3.org/ns/oa#hasSource> <../in/order.xml> .
+_:b9e4bc298f1a0b204_0_c14n0 <http://www.w3.org/ns/oa#hasSelector> _:b9e4bc298f1a0b204_0_c14n1 ;
+	<http://www.w3.org/ns/oa#hasSource> <../in/order.xml> .
+_:b9e4bc298f1a0b204_0_c14n1 a <http://www.w3.org/ns/oa#XPathSelector> ;
+	rdf:value "/catalog/item[1]" .
+_:b9e4bc298f1a0b204_0_c14n2 a <http://www.w3.org/ns/oa#Annotation> ;
+	<http://www.w3.org/ns/oa#hasBody> ex:itemHasNoTitle ;
+	<http://www.w3.org/ns/oa#hasTarget> _:b9e4bc298f1a0b204_0_c14n0 ;
+	<http://www.w3.org/ns/oa#motivatedBy> <http://www.w3.org/ns/oa#classifying> ;
+	<http://www.w3.org/ns/shacl#resultSeverity> <http://www.w3.org/ns/shacl#Warning> .
