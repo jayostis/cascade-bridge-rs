@@ -150,12 +150,12 @@ fn blank_of(quad: &Quad) -> Option<&str> {
     }
 }
 
-/// Each part of a graph no blank node reaches out of, and each quad naming no
-/// blank node on its own. A blank node bijection maps such a part onto such a
-/// part, so what tells two graphs apart is a whole part rather than every line
-/// a relabelling moved, and what a part says is what a label of its nodes can
-/// be derived from.
-fn cut(quads: impl IntoIterator<Item = Quad>) -> Vec<Vec<Quad>> {
+/// The quads naming no blank node at all, and each part of a graph no blank
+/// node reaches out of. A blank node bijection maps such a part onto such a
+/// part and leaves such a quad alone, so what tells two graphs apart is a
+/// whole part rather than every line a relabelling moved, and what a part says
+/// is what a label of its nodes can be derived from.
+fn cut(quads: impl IntoIterator<Item = Quad>) -> (Vec<Quad>, Vec<Vec<Quad>>) {
     let quads: HashSet<Quad> = quads.into_iter().collect();
     let mut joined = Joined::default();
     for quad in &quads {
@@ -166,23 +166,29 @@ fn cut(quads: impl IntoIterator<Item = Quad>) -> Vec<Vec<Quad>> {
         }
     }
 
+    let mut alone = Vec::new();
     let mut parts: HashMap<String, Vec<Quad>> = HashMap::new();
     for quad in quads {
-        let key = match blank_of(&quad) {
-            Some(node) => format!("_:{}", joined.root(node)),
-            None => quad.to_string(),
-        };
-        parts.entry(key).or_default().push(quad);
+        match blank_of(&quad) {
+            Some(node) => {
+                let root = joined.root(node);
+                parts.entry(root).or_default().push(quad);
+            }
+            None => alone.push(quad),
+        }
     }
-    parts.into_values().collect()
+    (alone, parts.into_values().collect())
 }
 
 /// Each part of a graph no blank node reaches out of, canonicalised on its own
-/// and written as one line. Two graphs are isomorphic exactly when these
-/// multisets are equal.
+/// and written as one line, and every other quad as the line it already is.
+/// Two graphs are isomorphic exactly when these multisets are equal.
 pub fn canonical_parts(quads: impl IntoIterator<Item = Quad>) -> Result<Vec<String>> {
-    let parts = cut(quads);
-    let mut written: Vec<String> = Vec::with_capacity(parts.len());
+    let (alone, parts) = cut(quads);
+    let mut written: Vec<String> = Vec::with_capacity(alone.len() + parts.len());
+    for quad in alone {
+        written.push(quad.to_string());
+    }
     for part in parts {
         written.push(
             canonical_lines(part)?
@@ -387,6 +393,14 @@ fn fixed(part: Vec<Quad>) -> (String, Vec<Quad>) {
     (text(&quads), quads)
 }
 
+/// What the graph holds in the place its own text gives it: a part its blank
+/// nodes take their labels from, or a quad that has none to take and so is
+/// written as it already stands.
+enum Placed {
+    Alone(Quad),
+    Labelled(Vec<Quad>),
+}
+
 /// The graph written under labels a run cannot vary and in an order it cannot
 /// vary: every blank node is numbered by where the part of the graph it stands
 /// in puts it, labelled by that part, and the parts are written in the order
@@ -398,19 +412,37 @@ fn fixed(part: Vec<Quad>) -> (String, Vec<Quad>) {
 /// triple are two parts still: which copy this is stands in the label, so
 /// findings that differ in nothing are written as the two nodes they are.
 fn stable(quads: &[Quad]) -> Result<Vec<Quad>> {
-    let mut parts: Vec<(String, Vec<Quad>)> =
-        cut(quads.iter().cloned()).into_iter().map(fixed).collect();
-    parts.sort_by(|one, two| one.0.cmp(&two.0));
+    let (alone, parts) = cut(quads.iter().cloned());
+    let mut placed: Vec<(String, Placed)> = Vec::with_capacity(alone.len() + parts.len());
+    placed.extend(
+        alone
+            .into_iter()
+            .map(|quad| (quad.to_string(), Placed::Alone(quad))),
+    );
+    placed.extend(
+        parts
+            .into_iter()
+            .map(fixed)
+            .map(|(text, part)| (text, Placed::Labelled(part))),
+    );
+    placed.sort_by(|one, two| one.0.cmp(&two.0));
 
     let mut copies: HashMap<String, usize> = HashMap::new();
     let mut written = Vec::with_capacity(quads.len());
-    for (text, placed) in &parts {
+    for (text, holds) in placed {
+        let labelled = match holds {
+            Placed::Alone(quad) => {
+                written.push(quad);
+                continue;
+            }
+            Placed::Labelled(quads) => quads,
+        };
         // Which copy this is, counted over the digest rather than the part, so
         // that two parts a digest cannot tell apart are still two nodes.
-        let part = digest(text);
+        let part = digest(&text);
         let copy = *copies.entry(part.clone()).or_default();
         let node = |blank: &BlankNode| under(blank.as_str(), &part, copy);
-        for quad in placed {
+        for quad in &labelled {
             written.push(Quad::new(
                 match &quad.subject {
                     NamedOrBlankNode::BlankNode(blank) => NamedOrBlankNode::from(node(blank)?),
