@@ -172,16 +172,14 @@ fn importing_the_xml_namespace(location: &str) -> Variant {
 }
 
 #[test]
-fn refuses_a_schema_importing_a_namespace_the_adapter_ships_no_schema_for() {
-    let unlocated = importing_the_xml_namespace("");
-    let adapter = load_adapter(&unlocated).expect("adapter");
-    let Err(error) = prepare(&adapter, &unlocated) else {
-        panic!("a schema the adapter does not ship was answered");
-    };
-    let refused = error.to_string();
-    assert!(refused.contains("schema/item.xsd"), "{refused}");
-    assert!(refused.contains(XML_NAMESPACE), "{refused}");
-    assert!(refused.contains("schemaLocation"), "{refused}");
+fn reports_nothing_about_a_record_whose_schema_imports_the_xml_namespace_with_no_schema_location() {
+    let conversion = converted(&importing_the_xml_namespace(""), "two.xml");
+    assert_eq!(
+        violations(&conversion.findings),
+        Vec::<(String, String)>::new(),
+        "{:?}",
+        rows(&conversion.findings)
+    );
 }
 
 #[test]
