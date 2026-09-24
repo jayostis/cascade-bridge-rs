@@ -569,6 +569,28 @@ fn refuses_an_entry_naming_two_gaps() {
 }
 
 #[test]
+fn reads_a_verdict_written_twice_as_the_one_verdict_it_is() {
+    let twice = with_accounting(&format!(
+        "{ACCOUNTING_PREAMBLE}\n[] a bridge:PathEntry ;\n   bridge:sourcePath \"/item/note\" ;\n   bridge:verdict bridge:noHome, bridge:noHome ;\n   bridge:namesGap ex:noteHasNoTerm .\n"
+    ));
+    assert_eq!(
+        reported(&findings(&twice, "two.xml")),
+        [row(NOTE_GAP, "/item/note", "/catalog/item[1]", "note[1]")]
+    );
+}
+
+#[test]
+fn reports_a_gap_once_for_an_entry_writing_its_path_twice() {
+    let twice = with_accounting(&format!(
+        "{ACCOUNTING_PREAMBLE}\n[] a bridge:PathEntry ;\n   bridge:sourcePath \"/item/note\", \"/item/note\" ;\n   bridge:verdict bridge:noHome ;\n   bridge:namesGap ex:noteHasNoTerm .\n"
+    ));
+    assert_eq!(
+        reported(&findings(&twice, "two.xml")),
+        [row(NOTE_GAP, "/item/note", "/catalog/item[1]", "note[1]")]
+    );
+}
+
+#[test]
 fn reads_no_verdict_and_no_gap_from_a_subject_that_is_no_path_entry() {
     let alongside = with_accounting(&format!(
         "{}\nex:notAnEntry bridge:verdict \"free text\" ;\n   bridge:namesGap \"ex:noteHasNoTerm\" ;\n   bridge:verdict \"twice over\" .\n",
