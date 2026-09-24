@@ -77,7 +77,10 @@ impl Directory {
         let Some(path) = inside else {
             return Err(unread(iri, &format!("not inside {what}")));
         };
-        fs::read(&path).map_err(|e| unread(iri, &e.to_string()))
+        fs::read(&path).map_err(|e| match e.kind() {
+            std::io::ErrorKind::NotFound => Error::missing(format!("{iri}: {e}")),
+            _ => unread(iri, &e.to_string()),
+        })
     }
 }
 
