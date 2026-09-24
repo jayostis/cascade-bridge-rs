@@ -292,3 +292,27 @@ fn writes_the_same_findings_graph_as_turtle_as_it_does_as_n_triples() {
         "only {compared} documents had findings to compare"
     );
 }
+
+#[test]
+#[ignore = "Oxigraph 0.5.11 returns derived XSD integer types such as `xsd:positiveInteger` as `xsd:integer`, which SPARQL 1.1 does not allow, so an expected graph that uses them cannot pass on this Bridge."]
+fn keeps_the_derived_integer_type_a_mapping_gave_a_literal() {
+    const POSITIVE_INTEGER: &str = "http://www.w3.org/2001/XMLSchema#positiveInteger";
+    let (conversion, written) = converted(
+        "?s ex:copies ?copies .",
+        &WHERE.replace(
+            "AS ?s)",
+            &format!("AS ?s)\n  BIND(\"3\"^^<{POSITIVE_INTEGER}> AS ?copies)"),
+        ),
+        GraphFormat::NTriples,
+        false,
+    );
+    let copies: Vec<&str> = conversion
+        .quads
+        .iter()
+        .filter_map(|q| match &q.object {
+            Term::Literal(literal) => Some(literal.datatype().as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(copies, [POSITIVE_INTEGER; 2], "{written}");
+}
