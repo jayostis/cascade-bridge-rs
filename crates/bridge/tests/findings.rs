@@ -3,9 +3,10 @@
 // moves the query's selector under the record's own position, so an adapter
 // says what inside a record a finding is about and the Bridge says which
 // record that was.
-use cascade_bridge::{
-    convert, load_adapter, prepare, Conversion, DirectoryResolver, Resolver, Source,
-};
+mod common;
+
+use cascade_bridge::{Conversion, DirectoryResolver, Resolver};
+use common::Subject;
 use oxrdf::{Quad, Term};
 use std::collections::BTreeSet;
 use std::path::PathBuf;
@@ -56,9 +57,13 @@ fn tiny() -> Queries {
     }
 }
 
+thread_local! {
+    static QUERIES: Subject<Queries> = Subject::of(tiny());
+}
+
 /// The tiny adapter's findings for one of its committed inputs.
 fn findings_for(input: &str) -> Vec<Quad> {
-    findings_through(&tiny(), input)
+    QUERIES.with(|queries| queries.findings(input))
 }
 
 fn findings_through(resolver: &dyn Resolver, input: &str) -> Vec<Quad> {
@@ -66,18 +71,8 @@ fn findings_through(resolver: &dyn Resolver, input: &str) -> Vec<Quad> {
 }
 
 fn conversion(resolver: &dyn Resolver, input: &str) -> cascade_bridge::Result<Conversion> {
-    let adapter = load_adapter(resolver).expect("adapter");
-    let prepared = prepare(&adapter, resolver).expect("prepared");
-    let iri = format!("{}fixtures/in/{input}", resolver.root());
-    let xml = resolver.read(&iri).expect("input");
-    convert(
-        &prepared,
-        Source {
-            iri: &iri,
-            envelope: None,
-            xml: &xml,
-        },
-    )
+    let prepared = common::prepared(resolver).expect("prepared");
+    common::convert_input(&prepared, resolver, input)
 }
 
 /// Every object of a predicate, written as N-Triples writes it.

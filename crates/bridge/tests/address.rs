@@ -8,10 +8,13 @@
 // them is spelled. Comparison is stricter than conversion: an address on
 // either side that reaches other than one node fails the entry, and is said to
 // have failed it by the address and what it selected.
+mod common;
+
 use cascade_bridge::{
-    canonical_lines, convert, load_adapter, prepare, run_manifest, Conversion, DirectoryResolver,
-    Resolver, RunOptions, Source,
+    canonical_lines, load_adapter, run_manifest, Conversion, DirectoryResolver, Resolver,
+    RunOptions,
 };
+use common::on_disk;
 use oxrdf::{Quad, Term};
 use std::path::PathBuf;
 
@@ -57,13 +60,6 @@ fn directory() -> DirectoryResolver {
         .expect("resolver")
 }
 
-fn tiny() -> Variant {
-    Variant {
-        directory: directory(),
-        edits: Vec::new(),
-    }
-}
-
 /// The tiny adapter with one string of one of its files replaced.
 fn variant(file: &'static str, from: &'static str, to: &str) -> Variant {
     variants(vec![(file, from, to.to_owned())])
@@ -77,19 +73,7 @@ fn variants(edits: Vec<(&'static str, &'static str, String)>) -> Variant {
 }
 
 fn run(resolver: &dyn Resolver, input: &str) -> Conversion {
-    let adapter = load_adapter(resolver).expect("adapter");
-    let prepared = prepare(&adapter, resolver).expect("prepared");
-    let iri = format!("{}fixtures/in/{input}", resolver.root());
-    let xml = resolver.read(&iri).expect("input");
-    convert(
-        &prepared,
-        Source {
-            iri: &iri,
-            envelope: None,
-            xml: &xml,
-        },
-    )
-    .expect("conversion")
+    common::conversion(resolver, input).expect("conversion")
 }
 
 fn text(term: &Term) -> String {
@@ -148,7 +132,7 @@ fn graph(conversion: &Conversion) -> Vec<String> {
 
 #[test]
 fn reports_an_address_that_selects_no_node_and_produces_the_graph_all_the_same() {
-    let plain = run(&tiny(), "two.xml");
+    let plain = on_disk("two.xml");
     let strayed = run(
         &variant(NOTE_QUERY, NOTE, "rdf:value \"nowhere\""),
         "two.xml",
@@ -269,11 +253,10 @@ fn committed() -> Vec<String> {
 /// writes, for every input it committed, selects the one node it names.
 #[test]
 fn reports_nothing_for_any_input_the_adapter_committed() {
-    let resolver = tiny();
     let inputs = committed();
     assert!(inputs.len() > 20, "{inputs:?}");
     for input in inputs {
-        let conversion = run(&resolver, &input);
+        let conversion = on_disk(&input);
         assert_eq!(
             reports(&conversion.findings),
             Vec::<(String, String)>::new(),
@@ -292,7 +275,7 @@ fn produces_the_graph_for_a_document_no_tree_can_be_built_from() {
         ),
         "two.xml",
     );
-    assert_eq!(graph(&two_rooted), graph(&run(&tiny(), "two.xml")));
+    assert_eq!(graph(&two_rooted), graph(&on_disk("two.xml")));
     assert_eq!(
         reports(&two_rooted.findings),
         Vec::<(String, String)>::new(),

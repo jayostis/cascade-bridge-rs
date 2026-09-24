@@ -5,9 +5,10 @@
 //
 // A crate naming no accounting gets no census, which is every adapter that
 // exists, so the whole of it has to be additive.
-use cascade_bridge::{
-    convert, load_adapter, prepare, Conversion, DirectoryResolver, Resolver, Source,
-};
+mod common;
+
+use cascade_bridge::{DirectoryResolver, Resolver};
+use common::{conversion, on_disk, Subject};
 use oxrdf::{Quad, Term};
 use std::collections::BTreeSet;
 use std::path::PathBuf;
@@ -30,24 +31,6 @@ const CATALOG: &str = "urn:example:catalog";
 fn tiny() -> DirectoryResolver {
     DirectoryResolver::new(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/tiny-adapter"))
         .expect("resolver")
-}
-
-/// The whole run, from the crate to the findings, as a result: an accounting
-/// may be refused at any stage of it, and which stage is not this crate's to
-/// say.
-fn conversion(resolver: &dyn Resolver, input: &str) -> cascade_bridge::Result<Conversion> {
-    let adapter = load_adapter(resolver)?;
-    let prepared = prepare(&adapter, resolver)?;
-    let iri = format!("{}fixtures/in/{input}", resolver.root());
-    let xml = resolver.read(&iri)?;
-    convert(
-        &prepared,
-        Source {
-            iri: &iri,
-            envelope: None,
-            xml: &xml,
-        },
-    )
 }
 
 fn findings(resolver: &dyn Resolver, input: &str) -> Vec<Quad> {
@@ -349,27 +332,27 @@ impl Resolver for Missing {
 
 #[test]
 fn leaves_a_crate_that_names_no_accounting_the_findings_it_has_today() {
-    let unaccounted = Unaccounted::new();
+    let unaccounted = Subject::of(Unaccounted::new());
     for input in ["two.xml", "order.xml", "every-verdict.xml"] {
         let named_no_path: Vec<(String, String, String, String, String)> =
-            said(&findings(&tiny(), input))
+            said(&on_disk(input).findings)
                 .into_iter()
                 .filter(|(_, _, path, _, _)| path.is_empty())
                 .collect();
         assert_eq!(
-            said(&findings(&unaccounted, input)),
+            said(&unaccounted.findings(input)),
             named_no_path,
             "{input} through a crate naming no accounting"
         );
     }
     assert_eq!(
-        annotations(&findings(&unaccounted, "unaccounted-child.xml")),
+        annotations(&unaccounted.findings("unaccounted-child.xml")),
         0,
         "a path no entry accounts for draws nothing where there is no accounting"
     );
 
     assert_eq!(
-        paths(&findings(&tiny(), "unaccounted-child.xml"))
+        paths(&on_disk("unaccounted-child.xml").findings)
             .into_iter()
             .collect::<Vec<String>>(),
         ["/item/novelty"],
@@ -379,7 +362,7 @@ fn leaves_a_crate_that_names_no_accounting_the_findings_it_has_today() {
 
 #[test]
 fn reports_a_path_the_accounting_omits_at_its_first_occurrence_in_the_record() {
-    let findings = findings(&tiny(), "unaccounted-child.xml");
+    let findings = on_disk("unaccounted-child.xml").findings;
     assert_eq!(
         census(&findings),
         [(
@@ -418,7 +401,7 @@ fn reports_a_path_the_accounting_omits_at_its_first_occurrence_in_the_record() {
 
 #[test]
 fn reports_a_path_a_record_carries_five_times_once_addressed_at_the_first() {
-    let found = findings(&tiny(), "unaccounted-five-times.xml");
+    let found = on_disk("unaccounted-five-times.xml").findings;
     assert_eq!(
         census(&found),
         [(
@@ -441,7 +424,7 @@ fn reports_a_path_a_record_carries_five_times_once_addressed_at_the_first() {
 #[test]
 fn counts_only_its_own_record_s_nodes_where_two_records_carry_the_path() {
     assert_eq!(
-        counted(&findings(&tiny(), "unaccounted-twice-then-once.xml")),
+        counted(&on_disk("unaccounted-twice-then-once.xml").findings),
         [
             (
                 "/item/novelty".to_owned(),
@@ -460,7 +443,7 @@ fn counts_only_its_own_record_s_nodes_where_two_records_carry_the_path() {
 #[test]
 fn reports_a_path_two_records_carry_once_in_each() {
     assert_eq!(
-        census(&findings(&tiny(), "unaccounted-in-each-record.xml")),
+        census(&on_disk("unaccounted-in-each-record.xml").findings),
         [
             (
                 "/item/novelty".to_owned(),
@@ -479,7 +462,7 @@ fn reports_a_path_two_records_carry_once_in_each() {
 #[test]
 fn ends_an_attribute_s_path_in_its_own_name_and_refines_onto_the_element_it_stands_on() {
     assert_eq!(
-        census(&findings(&tiny(), "unaccounted-attribute.xml")),
+        census(&on_disk("unaccounted-attribute.xml").findings),
         [(
             "/item/label/@colour".to_owned(),
             "/catalog/item[1]".to_owned(),
@@ -491,7 +474,7 @@ fn ends_an_attribute_s_path_in_its_own_name_and_refines_onto_the_element_it_stan
 
 #[test]
 fn refines_onto_every_step_below_the_record_down_to_the_one_the_path_ends_at() {
-    let found = findings(&tiny(), "unaccounted-under-a-repeated-parent.xml");
+    let found = on_disk("unaccounted-under-a-repeated-parent.xml").findings;
     assert_eq!(
         counted(&found),
         [
@@ -528,7 +511,7 @@ fn refines_onto_every_step_below_the_record_down_to_the_one_the_path_ends_at() {
 
 #[test]
 fn gives_an_element_the_one_position_in_a_schema_finding_and_in_a_census_finding() {
-    let found = findings(&tiny(), "unaccounted-under-a-repeated-parent.xml");
+    let found = on_disk("unaccounted-under-a-repeated-parent.xml").findings;
     let label = "/catalog/item[1]/label[2]";
     assert_eq!(
         violations(&found).into_iter().collect::<Vec<String>>(),
@@ -559,7 +542,7 @@ fn writes_a_namespaced_path_as_the_lift_writes_a_step_of_a_record_s_own_address(
     let bogus = format!("/{}/{}", step("item"), step("bogus"));
     let within = format!("{}[1]", step("bogus"));
     assert_eq!(
-        census(&findings(&tiny(), "namespaced.xml")),
+        census(&on_disk("namespaced.xml").findings),
         [(bogus.clone(), record.clone(), within.clone())],
         "the accounting names both colours of the element, and neither is reported"
     );
@@ -596,7 +579,7 @@ const EVERY_VERDICT: [(&str, &str); 7] = [
 
 #[test]
 fn reports_nothing_for_a_record_every_path_of_which_has_an_entry_whatever_its_verdict() {
-    assert_eq!(census(&findings(&tiny(), "every-verdict.xml")), Vec::new());
+    assert_eq!(census(&on_disk("every-verdict.xml").findings), Vec::new());
 
     for (path, within) in EVERY_VERDICT {
         let found = findings(&Accounting::without(path), "every-verdict.xml");
@@ -710,7 +693,7 @@ fn refuses_a_source_path_that_is_no_literal_where_dropping_it_would_report_the_p
 
 #[test]
 fn names_the_census_body_the_specification_fixed_and_no_other() {
-    let findings = findings(&tiny(), "unaccounted-child.xml");
+    let findings = on_disk("unaccounted-child.xml").findings;
     let bodies: Vec<String> = findings
         .iter()
         .filter(|q| q.predicate.as_str() == format!("{OA}hasBody"))

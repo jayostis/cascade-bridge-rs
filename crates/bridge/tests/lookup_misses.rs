@@ -9,9 +9,10 @@
 // and its count has to keep values too, and an element's value is not known when
 // its start tag is read: it arrives between the start and the end, in as many
 // pieces as the parser hands it over in.
-use cascade_bridge::{
-    convert, load_adapter, prepare, Conversion, DirectoryResolver, Resolver, Source,
-};
+mod common;
+
+use cascade_bridge::{DirectoryResolver, Resolver};
+use common::{conversion, Subject};
 use oxrdf::{Quad, Term};
 use std::path::PathBuf;
 
@@ -38,24 +39,6 @@ const LOOKUP_NAMES_GAP: &str = "bridge:lookupNamesGap ex:statusOutsideTheTable";
 fn tiny() -> DirectoryResolver {
     DirectoryResolver::new(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/tiny-adapter"))
         .expect("resolver")
-}
-
-/// The whole run, from the crate to the findings, as a result: a concept map
-/// may be refused at any stage of it, and which stage is not this crate's to
-/// say.
-fn conversion(resolver: &dyn Resolver, input: &str) -> cascade_bridge::Result<Conversion> {
-    let adapter = load_adapter(resolver)?;
-    let prepared = prepare(&adapter, resolver)?;
-    let iri = format!("{}fixtures/in/{input}", resolver.root());
-    let xml = resolver.read(&iri)?;
-    convert(
-        &prepared,
-        Source {
-            iri: &iri,
-            envelope: None,
-            xml: &xml,
-        },
-    )
 }
 
 fn findings(resolver: &dyn Resolver, input: &str) -> Vec<Quad> {
@@ -277,6 +260,14 @@ fn notes() -> Adapted {
     Adapted::declaring(accounting(&[looks_up("/item/note", "consumed")])).built()
 }
 
+thread_local! {
+    static NOTES: Subject<Adapted> = Subject::of(notes());
+}
+
+fn noted(input: &str) -> Vec<Quad> {
+    NOTES.with(|notes| notes.findings(input))
+}
+
 /// One gap concept, under the kind and at the severity a case turns on.
 fn concept(name: &str, kind: &str, severity: Option<&str>) -> String {
     let declared = match severity {
@@ -306,7 +297,7 @@ fn concept_map(scheme: &str, concepts: &[String]) -> String {
 
 #[test]
 fn reports_a_value_no_concept_of_the_scheme_carries_at_that_value_s_first_occurrence() {
-    let found = findings(&notes(), "lookup-a-value-at-three-nodes.xml");
+    let found = noted("lookup-a-value-at-three-nodes.xml");
     assert_eq!(
         missed(&found),
         [row("Retired", "/catalog/item[1]", "note[2]")],
@@ -316,14 +307,14 @@ fn reports_a_value_no_concept_of_the_scheme_carries_at_that_value_s_first_occurr
 
 #[test]
 fn counts_the_nodes_of_the_record_holding_that_value_and_carries_no_count_for_one() {
-    let three = findings(&notes(), "lookup-a-value-at-three-nodes.xml");
+    let three = noted("lookup-a-value-at-three-nodes.xml");
     assert_eq!(
         count(&three, &about(&three, "Retired")),
         Some("3".to_owned()),
         "one finding stands for every node holding the value"
     );
 
-    let once = findings(&notes(), "every-verdict.xml");
+    let once = noted("every-verdict.xml");
     assert_eq!(
         missed(&once),
         [row(
@@ -341,7 +332,7 @@ fn counts_the_nodes_of_the_record_holding_that_value_and_carries_no_count_for_on
 
 #[test]
 fn writes_the_count_as_an_xsd_integer() {
-    let found = findings(&notes(), "lookup-a-value-at-three-nodes.xml");
+    let found = noted("lookup-a-value-at-three-nodes.xml");
     let occurrences = one(
         &found,
         &about(&found, "Retired"),
@@ -356,7 +347,7 @@ fn writes_the_count_as_an_xsd_integer() {
 
 #[test]
 fn reports_two_different_unmapped_values_at_one_path_twice_sorted_by_value() {
-    let found = findings(&notes(), "lookup-two-values-at-one-path.xml");
+    let found = noted("lookup-two-values-at-one-path.xml");
     assert_eq!(
         missed(&found),
         [
@@ -374,7 +365,7 @@ fn reports_two_different_unmapped_values_at_one_path_twice_sorted_by_value() {
 #[test]
 fn treats_a_value_differing_from_a_notation_only_by_case_or_by_edge_whitespace_as_no_miss() {
     assert_eq!(
-        missed(&findings(&notes(), "lookup-near-misses.xml")),
+        missed(&noted("lookup-near-misses.xml")),
         [row("Retired", "/catalog/item[1]", "note[4]")],
         "a key is the value lowercased and stripped of leading and trailing XML whitespace, \
          and a notation is written that way"
@@ -384,7 +375,7 @@ fn treats_a_value_differing_from_a_notation_only_by_case_or_by_edge_whitespace_a
 #[test]
 fn reports_nothing_for_a_path_the_record_does_not_hold_or_a_value_empty_once_trimmed() {
     assert_eq!(
-        missed(&findings(&notes(), "lookup-absent-and-empty.xml")),
+        missed(&noted("lookup-absent-and-empty.xml")),
         [row("Retired", "/catalog/item[2]", "note[3]")],
         "absence is bridge:sourceLacksRequired's case and has a gap of its own"
     );
@@ -392,7 +383,7 @@ fn reports_nothing_for_a_path_the_record_does_not_hold_or_a_value_empty_once_tri
 
 #[test]
 fn reads_an_element_s_value_out_of_every_piece_the_parser_hands_its_text_over_in() {
-    let found = findings(&notes(), "lookup-text-in-several-events.xml");
+    let found = noted("lookup-text-in-several-events.xml");
     assert_eq!(
         missed(&found),
         [row("Retired", "/catalog/item[1]", "note[1]")],
@@ -456,7 +447,7 @@ fn addresses_an_attribute_s_lookup_finding_at_the_element_the_attribute_stands_o
 
 #[test]
 fn reports_each_spelling_of_one_key_the_map_lacks_as_the_record_wrote_it() {
-    let found = findings(&notes(), "lookup-two-spellings-of-one-key.xml");
+    let found = noted("lookup-two-spellings-of-one-key.xml");
     assert_eq!(
         missed(&found),
         [
@@ -474,7 +465,7 @@ fn reports_each_spelling_of_one_key_the_map_lacks_as_the_record_wrote_it() {
 
 #[test]
 fn bodies_a_lookup_finding_at_the_gap_the_entry_s_lookup_names_and_motivates_it_by_classifying() {
-    let found = findings(&notes(), "lookup-a-value-at-three-nodes.xml");
+    let found = noted("lookup-a-value-at-three-nodes.xml");
     let annotation = about(&found, "Retired");
     assert_eq!(
         says(&found, &annotation, &format!("{OA}hasBody")),
@@ -695,7 +686,7 @@ fn looks_a_value_up_in_the_one_scheme_the_named_file_holds() {
 
 #[test]
 fn reports_a_value_a_no_break_space_pads_though_the_map_holds_the_unpadded_key() {
-    let found = findings(&notes(), "lookup-a-value-padded-with-a-no-break-space.xml");
+    let found = noted("lookup-a-value-padded-with-a-no-break-space.xml");
     assert_eq!(
         missed(&found),
         [row("current\u{a0}", "/catalog/item[1]", "note[1]")],

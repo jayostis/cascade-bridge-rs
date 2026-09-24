@@ -5,9 +5,10 @@
 // result itself rather than a sentence about it; and a predicate no ontology
 // declares is a finding of the same shape. Validation reports and never
 // refuses: the graph is produced whatever the shapes say of it.
-use cascade_bridge::{
-    convert, load_adapter, prepare, Conversion, DirectoryResolver, Resolver, Source,
-};
+mod common;
+
+use cascade_bridge::{load_adapter, prepare, Conversion, DirectoryResolver, Resolver};
+use common::Subject;
 use oxrdf::{Quad, Term};
 use std::collections::BTreeSet;
 use std::path::PathBuf;
@@ -47,24 +48,23 @@ fn read_against_the_vocabulary() -> DirectoryResolver {
 
 /// The conversion and the IRI of the document it was made from.
 fn run(resolver: &dyn Resolver, input: &str) -> (Conversion, String) {
-    let adapter = load_adapter(resolver).expect("adapter");
-    let prepared = prepare(&adapter, resolver).expect("prepared");
-    let iri = format!("{}fixtures/in/{input}", resolver.root());
-    let xml = resolver.read(&iri).expect("input");
-    let conversion = convert(
-        &prepared,
-        Source {
-            iri: &iri,
-            envelope: None,
-            xml: &xml,
-        },
+    let conversion = common::conversion(resolver, input).expect("conversion");
+    (
+        conversion,
+        format!("{}fixtures/in/{input}", resolver.root()),
     )
-    .expect("conversion");
-    (conversion, iri)
+}
+
+thread_local! {
+    static AGAINST_THE_VOCABULARY: Subject<DirectoryResolver> =
+        Subject::of(read_against_the_vocabulary());
 }
 
 fn converted(input: &str) -> (Conversion, String) {
-    run(&read_against_the_vocabulary(), input)
+    AGAINST_THE_VOCABULARY.with(|tiny| {
+        let iri = format!("{}fixtures/in/{input}", tiny.resolver.root());
+        (tiny.conversion(input), iri)
+    })
 }
 
 /// A term as an address or a body is read: an IRI or a literal by what it

@@ -10,9 +10,10 @@
 // true of.
 //
 // A crate naming no accounting is untouched by all of it, as it was in wave 1.
-use cascade_bridge::{
-    convert, load_adapter, prepare, Conversion, DirectoryResolver, Resolver, Source,
-};
+mod common;
+
+use cascade_bridge::{DirectoryResolver, Resolver};
+use common::{conversion, on_disk, Subject};
 use oxrdf::{Quad, Term};
 use std::path::PathBuf;
 
@@ -41,24 +42,6 @@ const CATALOG: &str = "urn:example:catalog";
 fn tiny() -> DirectoryResolver {
     DirectoryResolver::new(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/tiny-adapter"))
         .expect("resolver")
-}
-
-/// The whole run, from the crate to the findings, as a result: a gap scheme
-/// may be refused at any stage of it, and which stage is not this crate's to
-/// say.
-fn conversion(resolver: &dyn Resolver, input: &str) -> cascade_bridge::Result<Conversion> {
-    let adapter = load_adapter(resolver)?;
-    let prepared = prepare(&adapter, resolver)?;
-    let iri = format!("{}fixtures/in/{input}", resolver.root());
-    let xml = resolver.read(&iri)?;
-    convert(
-        &prepared,
-        Source {
-            iri: &iri,
-            envelope: None,
-            xml: &xml,
-        },
-    )
 }
 
 fn findings(resolver: &dyn Resolver, input: &str) -> Vec<Quad> {
@@ -326,7 +309,7 @@ fn gap_scheme(concepts: &[String]) -> String {
 
 #[test]
 fn reports_a_path_a_record_carries_three_times_once_at_the_first_counting_three() {
-    let found = findings(&tiny(), "gap-three-times.xml");
+    let found = on_disk("gap-three-times.xml").findings;
     assert_eq!(
         reported(&found),
         [row(NOTE_GAP, "/item/note", "/catalog/item[1]", "note[1]")],
@@ -340,7 +323,7 @@ fn reports_a_path_a_record_carries_three_times_once_at_the_first_counting_three(
 
 #[test]
 fn carries_no_count_on_a_finding_for_a_path_the_record_carries_once() {
-    let found = findings(&tiny(), "two.xml");
+    let found = on_disk("two.xml").findings;
     assert_eq!(
         reported(&found),
         [row(NOTE_GAP, "/item/note", "/catalog/item[1]", "note[1]")]
@@ -354,7 +337,7 @@ fn carries_no_count_on_a_finding_for_a_path_the_record_carries_once() {
 
 #[test]
 fn counts_only_its_own_record_s_nodes_where_two_records_carry_the_path() {
-    let found = findings(&tiny(), "order.xml");
+    let found = on_disk("order.xml").findings;
     assert_eq!(
         reported(&found),
         [
@@ -374,7 +357,7 @@ fn counts_only_its_own_record_s_nodes_where_two_records_carry_the_path() {
 
 #[test]
 fn writes_the_count_as_an_xsd_integer() {
-    let found = findings(&tiny(), "gap-three-times.xml");
+    let found = on_disk("gap-three-times.xml").findings;
     let occurrences = one(
         &found,
         &about(&found, "/item/note"),
@@ -489,7 +472,7 @@ fn takes_the_severity_the_gap_declares_and_sh_info_where_it_declares_none() {
 
 #[test]
 fn names_the_path_as_sh_value_the_same_string_the_entry_s_source_path_carries() {
-    let found = findings(&tiny(), "every-verdict.xml");
+    let found = on_disk("every-verdict.xml").findings;
     let mut paths: Vec<String> = reported(&found)
         .into_iter()
         .map(|(_, path, ..)| path)
@@ -504,7 +487,7 @@ fn names_the_path_as_sh_value_the_same_string_the_entry_s_source_path_carries() 
 
 #[test]
 fn bodies_a_reported_gap_at_the_gap_the_entry_names_and_motivates_it_by_classifying() {
-    let found = findings(&tiny(), "every-verdict.xml");
+    let found = on_disk("every-verdict.xml").findings;
     assert_eq!(
         reported(&found),
         [row(NOTE_GAP, "/item/note", "/catalog/item[1]", "note[1]")]
@@ -575,7 +558,7 @@ fn bodies_no_finding_at_a_gap_the_committed_adapter_declares_under_a_kind_that_d
         "the committed scheme declares the summary's gap under a kind that does not report"
     );
 
-    let found = findings(&resolver, "every-verdict.xml");
+    let found = on_disk("every-verdict.xml").findings;
     let bodies: Vec<String> = annotations(&found)
         .iter()
         .map(|annotation| says(&found, annotation, &format!("{OA}hasBody")))
@@ -628,16 +611,16 @@ fn emits_nothing_for_a_verdict_that_names_no_gap() {
 
 #[test]
 fn leaves_a_crate_that_names_no_accounting_every_finding_it_has_today() {
-    let unaccounted = Unaccounted { directory: tiny() };
+    let unaccounted = Subject::of(Unaccounted { directory: tiny() });
     for input in ["two.xml", "every-verdict.xml", "gap-three-times.xml"] {
         assert_eq!(
-            reported(&findings(&unaccounted, input)),
+            reported(&unaccounted.findings(input)),
             Vec::new(),
             "{input} through a crate naming no accounting"
         );
     }
     assert_eq!(
-        annotations(&findings(&unaccounted, "every-verdict.xml")).len(),
+        annotations(&unaccounted.findings("every-verdict.xml")).len(),
         1,
         "the record's one note draws the one finding the adapter's queries construct"
     );
@@ -661,7 +644,7 @@ fn leaves_a_crate_whose_entries_name_no_gaps_the_findings_it_has_today() {
 
 #[test]
 fn stands_a_reported_gap_beside_the_finding_a_query_constructs_at_the_same_node() {
-    let found = findings(&tiny(), "two.xml");
+    let found = on_disk("two.xml").findings;
     let noted: Vec<String> = found
         .iter()
         .filter(|q| q.predicate.as_str() == format!("{OA}hasBody"))

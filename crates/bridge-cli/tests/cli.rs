@@ -562,12 +562,12 @@ fn writes_the_same_findings_graph_as_turtle_as_it_does_as_n_triples() {
             );
             std::fs::read(&path).expect("the findings")
         };
-        let (turtle, ntriples) = (written("ttl", "turtle"), written("nt", "ntriples"));
-        let at = cascade_bridge::file_iri(scratch.join(format!("{stem}.ttl"))).expect("an IRI");
-        let as_ntriples = findings(&ntriples, RdfFormat::NTriples, BASE);
+        let as_ntriples = findings(&written("nt", "ntriples"), RdfFormat::NTriples, BASE);
         if as_ntriples.is_empty() {
             continue;
         }
+        let turtle = written("ttl", "turtle");
+        let at = cascade_bridge::file_iri(scratch.join(format!("{stem}.ttl"))).expect("an IRI");
         assert_eq!(
             findings(&turtle, RdfFormat::Turtle, &at),
             as_ntriples,

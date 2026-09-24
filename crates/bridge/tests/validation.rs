@@ -1,7 +1,10 @@
 // Validation reports; it never refuses. A record that fails its schema is a
 // finding with the record's own position as its selector, and its graph is
 // produced all the same.
-use cascade_bridge::{convert, load_adapter, prepare, DirectoryResolver, Resolver, Source};
+mod common;
+
+use cascade_bridge::{load_adapter, prepare, DirectoryResolver, Resolver};
+use common::on_disk;
 use oxrdf::{Quad, Term};
 use std::path::PathBuf;
 
@@ -35,24 +38,12 @@ fn typed(quads: &[Quad], node: &str, type_iri: &str) -> bool {
 }
 
 fn run(resolver: &dyn Resolver, input: &str) -> cascade_bridge::Conversion {
-    let adapter = load_adapter(resolver).expect("adapter");
-    let prepared = prepare(&adapter, resolver).expect("prepared");
-    let iri = format!("{}fixtures/in/{input}", resolver.root());
-    let xml = resolver.read(&iri).expect("input");
-    convert(
-        &prepared,
-        Source {
-            iri: &iri,
-            envelope: None,
-            xml: &xml,
-        },
-    )
-    .expect("conversion")
+    common::conversion(resolver, input).expect("conversion")
 }
 
 #[test]
 fn converts_a_record_that_fails_its_schema_and_reports_it_at_that_record_s_position() {
-    let conversion = run(&tiny(), "invalid.xml");
+    let conversion = on_disk("invalid.xml");
     assert_eq!(conversion.units, 2);
     assert!(
         conversion
@@ -92,7 +83,7 @@ fn converts_a_record_that_fails_its_schema_and_reports_it_at_that_record_s_posit
 
 #[test]
 fn reports_nothing_about_a_document_both_its_schemas_accept() {
-    let conversion = run(&tiny(), "two.xml");
+    let conversion = on_disk("two.xml");
     let severities = objects(&conversion.findings, &format!("{SH}resultSeverity"));
     assert!(
         !severities.contains(&format!("<{SH}Violation>")),
@@ -167,7 +158,7 @@ impl Resolver for Aside {
 /// draws what it drew without them: nothing.
 #[test]
 fn reports_nothing_about_a_record_carrying_a_comment_and_an_instruction() {
-    let plain = run(&tiny(), "two.xml");
+    let plain = on_disk("two.xml");
     let aside = run(&Aside { directory: tiny() }, "two.xml");
     assert_eq!(
         objects(&aside.findings, &format!("{SH}resultSeverity")),

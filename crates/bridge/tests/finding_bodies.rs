@@ -2,9 +2,10 @@
 // Bridge's own finding carries W3C's rule for the schema rule that was broken,
 // and selects the element it was broken on rather than the record it stood in.
 // No finding, from an adapter or from a Bridge, carries a sentence.
-use cascade_bridge::{
-    convert, load_adapter, prepare, Conversion, DirectoryResolver, Resolver, Source,
-};
+mod common;
+
+use cascade_bridge::{Conversion, DirectoryResolver, Resolver};
+use common::on_disk;
 use oxrdf::{Quad, Term};
 use std::path::PathBuf;
 
@@ -28,19 +29,7 @@ fn tiny() -> DirectoryResolver {
 }
 
 fn run(resolver: &dyn Resolver, input: &str) -> Conversion {
-    let adapter = load_adapter(resolver).expect("adapter");
-    let prepared = prepare(&adapter, resolver).expect("prepared");
-    let iri = format!("{}fixtures/in/{input}", resolver.root());
-    let xml = resolver.read(&iri).expect("input");
-    convert(
-        &prepared,
-        Source {
-            iri: &iri,
-            envelope: None,
-            xml: &xml,
-        },
-    )
-    .expect("conversion")
+    common::conversion(resolver, input).expect("conversion")
 }
 
 /// A term as an address or a body is read: an IRI or a literal by what it
@@ -117,7 +106,7 @@ fn violations(findings: &[Quad]) -> Vec<(String, String, String)> {
 #[test]
 fn names_w3c_s_rule_and_the_child_the_parent_s_content_model_refuses() {
     assert_eq!(
-        violations(&run(&tiny(), "unexpected-child.xml").findings),
+        violations(&on_disk("unexpected-child.xml").findings),
         [
             (
                 format!("{PART_1}cvc-complex-type"),
@@ -146,7 +135,7 @@ fn names_w3c_s_rule_and_the_child_the_parent_s_content_model_refuses() {
 #[test]
 fn indexes_an_offending_element_among_its_own_siblings_of_that_name() {
     assert_eq!(
-        violations(&run(&tiny(), "second-of-its-name.xml").findings),
+        violations(&on_disk("second-of-its-name.xml").findings),
         [
             (
                 format!("{PART_1}cvc-complex-type"),
@@ -175,7 +164,7 @@ fn indexes_an_offending_element_among_its_own_siblings_of_that_name() {
 #[test]
 fn names_the_specification_s_concept_for_a_failure_w3c_names_no_rule_for() {
     assert_eq!(
-        violations(&run(&tiny(), "three-schema-location-tokens.xml").findings),
+        violations(&on_disk("three-schema-location-tokens.xml").findings),
         [(UNNAMED.to_owned(), "/catalog".to_owned(), String::new())]
     );
 }
@@ -229,7 +218,7 @@ fn names_a_rule_of_part_two_for_a_value_its_simple_type_refuses() {
 #[test]
 fn selects_the_offending_element_under_the_document_element() {
     assert_eq!(
-        violations(&run(&tiny(), "element-under-the-document-element.xml").findings),
+        violations(&on_disk("element-under-the-document-element.xml").findings),
         [
             (
                 format!("{PART_1}cvc-complex-type"),
@@ -311,7 +300,7 @@ fn gives_every_finding_it_writes_a_body_that_is_an_iri() {
         "invalid.xml",
         "unexpected-child.xml",
     ] {
-        let findings = run(&tiny(), input).findings;
+        let findings = on_disk(input).findings;
         let bodies: Vec<String> = findings
             .iter()
             .filter(|q| q.predicate.as_str() == format!("{OA}hasBody"))
