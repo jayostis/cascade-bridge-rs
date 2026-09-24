@@ -56,13 +56,15 @@ const REASONS = {
   EISDIR: "a directory, not a file",
   EACCES: "permission denied",
   EPERM: "permission denied",
+  ENAMETOOLONG: "name too long",
+  ELOOP: "too many levels of symbolic links",
 };
 
 function canonical(path) {
   try {
     return realpathSync.native(path);
   } catch (e) {
-    throw new Error(`${path}: ${REASONS[e.code] ?? e.message}`);
+    throw new Error(`${path}: ${REASONS[e.code] ?? e.code}`);
   }
 }
 
@@ -127,7 +129,7 @@ class Directory {
     try {
       return readFileSync(at);
     } catch (e) {
-      throw REASONS[e.code] ?? e.message;
+      throw REASONS[e.code] ?? e.code;
     }
   }
 }

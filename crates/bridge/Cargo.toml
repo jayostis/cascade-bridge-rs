@@ -23,3 +23,6 @@ spargebra = { version = "=0.4.7", features = ["sep-0002", "sep-0006"] }
 web-time = "=1.1.0"
 xpath-eval = "=0.2.2"
 xsd-schema = "=0.2.0"
+
+[target.'cfg(unix)'.dependencies]
+libc = "=0.2.189"

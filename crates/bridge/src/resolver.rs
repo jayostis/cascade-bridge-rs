@@ -77,6 +77,10 @@ impl Directory {
         let Some(path) = inside else {
             return Err(unread(iri, &format!("not inside {what}")));
         };
+        // Windows refuses to read a directory as access denied.
+        if path.is_dir() {
+            return Err(unread(iri, A_DIRECTORY));
+        }
         fs::read(&path).map_err(|e| unread(iri, &reason(&e)))
     }
 }
@@ -87,13 +91,28 @@ pub fn unread(iri: &str, reason: &str) -> Error {
     Error::msg(format!("{iri}: {reason}"))
 }
 
+const A_DIRECTORY: &str = "a directory, not a file";
+
 fn reason(error: &std::io::Error) -> String {
     match error.kind() {
         ErrorKind::NotFound | ErrorKind::NotADirectory => "no such file".to_owned(),
-        ErrorKind::IsADirectory => "a directory, not a file".to_owned(),
+        ErrorKind::IsADirectory => A_DIRECTORY.to_owned(),
         ErrorKind::PermissionDenied => "permission denied".to_owned(),
+        ErrorKind::InvalidFilename => "name too long".to_owned(),
+        _ if a_loop(error) => "too many levels of symbolic links".to_owned(),
         _ => error.to_string(),
     }
+}
+
+// ErrorKind::FilesystemLoop is unstable.
+#[cfg(unix)]
+fn a_loop(error: &std::io::Error) -> bool {
+    error.raw_os_error() == Some(libc::ELOOP)
+}
+
+#[cfg(not(unix))]
+fn a_loop(_: &std::io::Error) -> bool {
+    false
 }
 
 impl DirectoryResolver {
