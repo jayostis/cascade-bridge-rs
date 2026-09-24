@@ -5,7 +5,7 @@
 //! What these functions take and return is the node host's business and
 //! promises nothing to anyone else.
 use cascade_bridge::{
-    earl_report, load_adapter, prepare, run_manifest, serialise, serialise_at, Conversion,
+    earl_report, load_adapter, prepare, run_manifest, serialise, serialise_at, unread, Conversion,
     EntryResult, Error, GraphFormat, Outcome, ReportSubject, Resolver, RunOptions, Source,
     OFFERED_PROFILES,
 };
@@ -15,7 +15,7 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen]
 extern "C" {
     /// The host's files. Each method throws a string saying why a file could
-    /// not be read.
+    /// not be read, worded as the native resolver words it.
     pub type Files;
 
     #[wasm_bindgen(method, catch)]
@@ -44,8 +44,11 @@ struct Host {
     files: Files,
 }
 
-fn refused(thrown: JsValue) -> Error {
-    Error::msg(thrown.as_string().unwrap_or_else(|| format!("{thrown:?}")))
+fn refused(iri: &str, thrown: JsValue) -> Error {
+    unread(
+        iri,
+        &thrown.as_string().unwrap_or_else(|| format!("{thrown:?}")),
+    )
 }
 
 impl Resolver for Host {
@@ -58,12 +61,12 @@ impl Resolver for Host {
     }
 
     fn read(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
-        self.files.read(iri).map_err(refused)
+        self.files.read(iri).map_err(|e| refused(iri, e))
     }
 
     fn read_vocabulary(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
         match &self.vocabularies {
-            Some(_) => self.files.read_vocabulary(iri).map_err(refused),
+            Some(_) => self.files.read_vocabulary(iri).map_err(|e| refused(iri, e)),
             None => Err(Error::msg(format!(
                 "the command named no vocabularies: {iri}"
             ))),

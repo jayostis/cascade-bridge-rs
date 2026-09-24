@@ -476,9 +476,7 @@ fn declared(objects: &[Term], iri: &str, path: &str, predicate: &str) -> Result<
 /// reporting the path as unaccounted, which is a wrong finding and not an
 /// absent one.
 fn entries(resolver: &dyn Resolver, iri: &str) -> Result<Vec<Entry>> {
-    let bytes = resolver
-        .read(iri)
-        .map_err(|e| Error::msg(format!("{iri}: {e}")))?;
+    let bytes = resolver.read(iri)?;
     let mut typed = HashSet::new();
     let mut named = Vec::new();
     let mut verdicts: HashMap<String, Vec<Term>> = HashMap::new();
@@ -544,9 +542,7 @@ type Prefixes = Vec<(String, String)>;
 /// The prefixes the file declares come with it, as the names its gaps are
 /// written under.
 fn gap_scheme(resolver: &dyn Resolver, iri: &str) -> Result<(HashMap<String, Gap>, Prefixes)> {
-    let bytes = resolver
-        .read(iri)
-        .map_err(|e| Error::msg(format!("{iri}: {e}")))?;
+    let bytes = resolver.read(iri)?;
     let mut scheme: HashMap<String, Gap> = HashMap::new();
     let mut parser = RdfParser::from_format(RdfFormat::Turtle)
         .with_base_iri(iri)?
@@ -603,9 +599,7 @@ fn gap_scheme(resolver: &dyn Resolver, iri: &str) -> Result<(HashMap<String, Gap
 /// refused: which scheme a value is looked up in would otherwise be the parse
 /// order's to decide, or nothing's.
 fn concept_map(resolver: &dyn Resolver, iri: &str) -> Result<HashSet<String>> {
-    let bytes = resolver
-        .read(iri)
-        .map_err(|e| Error::msg(format!("{iri}: {e}")))?;
+    let bytes = resolver.read(iri)?;
     let mut schemes = HashSet::new();
     let mut notations = HashSet::new();
     for quad in RdfParser::from_format(RdfFormat::Turtle)
@@ -640,7 +634,8 @@ fn concept_map(resolver: &dyn Resolver, iri: &str) -> Result<HashSet<String>> {
 }
 
 fn query(resolver: &dyn Resolver, iri: &str, expected: Form, what: &str) -> Result<Query> {
-    let text = String::from_utf8(resolver.read(iri)?)?;
+    let text =
+        String::from_utf8(resolver.read(iri)?).map_err(|e| Error::msg(format!("{iri}: {e}")))?;
     let parsed = spargebra::SparqlParser::new()
         .with_base_iri(iri)
         .map_err(|e| Error::msg(format!("{iri}: {e}")))?
@@ -703,7 +698,7 @@ pub fn prepare(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prepared> {
             .rename_blank_nodes()
             .for_slice(&bytes)
         {
-            tables.push(quad?);
+            tables.push(quad.map_err(|e| Error::msg(format!("{iri}: {e}")))?);
         }
     }
 

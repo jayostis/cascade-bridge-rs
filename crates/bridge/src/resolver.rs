@@ -6,6 +6,7 @@
 // (tests/boundary.rs holds it to that).
 use crate::error::{Error, Result};
 use std::fs;
+use std::io::ErrorKind;
 use std::path::{Component, Path, PathBuf};
 
 pub trait Resolver {
@@ -33,7 +34,7 @@ pub trait Resolver {
 /// rather than one the adapter committed.
 pub fn file_iri(path: impl AsRef<Path>) -> Result<String> {
     let resolved = fs::canonicalize(path.as_ref())
-        .map_err(|e| Error::msg(format!("{}: {e}", path.as_ref().display())))?;
+        .map_err(|e| Error::msg(format!("{}: {}", path.as_ref().display(), reason(&e))))?;
     Ok(path_to_file_iri(&resolved))
 }
 
@@ -55,7 +56,7 @@ struct Directory {
 impl Directory {
     fn at(dir: impl AsRef<Path>) -> Result<Self> {
         let path = fs::canonicalize(dir.as_ref())
-            .map_err(|e| Error::msg(format!("{}: {e}", dir.as_ref().display())))?;
+            .map_err(|e| Error::msg(format!("{}: {}", dir.as_ref().display(), reason(&e))))?;
         let mut iri = path_to_file_iri(&path);
         iri.push('/');
         Ok(Self { iri, path })
@@ -74,9 +75,24 @@ impl Directory {
             // test and a symbolic link hides the destination from both.
             .filter(|path| resolve(path).is_some_and(|p| p.starts_with(&self.path)));
         let Some(path) = inside else {
-            return Err(Error::msg(format!("not inside {what}: {iri}")));
+            return Err(unread(iri, &format!("not inside {what}")));
         };
-        Ok(fs::read(&path)?)
+        fs::read(&path).map_err(|e| unread(iri, &reason(&e)))
+    }
+}
+
+/// A file a host could not supply, named by its IRI and a reason every host
+/// words alike, so the refusal reads the same wherever the library runs.
+pub fn unread(iri: &str, reason: &str) -> Error {
+    Error::msg(format!("{iri}: {reason}"))
+}
+
+fn reason(error: &std::io::Error) -> String {
+    match error.kind() {
+        ErrorKind::NotFound | ErrorKind::NotADirectory => "no such file".to_owned(),
+        ErrorKind::IsADirectory => "a directory, not a file".to_owned(),
+        ErrorKind::PermissionDenied => "permission denied".to_owned(),
+        _ => error.to_string(),
     }
 }
 
