@@ -72,7 +72,8 @@ impl Directory {
             // The boundary is decided on the resolved filesystem path, never
             // on the IRI string: percent-encoding hides "%2e%2e" from a prefix
             // test and a symbolic link hides the destination from both.
-            .filter(|path| resolve(path).is_some_and(|p| p.starts_with(&self.path)));
+            .and_then(|path| resolve(&path))
+            .filter(|path| path.starts_with(&self.path));
         let Some(path) = inside else {
             return Err(unread(iri, &format!("not inside {what}")));
         };
