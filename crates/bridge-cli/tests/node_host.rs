@@ -149,6 +149,41 @@ fn the_node_host_reads_a_directory_inside_the_adapter_whose_name_begins_with_two
     converts_as_the_native_command_does(&adapter, "two.xml", &[]);
 }
 
+fn replaced_once(adapter: &Path, path: &str, from: &str, to: &str) {
+    let file = adapter.join(path);
+    let text = std::fs::read_to_string(&file).expect("the file");
+    assert_eq!(text.matches(from).count(), 1, "{path}");
+    std::fs::write(&file, text.replace(from, to)).expect("the file");
+}
+
+#[test]
+fn the_node_host_answers_an_import_of_the_xml_namespace_from_a_file_the_adapter_lacks_as_the_native_command_does(
+) {
+    let scratch = scratch();
+    let adapter = scratch.path().join("adapter");
+    copied_to(&tiny(), &adapter);
+    assert!(!adapter.join("schema/xml.xsd").exists());
+    replaced_once(
+        &adapter,
+        "schema/item.xsd",
+        "<xs:element name=\"item\"",
+        "<xs:import namespace=\"http://www.w3.org/XML/1998/namespace\" schemaLocation=\"xml.xsd\"/>\n  <xs:element name=\"item\"",
+    );
+    replaced_once(
+        &adapter,
+        "schema/item.xsd",
+        "<xs:attribute name=\"internal\" type=\"xs:string\"/>",
+        "<xs:attribute name=\"internal\" type=\"xs:string\"/>\n    <xs:attribute ref=\"xml:lang\"/>",
+    );
+    replaced_once(
+        &adapter,
+        "fixtures/in/two.xml",
+        "<item id=\"1\">",
+        "<item id=\"1\" xml:lang=\"en\">",
+    );
+    converts_as_the_native_command_does(&adapter, "two.xml", &[]);
+}
+
 /// A run whose standard output is closed before the graph is written to it.
 fn convert_into_a_closed_pipe(mut command: Command) -> Output {
     let adapter = tiny().to_string_lossy().into_owned();

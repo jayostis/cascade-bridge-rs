@@ -45,10 +45,11 @@ struct Host {
 }
 
 fn refused(iri: &str, thrown: JsValue) -> Error {
-    unread(
-        iri,
-        &thrown.as_string().unwrap_or_else(|| format!("{thrown:?}")),
-    )
+    match thrown.as_string() {
+        Some(reason) if reason == "ENOENT" => Error::missing(format!("{iri}: {reason}")),
+        Some(reason) => unread(iri, &reason),
+        None => unread(iri, &format!("{thrown:?}")),
+    }
 }
 
 impl Resolver for Host {

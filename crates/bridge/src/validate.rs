@@ -26,10 +26,14 @@ use xsd_schema::validation::{
     drive_quick_xml_with, ElementStartView, EndElementInfo, SchemaValidator, ValidationError,
     ValidationEventHandler, ValidationFlags, ValidationSink, ValidationWarning,
 };
-use xsd_schema::{SchemaLoader, SchemaSet, SchemaSetBuilder};
+use xsd_schema::{EmbeddedLoader, SchemaCatalog, SchemaLoader, SchemaSet, SchemaSetBuilder};
 
 const XSD: &str = "http://www.w3.org/2001/XMLSchema";
 const DIRECTIVES: [&[u8]; 4] = [b"include", b"import", b"redefine", b"override"];
+const SUPPLIED_BY_THE_BRIDGE: [&str; 2] = [
+    "http://www.w3.org/XML/1998/namespace",
+    "http://www.w3.org/1999/xlink",
+];
 
 const XMLSCHEMA_1: &str = "https://www.w3.org/TR/xmlschema-1/#";
 const XMLSCHEMA_2: &str = "https://www.w3.org/TR/xmlschema-2/#";
@@ -214,25 +218,43 @@ impl Schema {
 
 /// Read a schema and everything it names, then compile it.
 pub(crate) fn compile(iri: &str, resolver: &dyn Resolver) -> Result<Schema> {
+    let mut catalog = SchemaCatalog::new();
+    catalog.add_xml_catalog();
     let mut read: HashMap<String, String> = HashMap::new();
-    let mut pending = vec![iri.to_owned()];
-    while let Some(location) = pending.pop() {
-        let key = key(&location);
-        if read.contains_key(&key) {
+    let mut answered_by_the_bridge: HashMap<String, String> = HashMap::new();
+    let mut pending: Vec<(String, Option<&str>)> = vec![(iri.to_owned(), None)];
+    while let Some((location, copy)) = pending.pop() {
+        let read_as = key(&location);
+        if read.contains_key(&read_as) {
             continue;
         }
-        let text = String::from_utf8(resolver.read(&location)?)
-            .map_err(|e| Error::msg(format!("{location}: {e}")))?;
+        let bytes = match (resolver.read(&location), copy) {
+            (Err(error), Some(copy)) if error.is_missing() => {
+                answered_by_the_bridge.insert(read_as, copy.to_owned());
+                continue;
+            }
+            (bytes, _) => bytes?,
+        };
+        let text = String::from_utf8(bytes).map_err(|e| Error::msg(format!("{location}: {e}")))?;
         let base =
             Iri::parse(location.clone()).map_err(|e| Error::msg(format!("{location}: {e}")))?;
         let directed = directives(&text).map_err(|e| Error::msg(format!("{location}: {e}")))?;
-        for named in directed {
+        for Directive { imported, named } in directed {
             let joined = base
                 .resolve(&named)
-                .map_err(|e| Error::msg(format!("{location} names {named}: {e}")))?;
-            pending.push(joined.into_inner());
+                .map_err(|e| Error::msg(format!("{location} names {named}: {e}")))?
+                .into_inner();
+            let copy = imported
+                .filter(|namespace| SUPPLIED_BY_THE_BRIDGE.contains(&namespace.as_str()))
+                .and_then(|namespace| catalog.lookup(&namespace));
+            match copy {
+                Some(copy) if !joined.starts_with(resolver.root()) => {
+                    answered_by_the_bridge.insert(key(&joined), copy.to_owned());
+                }
+                _ => pending.push((joined, copy)),
+            }
         }
-        read.insert(key, text);
+        read.insert(read_as, text);
     }
 
     let primary = read
@@ -242,6 +264,12 @@ pub(crate) fn compile(iri: &str, resolver: &dyn Resolver) -> Result<Schema> {
     let unanswered = Arc::new(Mutex::new(Vec::new()));
     let loader = Preloaded {
         documents: read,
+        answered_by_the_bridge,
+        supplied_by_the_bridge: SUPPLIED_BY_THE_BRIDGE
+            .iter()
+            .filter_map(|namespace| catalog.lookup(namespace))
+            .map(str::to_owned)
+            .collect(),
         unanswered: Arc::clone(&unanswered),
     };
     let compiled = SchemaSetBuilder::with_loader(Box::new(loader))
@@ -261,9 +289,16 @@ pub(crate) fn compile(iri: &str, resolver: &dyn Resolver) -> Result<Schema> {
     })
 }
 
+/// A schemaLocation as the schema writes it, and the namespace it is for where
+/// it is an xs:import's.
+struct Directive {
+    imported: Option<String>,
+    named: String,
+}
+
 /// Every schemaLocation an xs:include, xs:import, xs:redefine or xs:override
-/// names, as the schema writes it.
-fn directives(text: &str) -> Result<Vec<String>> {
+/// names.
+fn directives(text: &str) -> Result<Vec<Directive>> {
     let mut reader = quick_xml::NsReader::from_str(text);
     reader.config_mut().expand_empty_elements = true;
     let mut named = Vec::new();
@@ -278,11 +313,25 @@ fn directives(text: &str) -> Result<Vec<String>> {
                 if !DIRECTIVES.contains(&start.local_name().as_ref()) {
                     continue;
                 }
+                let mut imported = None;
+                let mut location = None;
                 for attribute in start.attributes() {
                     let attribute = attribute?;
-                    if attribute.key.as_ref() == b"schemaLocation" {
-                        named.push(attribute.unescape_value()?.into_owned());
+                    match attribute.key.as_ref() {
+                        b"namespace" if start.local_name().as_ref() == b"import" => {
+                            imported = Some(attribute.unescape_value()?.into_owned());
+                        }
+                        b"schemaLocation" => {
+                            location = Some(attribute.unescape_value()?.into_owned());
+                        }
+                        _ => {}
                     }
+                }
+                if let Some(location) = location {
+                    named.push(Directive {
+                        imported,
+                        named: location,
+                    });
                 }
             }
             Event::Eof => return Ok(named),
@@ -292,18 +341,19 @@ fn directives(text: &str) -> Result<Vec<String>> {
 }
 
 /// One name for a location however it is spelled. `xsd-schema` resolves a
-/// relative schemaLocation as a filesystem path, which collapses the empty
-/// authority a file IRI carries, so the string it asks for is not the string
-/// the host was given.
+/// relative schemaLocation as a filesystem path, whatever the scheme: the
+/// double slash collapses, and natively the current directory is put in front
+/// of an IRI it does not take for absolute, so the string it asks for is not
+/// the string the host was given.
 fn key(location: &str) -> String {
-    let path = match location.split_once(':') {
-        Some((scheme, rest)) if scheme.eq_ignore_ascii_case("file") => rest,
-        _ => return location.to_owned(),
+    let spelled = location.replace('\\', "/");
+    let all: Vec<&str> = spelled.split('/').collect();
+    let Some(at) = all.iter().position(|segment| is_scheme(segment)) else {
+        return location.to_owned();
     };
-    let path = path.replace('\\', "/");
     let mut segments: Vec<&str> = Vec::new();
-    for segment in path.trim_start_matches('/').split('/') {
-        match segment {
+    for segment in &all[at + 1..] {
+        match *segment {
             "." | "" => {}
             ".." => {
                 segments.pop();
@@ -311,7 +361,24 @@ fn key(location: &str) -> String {
             other => segments.push(other),
         }
     }
-    format!("file:///{}", segments.join("/"))
+    format!("{}///{}", all[at].to_ascii_lowercase(), segments.join("/"))
+}
+
+/// A whole segment that is a scheme and its colon.
+fn is_scheme(segment: &str) -> bool {
+    segment
+        .strip_suffix(':')
+        .is_some_and(|name| !is_windows_drive(name) && is_scheme_name(name))
+}
+
+fn is_windows_drive(name: &str) -> bool {
+    name.len() == 1
+}
+
+fn is_scheme_name(name: &str) -> bool {
+    let mut characters = name.chars();
+    characters.next().is_some_and(|c| c.is_ascii_alphabetic())
+        && characters.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
 }
 
 /// The document with its XML declaration replaced, since the characters no
@@ -331,11 +398,14 @@ fn utf8_declaration(xml: &str) -> String {
     format!("{UTF_8_DECLARATION}{body}")
 }
 
-/// The schemas the host supplied, and the record of anything asked for that it
-/// did not: a location this answers nothing for loads nothing, and
-/// `xsd-schema` treats that as non-fatal, so it is caught here instead.
+/// The schemas the host supplied and those the Bridge supplies itself, and the
+/// record of anything asked for that neither did: a location this answers
+/// nothing for loads nothing, and `xsd-schema` treats that as non-fatal, so it
+/// is caught here instead.
 struct Preloaded {
     documents: HashMap<String, String>,
+    answered_by_the_bridge: HashMap<String, String>,
+    supplied_by_the_bridge: Vec<String>,
     unanswered: Arc<Mutex<Vec<String>>>,
 }
 
@@ -347,6 +417,16 @@ impl std::fmt::Debug for Preloaded {
 
 impl SchemaLoader for Preloaded {
     fn load(&self, location: &str) -> SchemaResult<String> {
+        if self
+            .supplied_by_the_bridge
+            .iter()
+            .any(|supplied| supplied == location)
+        {
+            return EmbeddedLoader.load(location);
+        }
+        if let Some(copy) = self.answered_by_the_bridge.get(&key(location)) {
+            return EmbeddedLoader.load(copy);
+        }
         match self.documents.get(&key(location)) {
             Some(text) => Ok(text.clone()),
             None => {
@@ -375,6 +455,24 @@ mod tests {
         assert_eq!(key("file:/a/b/c.xsd"), key("file:///a/b/c.xsd"));
         assert_eq!(key("file:///a/b/../c.xsd"), key("file:///a/c.xsd"));
         assert_eq!(key("urn:example:c.xsd"), "urn:example:c.xsd");
+    }
+
+    #[test]
+    fn names_an_iri_of_any_scheme_the_same_after_xsd_schema_resolved_it_as_a_path() {
+        assert_eq!(key("s3://b/a/x.xsd"), key("s3:/b/a/x.xsd"));
+        assert_eq!(key("s3://b/a/x.xsd"), key("/w/crates/bridge/s3:/b/a/x.xsd"));
+        assert_eq!(key("s3://b/a/x.xsd"), key("C:\\w\\s3:\\b\\a\\x.xsd"));
+        assert_eq!(key("file:///C:/a/x.xsd"), key("file:/C:/a/x.xsd"));
+        assert_eq!(
+            key("x-blob+v.1://b/a/x.xsd"),
+            key("/w/x-blob+v.1:/b/a/x.xsd")
+        );
+    }
+
+    #[test]
+    fn names_two_iris_apart_that_differ_only_before_a_colon_segment_of_their_path() {
+        assert_ne!(key("file:///a/v1/ab:/t.xsd"), key("file:///a/v2/ab:/t.xsd"));
+        assert_ne!(key("s3://x/ab:/t.xsd"), key("gs://y/ab:/t.xsd"));
     }
 
     #[test]

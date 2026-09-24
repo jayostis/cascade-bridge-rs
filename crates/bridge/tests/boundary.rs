@@ -17,7 +17,7 @@
 mod common;
 
 use cascade_bridge::{Prepared, Resolver};
-use common::{tiny, tiny_with_vocabularies, with_accounting, ACCOUNTING};
+use common::{tiny, tiny_with_vocabularies, with_accounting, ACCOUNTING, CRATE};
 use std::path::PathBuf;
 
 const ALLOWED: &str = "resolver.rs";
@@ -175,4 +175,15 @@ fn serves_a_replaced_file_only_where_the_adapter_would_read_it() {
         refused.to_string().contains("named no vocabularies"),
         "{refused}"
     );
+}
+
+#[test]
+fn reads_the_file_the_boundary_was_judged_on() {
+    let resolver = tiny();
+    let root = resolver.root().to_owned();
+    let judged = resolver.read(&format!("{root}{CRATE}")).expect("the crate");
+    let read = resolver
+        .read(&format!("{root}missing/../{CRATE}"))
+        .expect("judged to be the crate, inside the adapter");
+    assert_eq!(read, judged);
 }
