@@ -26,7 +26,7 @@ use xsd_schema::validation::{
     drive_quick_xml_with, ElementStartView, EndElementInfo, SchemaValidator, ValidationError,
     ValidationEventHandler, ValidationFlags, ValidationSink, ValidationWarning,
 };
-use xsd_schema::{EmbeddedLoader, SchemaLoader, SchemaSet, SchemaSetBuilder};
+use xsd_schema::{SchemaCatalog, SchemaLoader, SchemaSet, SchemaSetBuilder};
 
 const XSD: &str = "http://www.w3.org/2001/XMLSchema";
 const DIRECTIVES: [&[u8]; 4] = [b"include", b"import", b"redefine", b"override"];
@@ -215,6 +215,7 @@ impl Schema {
 /// Read a schema and everything it names, then compile it.
 pub(crate) fn compile(iri: &str, resolver: &dyn Resolver) -> Result<Schema> {
     let mut read: HashMap<String, String> = HashMap::new();
+    let mut unlocated: Vec<(String, String)> = Vec::new();
     let mut pending = vec![iri.to_owned()];
     while let Some(location) = pending.pop() {
         let key = key(&location);
@@ -225,13 +226,19 @@ pub(crate) fn compile(iri: &str, resolver: &dyn Resolver) -> Result<Schema> {
             .map_err(|e| Error::msg(format!("{location}: {e}")))?;
         let base =
             Iri::parse(location.clone()).map_err(|e| Error::msg(format!("{location}: {e}")))?;
-        let directed = directives(&text).map_err(|e| Error::msg(format!("{location}: {e}")))?;
-        for named in directed {
+        let named = directives(&text).map_err(|e| Error::msg(format!("{location}: {e}")))?;
+        for named in named.locations {
             let joined = base
                 .resolve(&named)
                 .map_err(|e| Error::msg(format!("{location} names {named}: {e}")))?;
             pending.push(joined.into_inner());
         }
+        unlocated.extend(
+            named
+                .unlocated_imports
+                .into_iter()
+                .map(|namespace| (location.clone(), namespace)),
+        );
         read.insert(key, text);
     }
 
@@ -246,10 +253,22 @@ pub(crate) fn compile(iri: &str, resolver: &dyn Resolver) -> Result<Schema> {
     };
     let compiled = SchemaSetBuilder::with_loader(Box::new(loader))
         .add_bytes(primary.as_bytes(), iri)
-        .and_then(|builder| builder.compile())
-        .map_err(|e| Error::msg(format!("{iri}: {e}")))?;
+        .and_then(|builder| builder.compile());
 
     let unanswered = unanswered.lock().expect("no other thread holds the loader");
+    let mut catalog = SchemaCatalog::new();
+    catalog.add_xml_catalog();
+    let catalogued = unlocated.iter().find(|(_, namespace)| {
+        catalog
+            .lookup(namespace)
+            .is_some_and(|location| unanswered.iter().any(|asked| asked == location))
+    });
+    if let Some((schema, namespace)) = catalogued {
+        return Err(Error::msg(format!(
+            "{schema} imports {namespace} with no schemaLocation, and a Bridge reads a schema only from the adapter: the adapter must ship a schema for {namespace} and name it by schemaLocation"
+        )));
+    }
+    let compiled = compiled.map_err(|e| Error::msg(format!("{iri}: {e}")))?;
     if !unanswered.is_empty() {
         return Err(Error::msg(format!(
             "{iri} names a schema this Bridge did not read: {}",
@@ -261,12 +280,18 @@ pub(crate) fn compile(iri: &str, resolver: &dyn Resolver) -> Result<Schema> {
     })
 }
 
-/// Every schemaLocation an xs:include, xs:import, xs:redefine or xs:override
-/// names, as the schema writes it.
-fn directives(text: &str) -> Result<Vec<String>> {
+/// What a schema's xs:include, xs:import, xs:redefine and xs:override name, as
+/// the schema writes it.
+#[derive(Default)]
+struct Named {
+    locations: Vec<String>,
+    unlocated_imports: Vec<String>,
+}
+
+fn directives(text: &str) -> Result<Named> {
     let mut reader = quick_xml::NsReader::from_str(text);
     reader.config_mut().expand_empty_elements = true;
-    let mut named = Vec::new();
+    let mut named = Named::default();
     loop {
         let (namespace, event) = reader.read_resolved_event()?;
         match event {
@@ -278,11 +303,24 @@ fn directives(text: &str) -> Result<Vec<String>> {
                 if !DIRECTIVES.contains(&start.local_name().as_ref()) {
                     continue;
                 }
+                let mut location = None;
+                let mut namespace = None;
                 for attribute in start.attributes() {
                     let attribute = attribute?;
-                    if attribute.key.as_ref() == b"schemaLocation" {
-                        named.push(attribute.unescape_value()?.into_owned());
+                    match attribute.key.as_ref() {
+                        b"schemaLocation" => {
+                            location = Some(attribute.unescape_value()?.into_owned())
+                        }
+                        b"namespace" => namespace = Some(attribute.unescape_value()?.into_owned()),
+                        _ => {}
                     }
+                }
+                match (location, namespace) {
+                    (Some(location), _) => named.locations.push(location),
+                    (None, Some(namespace)) if start.local_name().as_ref() == b"import" => {
+                        named.unlocated_imports.push(namespace)
+                    }
+                    _ => {}
                 }
             }
             Event::Eof => return Ok(named),
@@ -299,7 +337,7 @@ fn directives(text: &str) -> Result<Vec<String>> {
 fn key(location: &str) -> String {
     let spelled = location.replace('\\', "/");
     let all: Vec<&str> = spelled.split('/').collect();
-    let Some(at) = all.iter().rposition(|segment| is_scheme(segment)) else {
+    let Some(at) = all.iter().position(|segment| is_scheme(segment)) else {
         return location.to_owned();
     };
     let mut segments: Vec<&str> = Vec::new();
@@ -315,15 +353,20 @@ fn key(location: &str) -> String {
     format!("{}///{}", all[at].to_ascii_lowercase(), segments.join("/"))
 }
 
-/// A whole segment that is a scheme and its colon. A single letter is a
-/// Windows drive, which no scheme is.
+/// A whole segment that is a scheme and its colon.
 fn is_scheme(segment: &str) -> bool {
-    let Some(name) = segment.strip_suffix(':') else {
-        return false;
-    };
+    segment
+        .strip_suffix(':')
+        .is_some_and(|name| !is_windows_drive(name) && is_scheme_name(name))
+}
+
+fn is_windows_drive(name: &str) -> bool {
+    name.len() == 1
+}
+
+fn is_scheme_name(name: &str) -> bool {
     let mut characters = name.chars();
     characters.next().is_some_and(|c| c.is_ascii_alphabetic())
-        && name.len() > 1
         && characters.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
 }
 
@@ -360,9 +403,6 @@ impl std::fmt::Debug for Preloaded {
 
 impl SchemaLoader for Preloaded {
     fn load(&self, location: &str) -> SchemaResult<String> {
-        if EmbeddedLoader.can_load(location) {
-            return EmbeddedLoader.load(location);
-        }
         match self.documents.get(&key(location)) {
             Some(text) => Ok(text.clone()),
             None => {
