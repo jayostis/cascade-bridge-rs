@@ -116,4 +116,9 @@ process.stdout.on("error", (e) => {
   process.exitCode = 2;
 });
 
-process.exitCode = bridge.run(process.argv.slice(2), host);
+try {
+  process.exitCode = bridge.run(process.argv.slice(2), host);
+} catch (e) {
+  process.stderr.write(`cascade-bridge: ${e instanceof Error ? e.message : e}\n`);
+  process.exitCode = 2;
+}

@@ -23,6 +23,10 @@ fn assert_holds(refused: &str, query: &str, phrase: &str) {
         refused.contains(&said),
         "{query} was prepared, or refused without saying {said:?}: {refused:?}"
     );
+    assert!(
+        !refused.contains('\n'),
+        "a refusal is one line: {refused:?}"
+    );
 }
 
 fn service_in_the_mapping(pattern: String) -> String {

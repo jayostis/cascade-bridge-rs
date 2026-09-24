@@ -63,7 +63,8 @@ impl Query {
         }
         if let Some(held) = what_fetches(&parsed) {
             return Err(Error::msg(format!(
-                "{what} {iri} holds {held}; a query reads the dataset built for its unit, \n                 and nothing is fetched"
+                "{what} {iri} holds {held}; a query reads the dataset built for its unit, \
+                 and nothing is fetched"
             )));
         }
         Ok(Self {

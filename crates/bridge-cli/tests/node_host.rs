@@ -368,6 +368,28 @@ fn the_node_host_exits_as_the_native_command_does_when_standard_output_is_closed
     assert!(said.contains("standard output"), "{said}");
 }
 
+#[test]
+fn the_node_host_exits_two_and_says_why_when_the_engine_traps() {
+    let scratch = scratch();
+    let host = scratch.path().join("cascade-bridge.mjs");
+    std::fs::copy(node_host_directory().join("cascade-bridge.mjs"), &host).expect("the host");
+    std::fs::create_dir(scratch.path().join("pkg")).expect("the module's directory");
+    std::fs::write(
+        scratch.path().join("pkg/cascade_bridge_wasm.js"),
+        "exports.run = () => { throw new WebAssembly.RuntimeError(\"unreachable\"); };\n",
+    )
+    .expect("a module whose engine traps");
+    let run = Command::new("node")
+        .arg(&host)
+        .arg("test")
+        .current_dir(scratch.path())
+        .output()
+        .expect("run node");
+    let said = String::from_utf8_lossy(&run.stderr);
+    assert_eq!(run.status.code(), Some(2), "{said}");
+    assert_eq!(said, "cascade-bridge: unreachable\n");
+}
+
 fn outcomes(report: &Path) -> BTreeMap<String, String> {
     let quads: Vec<_> = RdfParser::from_format(RdfFormat::Turtle)
         .for_slice(&std::fs::read(report).expect("the written report"))
