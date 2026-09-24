@@ -4,14 +4,18 @@
 //
 // Graphs are compared as graphs: spargebra names each aggregate at random per
 // parse, so two runs of one host already differ in their bytes.
-use oxrdf::{NamedOrBlankNode, Term};
+mod common;
+
+use common::{
+    canonical, copied_to, names, read_at_its_own_iri, scratch, tiny, vocabularies, BASE, MAX_LENGTH,
+};
+use oxrdf::{NamedOrBlankNode, Quad, Term};
 use oxrdfio::{RdfFormat, RdfParser};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::OnceLock;
 
-const BASE: &str = "urn:example:base";
 const EARL: &str = "http://www.w3.org/ns/earl#";
 const DCT_TITLE: &str = "http://purl.org/dc/terms/title";
 
@@ -21,24 +25,6 @@ fn workspace() -> PathBuf {
 
 fn node_host_directory() -> PathBuf {
     workspace().join("hosts/node")
-}
-
-fn tiny() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../bridge/tests/tiny-adapter")
-}
-
-fn vocabularies() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../bridge/tests/tiny-vocabularies")
-}
-
-fn scratch(name: &str) -> PathBuf {
-    let directory = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("node-host");
-    std::fs::create_dir_all(&directory).expect("the scratch directory");
-    let path = directory.join(name);
-    // A file left by an earlier run would stand in for one this run failed to
-    // write.
-    let _ = std::fs::remove_file(&path);
-    path
 }
 
 /// What the compatibility tooling runs before the node host's command, run
@@ -77,49 +63,30 @@ fn node(arguments: &[&str]) -> Output {
         .expect("run node")
 }
 
-fn canonical(bytes: &[u8], base: &str) -> BTreeSet<String> {
-    cascade_bridge::canonical_lines(
-        RdfParser::from_format(RdfFormat::Turtle)
-            .with_base_iri(base)
-            .expect("base")
-            .for_slice(bytes)
-            .map(|quad| quad.expect("a parsed graph")),
-    )
-    .expect("one canonical graph")
-}
-
-/// A findings file names its document relative to itself, so each is read
-/// against its own IRI.
-fn findings(path: &Path) -> BTreeSet<String> {
-    canonical(
-        &std::fs::read(path).expect("the written findings"),
-        &cascade_bridge::file_iri(path).expect("the file's IRI"),
-    )
-}
-
 fn graph(path: &Path) -> BTreeSet<String> {
-    canonical(&std::fs::read(path).expect("the written graph"), BASE)
+    canonical(
+        &std::fs::read(path).expect("the written graph"),
+        RdfFormat::Turtle,
+        BASE,
+    )
 }
 
-fn converts_as_the_native_command_does(adapter: &Path, document: &str, extra: &[&str]) {
-    // Cases run in parallel, so each adapter's files are named apart.
-    let named = adapter
-        .file_name()
-        .expect("a name")
-        .to_string_lossy()
-        .into_owned();
+/// The node host's findings, once they have been shown to be the native
+/// command's. A findings file names its document relative to itself, so each
+/// is read against its own IRI.
+fn converts_as_the_native_command_does(
+    adapter: &Path,
+    document: &str,
+    extra: &[&str],
+) -> Vec<Quad> {
+    let scratch = scratch();
     let document = adapter.join("fixtures/in").join(document);
     let adapter = adapter.to_string_lossy().into_owned();
     let document = document.to_string_lossy().into_owned();
-    let stem = Path::new(&document)
-        .file_stem()
-        .expect("a name")
-        .to_string_lossy()
-        .into_owned();
     let mut written = BTreeMap::new();
     for host in ["native", "node"] {
-        let out = scratch(&format!("{named}-{stem}-{host}-graph.ttl"));
-        let found = scratch(&format!("{named}-{stem}-{host}-findings.ttl"));
+        let out = scratch.path().join(format!("{host}-graph.ttl"));
+        let found = scratch.path().join(format!("{host}-findings.ttl"));
         let mut arguments = vec![
             "convert".to_owned(),
             adapter.clone(),
@@ -141,16 +108,21 @@ fn converts_as_the_native_command_does(adapter: &Path, document: &str, extra: &[
             "{host}: {}",
             String::from_utf8_lossy(&run.stderr)
         );
-        written.insert(host, (graph(&out), findings(&found)));
+        written.insert(
+            host,
+            (graph(&out), read_at_its_own_iri(&found, RdfFormat::Turtle)),
+        );
     }
     let (native_graph, native_findings) = &written["native"];
     let (node_graph, node_findings) = &written["node"];
     assert!(!native_graph.is_empty(), "the native command wrote a graph");
     assert_eq!(node_graph, native_graph, "the graph --out names");
     assert_eq!(
-        node_findings, native_findings,
+        cascade_bridge::canonical_lines(node_findings.clone()).expect("one canonical graph"),
+        cascade_bridge::canonical_lines(native_findings.clone()).expect("one canonical graph"),
         "the findings --findings names"
     );
+    node_findings.clone()
 }
 
 #[test]
@@ -161,32 +133,22 @@ fn the_node_host_converts_a_document_to_the_graph_and_findings_the_native_comman
 #[test]
 fn the_node_host_writes_the_findings_the_native_command_draws_from_the_vocabularies_shapes() {
     let vocabularies = vocabularies().to_string_lossy().into_owned();
-    converts_as_the_native_command_does(
+    let found = converts_as_the_native_command_does(
         &tiny(),
         "output-fails-a-shape.xml",
         &["--vocabularies", &vocabularies],
     );
-}
-
-fn copy_directory(from: &Path, to: &Path) {
-    std::fs::create_dir_all(to).expect("the copy's directory");
-    for entry in std::fs::read_dir(from).expect("the directory to copy") {
-        let entry = entry.expect("an entry");
-        let path = entry.path();
-        let target = to.join(entry.file_name());
-        if path.is_dir() {
-            copy_directory(&path, &target);
-        } else {
-            std::fs::copy(&path, &target).expect("a copied file");
-        }
-    }
+    assert!(
+        names(&found, MAX_LENGTH),
+        "the finding the checkout's shapes draw is among what both hosts wrote: {found:?}"
+    );
 }
 
 #[test]
 fn the_node_host_reads_a_directory_inside_the_adapter_whose_name_begins_with_two_dots() {
-    let adapter = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("node-host/dotted-adapter");
-    let _ = std::fs::remove_dir_all(&adapter);
-    copy_directory(&tiny(), &adapter);
+    let scratch = scratch();
+    let adapter = scratch.path().join("dotted-adapter");
+    copied_to(&tiny(), &adapter);
     std::fs::rename(adapter.join("mapping"), adapter.join("..mapping"))
         .expect("the renamed mapping");
     let metadata = adapter.join("ro-crate-metadata.json");
@@ -271,10 +233,11 @@ fn outcomes(report: &Path) -> BTreeMap<String, String> {
 
 #[test]
 fn the_node_host_reports_the_outcome_the_native_command_reports_for_each_entry() {
+    let scratch = scratch();
     let adapter = tiny().to_string_lossy().into_owned();
     let vocabularies = vocabularies().to_string_lossy().into_owned();
-    let native_report = scratch("native.earl.ttl");
-    let node_report = scratch("node.earl.ttl");
+    let native_report = scratch.path().join("native.earl.ttl");
+    let node_report = scratch.path().join("node.earl.ttl");
     let native_run = native(&[
         "test",
         &adapter,
@@ -341,7 +304,8 @@ fn the_import_check_names_the_import_an_allowlist_one_entry_short_leaves_out() {
         "the allowlist names the module's imports"
     );
     let left_out = left_out.unwrap_or_default();
-    let short = scratch("imports-one-short.txt");
+    let scratch = scratch();
+    let short = scratch.path().join("imports-one-short.txt");
     std::fs::write(&short, entries.join("\n")).expect("the short allowlist");
     let run = check_imports(&short);
     let said = format!(
