@@ -202,6 +202,26 @@ fn fails_every_entry_when_the_adapter_names_no_element_name_of_each_record() {
     }
 }
 
+#[test]
+fn refuses_a_crate_naming_two_element_names_of_each_record_with_a_sentence_naming_both() {
+    let resolver = Variant::of(tiny()).replacing_exactly(
+        common::CRATE,
+        r#""bridge:elementNameOfEachRecord": "item""#,
+        r#""bridge:elementNameOfEachRecord": ["item", "record"]"#,
+        1,
+    );
+    let refusal = match load_adapter(&resolver) {
+        Ok(adapter) => panic!(
+            "loaded, running with {:?}",
+            adapter.element_name_of_each_record
+        ),
+        Err(refusal) => refusal.to_string(),
+    };
+    for named in ["elementNameOfEachRecord", "item", "record"] {
+        assert!(refusal.contains(named), "{named} in: {refusal}");
+    }
+}
+
 const MANIFEST: &str = "fixtures/manifest.ttl";
 
 /// The tiny adapter with its manifest's entry list replaced, so an entry, or
