@@ -4,7 +4,7 @@
 use crate::annotation;
 use crate::decode::decode;
 use crate::error::{Error, Result};
-use crate::load::{as_subject, list, objects, subject, term_value, value, values, Adapter};
+use crate::load::{as_subject, list, objects, one, subject, term_value, values, Adapter};
 use crate::rdf::{
     canonical_lines, canonical_parts, BRIDGE_DATASET, BRIDGE_ENVELOPE, BRIDGE_EXPECTED_FINDINGS,
     BRIDGE_EXPECTED_GRAPH, BRIDGE_INPUT, BRIDGE_INPUT_ONLY, BRIDGE_ISOMORPHIC, BRIDGE_SPARQL_1_1,
@@ -138,13 +138,13 @@ impl Entry<'_> {
             .and_then(as_subject);
         let input = action
             .as_ref()
-            .map(|a| value(graph, a, BRIDGE_INPUT))
+            .map(|a| one(graph, a, BRIDGE_INPUT))
             .transpose()?
             .flatten()
             .ok_or_else(|| Error::msg("the entry's action names no bridge:input"))?;
         let envelope = action
             .as_ref()
-            .map(|a| value(graph, a, BRIDGE_ENVELOPE))
+            .map(|a| one(graph, a, BRIDGE_ENVELOPE))
             .transpose()?
             .flatten();
         let bytes = self.resolver.read(&input)?;
@@ -179,7 +179,7 @@ impl Entry<'_> {
             .and_then(as_subject);
         let graph_iri = result
             .as_ref()
-            .map(|r| value(graph, r, BRIDGE_EXPECTED_GRAPH))
+            .map(|r| one(graph, r, BRIDGE_EXPECTED_GRAPH))
             .transpose()?
             .flatten()
             .ok_or_else(|| Error::msg("the entry's result names no bridge:expectedGraph"))?;
@@ -200,7 +200,7 @@ impl Entry<'_> {
 
         let findings_iri = result
             .as_ref()
-            .map(|r| value(graph, r, BRIDGE_EXPECTED_FINDINGS))
+            .map(|r| one(graph, r, BRIDGE_EXPECTED_FINDINGS))
             .transpose()?
             .flatten();
         let mut findings_ok = true;
@@ -295,8 +295,8 @@ pub fn run_manifest(
         let start = Instant::now();
         let node = as_subject(&entry);
         let (mut types, name) = match &node {
-            Some(node) => (values(graph, node, RDF_TYPE)?, value(graph, node, MF_NAME)?),
-            None => (Vec::new(), None),
+            Some(node) => (values(graph, node, RDF_TYPE)?, one(graph, node, MF_NAME)),
+            None => (Vec::new(), Ok(None)),
         };
         types.sort();
         let known = [BRIDGE_ISOMORPHIC, BRIDGE_INPUT_ONLY, BRIDGE_DATASET];
@@ -306,25 +306,29 @@ pub fn run_manifest(
             .map(|t| (*t).to_owned())
             .or_else(|| types.first().cloned())
             .unwrap_or_default();
-        let name = name.unwrap_or_else(|| term_value(&entry));
+        let (name, unnamed) = match name {
+            Ok(name) => (name.unwrap_or_else(|| term_value(&entry)), None),
+            Err(e) => (term_value(&entry), Some(e)),
+        };
 
-        let (outcome, description) = match (&setup, &node) {
-            (None, _) => (
+        let (outcome, description) = match (&setup, &node, unnamed) {
+            (None, _, _) => (
                 Outcome::Inapplicable,
                 format!(
                     "the adapter requires {}, which this Bridge does not offer",
                     unoffered.join(", ")
                 ),
             ),
-            (Some(Err(e)), _) => (
+            (Some(Err(e)), _, _) => (
                 Outcome::Failed,
                 format!("the adapter could not be prepared: {e}"),
             ),
-            (Some(Ok(_)), None) => (
+            (Some(Ok(_)), None, _) => (
                 Outcome::Inapplicable,
                 "the entry is a literal, not a test".to_owned(),
             ),
-            (Some(Ok(_)), Some(_)) if type_iri == BRIDGE_DATASET => (
+            (Some(Ok(_)), Some(_), Some(e)) => (Outcome::Failed, format!("error: {e}")),
+            (Some(Ok(_)), Some(_), None) if type_iri == BRIDGE_DATASET => (
                 Outcome::Untested,
                 if options.datasets {
                     "--datasets was given, but streaming a referenced dataset is not implemented in this Bridge yet".to_owned()
@@ -332,7 +336,7 @@ pub fn run_manifest(
                     "datasets are not fetched; pass --datasets to run them".to_owned()
                 },
             ),
-            (Some(Ok(_)), Some(_))
+            (Some(Ok(_)), Some(_), None)
                 if type_iri != BRIDGE_ISOMORPHIC && type_iri != BRIDGE_INPUT_ONLY =>
             {
                 (
@@ -347,7 +351,7 @@ pub fn run_manifest(
                     ),
                 )
             }
-            (Some(Ok(setup)), Some(node)) => {
+            (Some(Ok(setup)), Some(node), None) => {
                 let entry = Entry {
                     adapter,
                     resolver,

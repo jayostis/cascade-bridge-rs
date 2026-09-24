@@ -199,15 +199,15 @@ pub fn load_adapter(resolver: &dyn Resolver) -> Result<Adapter> {
     for iri in values(&graph, &root_subject, BRIDGE_ENVELOPE)? {
         let s = subject(&iri)?;
         envelopes.push(Envelope {
-            name: value(&graph, &s, SCHEMA_NAME)?,
-            doc_root_element_name: value(&graph, &s, BRIDGE_DOC_ROOT_ELEMENT_NAME)?,
+            name: one(&graph, &s, SCHEMA_NAME)?,
+            doc_root_element_name: one(&graph, &s, BRIDGE_DOC_ROOT_ELEMENT_NAME)?,
             document_schema: one(&graph, &s, BRIDGE_DOCUMENT_SCHEMA)?,
             iri,
         });
     }
 
     Ok(Adapter {
-        identifier: value(&graph, &root_subject, SCHEMA_IDENTIFIER)?,
+        identifier: one(&graph, &root_subject, SCHEMA_IDENTIFIER)?,
         element_name_of_each_record: one(
             &graph,
             &root_subject,
