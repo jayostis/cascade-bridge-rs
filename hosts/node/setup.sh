@@ -55,13 +55,21 @@ fi
 
 cargo build --release --locked -p cascade-bridge-wasm --target wasm32-unknown-unknown
 built="$target/wasm32-unknown-unknown/release/cascade_bridge_wasm.wasm"
-loaded=hosts/node/pkg/cascade_bridge_wasm_bg.wasm
-# The module is rebuilt only when cargo produced a newer one, so a second run
-# on an unchanged tree does nothing.
-if [ -f "$loaded" ] && [ -f hosts/node/pkg/cascade_bridge_wasm.js ] && [ ! "$built" -nt "$loaded" ]; then
+pkg=hosts/node/pkg
+loaded=$pkg/cascade_bridge_wasm_bg.wasm
+# The module is rebuilt only when cargo or this script changed since it was
+# written, so a second run on an unchanged tree does nothing.
+if [ -f "$loaded" ] && [ -f "$pkg/cascade_bridge_wasm.js" ] &&
+  [ ! "$built" -nt "$loaded" ] && [ ! hosts/node/setup.sh -nt "$loaded" ]; then
   exit 0
 fi
-"$bindgen_root/bin/wasm-bindgen" --target nodejs --out-dir hosts/node/pkg "$built"
+# Built beside pkg and moved in only once wasm-opt succeeds: a run that stops
+# partway must leave nothing the check above takes for finished.
+staged=$pkg.partial
+rm -rf "$staged"
+"$bindgen_root/bin/wasm-bindgen" --target nodejs --out-dir "$staged" "$built"
 "$opt" -Oz --strip-debug --strip-producers --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext \
   --enable-mutable-globals --enable-reference-types --enable-multivalue \
-  "$loaded" -o "$loaded"
+  "$staged/cascade_bridge_wasm_bg.wasm" -o "$staged/cascade_bridge_wasm_bg.wasm"
+rm -rf "$pkg"
+mv "$staged" "$pkg"

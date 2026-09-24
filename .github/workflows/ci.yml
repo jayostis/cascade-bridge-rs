@@ -11,11 +11,10 @@ on:
     - cron: '17 3 * * *'
   workflow_dispatch:
 
-# A run supersedes the one before it, except that an edited description never
-# cancels a run testing code: the test job skips an edit, and a cancelled run
-# beside a skipped one would leave its required check green untested.
+# A run supersedes the one before it, and only one started the same way: the
+# nightly never cancels the run testing a merge on main, nor a merge the nightly.
 concurrency:
-  group: ci-${{ github.ref }}-${{ github.event.action == 'edited' && 'edited' || 'code' }}
+  group: ci-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 permissions:
@@ -23,36 +22,7 @@ permissions:
 
 jobs:
   # The names are required status checks on main: a renamed job leaves every
-  # merge waiting on a check that never reports. A skipped job reports as
-  # passed.
-  test:
-    name: tests, format and lints
-    # An edited description and a counterpart's move change none of this
-    # repository's code; the compatibility job is what reads them.
-    if: github.event.action != 'edited' && github.event_name != 'schedule'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      # rust-toolchain.toml names the version and its components; rustup on the
-      # runner installs exactly that, so CI and a checkout compile alike.
-      - run: rustc --version
-      - uses: Swatinem/rust-cache@v2
-      # rust-cache keeps dependencies, not the tools setup.sh fetches into
-      # target/; their versions are pinned in these two files.
-      - uses: actions/cache@v6
-        with:
-          path: |
-            target/wasm-bindgen-*
-            target/binaryen-*
-          key: node-host-tools-${{ hashFiles('Cargo.lock', 'hosts/node/setup.sh') }}
-      - run: cargo fmt --all --check
-      - run: cargo clippy --locked --all-targets -- -D warnings
-      - run: sh hosts/node/setup.sh
-      - run: cargo clippy --locked -p cascade-bridge-wasm --target wasm32-unknown-unknown -- -D warnings
-      - run: cargo test --locked
-
+  # merge waiting on a check that never reports.
   compatibility:
     name: compatibility
     runs-on: ubuntu-latest
