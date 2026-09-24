@@ -1,6 +1,4 @@
-// What a produced graph must survive being written down: a triple constructed
-// for every record is written once, and two records' blank nodes stay two.
-// The test harness sees neither, because it canonicalises before it compares.
+// The harness canonicalises before it compares, so it sees none of what this file holds.
 mod common;
 
 use cascade_bridge::{
@@ -14,10 +12,7 @@ use std::collections::BTreeSet;
 
 const TABLE: &str = "_:shared <urn:example:catalog#about> \"the whole catalog\" .";
 
-/// The tiny adapter with its one mapping replaced, so a mapping that emits
-/// what this file is about can be run without a second adapter, and with a
-/// lookup table beside it, whose blank node carries one label into every
-/// record's store.
+/// With `table`, a lookup table whose blank node carries one label into every record's store.
 fn mapping(text: String, table: bool) -> Variant {
     let replaced = Variant::of(tiny()).with("mapping/item.rq", text);
     if !table {
@@ -57,8 +52,6 @@ WHERE {
 }
 ";
 
-/// The tiny adapter's two-record input, converted through the given mapping
-/// and written out.
 fn graph(construct: &str, format: GraphFormat) -> String {
     through(construct, WHERE, format, false)
 }
@@ -97,8 +90,7 @@ fn converted(
     (conversion, written)
 }
 
-/// What was written, read back as the triples it says. Every IRI a case writes
-/// is absolute, so no base is needed to read it.
+/// Every IRI a case writes is absolute, so no base is needed to read it back.
 fn read_back(written: &str, format: RdfFormat) -> Vec<Quad> {
     RdfParser::from_format(format)
         .for_slice(written.as_bytes())
@@ -150,11 +142,6 @@ fn keeps_two_records_blank_nodes_apart() {
     );
 }
 
-/// A table is parsed once and loaded beside every record, so a mapping that
-/// puts the table's own node in its graph hands every record the same label.
-/// Merging two graphs is standardising their blank nodes apart, not taking a
-/// shared label for a shared node, which is what a query engine free to label
-/// two executions alike would otherwise cost.
 #[test]
 fn keeps_two_records_apart_when_they_were_handed_one_label() {
     let written = through(
@@ -205,9 +192,7 @@ fn counts_the_triples_the_written_graph_holds() {
     );
 }
 
-/// Whether a prefix is declared is a property of the text, not of the graph,
-/// so these two cases read the `@prefix` lines as written and the graph as
-/// parsed.
+/// A prefix declaration is a property of the text, so the text is read as written.
 #[test]
 fn declares_no_prefix_that_is_only_a_path_of_an_iri_the_graph_names() {
     let written = graph("?s a v1:Item .", GraphFormat::Turtle);
@@ -245,9 +230,6 @@ fn writes_turtle_with_the_names_the_mapping_gave_the_namespaces_it_used() {
     );
 }
 
-/// A findings file is written as Turtle relative to its own IRI, where
-/// N-Triples names every IRI in full, so the N-Triples is the graph the Turtle
-/// has to read back to, for every document the tiny adapter finds something in.
 #[test]
 fn writes_the_same_findings_graph_as_turtle_as_it_does_as_n_triples() {
     let resolver = tiny();
@@ -291,4 +273,28 @@ fn writes_the_same_findings_graph_as_turtle_as_it_does_as_n_triples() {
         compared > 3,
         "only {compared} documents had findings to compare"
     );
+}
+
+#[test]
+#[ignore = "Oxigraph 0.5.11 returns derived XSD integer types such as `xsd:positiveInteger` as `xsd:integer`, which SPARQL 1.1 does not allow, so an expected graph that uses them cannot pass on this Bridge."]
+fn keeps_the_derived_integer_type_a_mapping_gave_a_literal() {
+    const POSITIVE_INTEGER: &str = "http://www.w3.org/2001/XMLSchema#positiveInteger";
+    let (conversion, written) = converted(
+        "?s ex:copies ?copies .",
+        &WHERE.replace(
+            "AS ?s)",
+            &format!("AS ?s)\n  BIND(\"3\"^^<{POSITIVE_INTEGER}> AS ?copies)"),
+        ),
+        GraphFormat::NTriples,
+        false,
+    );
+    let copies: Vec<&str> = conversion
+        .quads
+        .iter()
+        .filter_map(|q| match &q.object {
+            Term::Literal(literal) => Some(literal.datatype().as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(copies, [POSITIVE_INTEGER; 2], "{written}");
 }

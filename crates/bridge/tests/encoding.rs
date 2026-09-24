@@ -1,7 +1,3 @@
-// An XML document says what its bytes mean. Two documents that say the same
-// thing in different encodings are the same document, and must lift to the
-// same graph; decoding as UTF-8 whatever the bytes say turns one of them into
-// mojibake, or into nothing at all.
 use cascade_bridge::{canonical_lines, lift_slice};
 use oxrdf::{Quad, Term};
 use std::collections::BTreeSet;

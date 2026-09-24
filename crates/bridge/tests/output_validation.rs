@@ -1,10 +1,3 @@
-// What a produced graph is read against, and what a result it failed becomes.
-// The shapes and the ontology are the Cascade vocabulary's, read from the
-// checkout the engine command was given and from nowhere else; each SHACL
-// result is one finding about the record whose graph it was, carrying the
-// result itself rather than a sentence about it; and a predicate no ontology
-// declares is a finding of the same shape. Validation reports and never
-// refuses: the graph is produced whatever the shapes say of it.
 mod common;
 
 use cascade_bridge::{load_adapter, prepare, Conversion, Resolver};
@@ -15,16 +8,12 @@ use common::{
 use oxrdf::Quad;
 use std::collections::BTreeSet;
 
-/// The namespace the tiny adapter maps into, which the checkout's ontology
-/// declares and the checkout's shapes constrain.
 const EX: &str = "urn:example:catalog#";
 
-/// The gap kind an undeclared predicate's finding names as its body.
 const PREDICATE_NOT_DECLARED: &str =
     "https://ns.cascadeprotocol.org/bridge/v1-draft#predicateNotDeclared";
 
-/// The shapes file the crate names by its path in the checkout, which is a
-/// path no file of the adapter answers to.
+/// A path in the checkout that no file of the adapter answers to.
 const SHAPES: &str = "ontologies/catalog/v1/catalog.shapes.ttl";
 
 /// The conversion and the IRI of the document it was made from.
@@ -37,9 +26,7 @@ fn read_against_the_vocabulary(input: &str) -> (Conversion, String) {
     run(&tiny_with_vocabularies(), input)
 }
 
-/// Everything the specification says a finding about the produced graph
-/// carries. What a finding does not carry reads as the empty string, so a
-/// focus node left unnamed is a case this can state.
+/// What a finding does not carry reads as the empty string.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Finding {
     body: String,
@@ -52,9 +39,7 @@ struct Finding {
     refined: String,
 }
 
-/// The annotations the output validation made. A finding a schema or an
-/// adapter's own query made names neither a SHACL constraint component nor a
-/// gap kind of the produced graph, and is another stage's business.
+/// The annotations the output validation made, and not a schema or a query.
 fn reported(findings: &[Quad]) -> Vec<String> {
     annotations(findings)
         .into_iter()
@@ -92,7 +77,6 @@ fn output_findings(findings: &[Quad]) -> Vec<Finding> {
     rows
 }
 
-/// A finding the checkout's shapes draw on the first record of a document.
 fn on_the_first_record(body: &str, severity: &str, focus: &str, document: &str) -> Finding {
     Finding {
         body: format!("{SH}{body}"),
@@ -209,8 +193,7 @@ fn reads_the_vocabulary_from_the_directory_the_command_was_given() {
     );
 }
 
-/// What preparing the tiny adapter says of a crate naming this vocabulary
-/// file, which is nothing where it prepares.
+/// What preparing says of a crate naming this vocabulary file; empty where it prepares.
 fn refusal(file: &str) -> String {
     let resolver = Variant::of(tiny_with_vocabularies()).replacing(CRATE, SHAPES, file);
     let adapter = load_adapter(&resolver).expect("adapter");

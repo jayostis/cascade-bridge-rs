@@ -4,6 +4,28 @@ The Cascade Bridge for Rust: it runs Cascade Bridge Adapters. The contract is
 the Cascade Bridge Specification, `jayostis/cascade-bridge-spec`, and this
 repository is one implementation of it, never a second statement of it.
 
+## Documentation is a defect until proven otherwise
+
+Anything that restates something else goes stale, so the default is to write
+nothing. What something is and what it must do is carried, in this order, by:
+
+1. **A name** that makes a comment unnecessary: a crate, a module, a type, a
+   function, a test.
+2. **Structure**: the crates, the modules, the types and what they let through.
+3. **A test** whose name is the sentence and whose assertion is the rule.
+4. **An error's sentence**, because a failing run prints it.
+5. **Prose**, only for what none of the above can hold, and as short as it goes.
+
+So:
+
+- **No comment or doc comment that restates a name, a signature, a test or
+  another file.** Rename instead.
+- **No reference by number, count, position or line**: "the three stages",
+  "below", `run.rs:120`. Name the thing, or link it.
+- **No reasoning in files.** Why a change was made, and the alternative it did
+  not take, go in the commit message.
+- **Deleting prose is always in scope**, in any change, and preferred to editing it.
+
 ## The rules
 
 - **The specification is the authority.** A test type's rule is the
@@ -13,34 +35,32 @@ repository is one implementation of it, never a second statement of it.
 - **Nothing here pins another repository.** Which version of each
   one a run uses is `jayostis/cascade-bridge-spec`'s
   [`compatibility.md`](https://github.com/jayostis/cascade-bridge-spec/blob/main/compatibility.md).
-- **Its own tests use only the synthetic adapter; real adapters are checked
-  only through `compatibility.json`.** The test subject is
-  `crates/bridge/tests/tiny-adapter`, built so each outcome is reached by the
-  smallest input that can reach it. An engine tested against the adapters it
-  has met passes those adapters, not the contract.
-- **The library never touches a filesystem.** Only `crates/bridge/src/resolver.rs`
-  names `std::fs` or `std::path`, and `crates/bridge/tests/boundary.rs` holds it
-  to that. A host that is not a directory — a browser, an object store — supplies
-  bytes by IRI instead, and a stray `std::fs` would be found by the first one
-  that tried.
+- **Its own tests use the tiny adapter,
+  `crates/bridge/tests/tiny-adapter`**, built so each outcome is reached by the
+  smallest input that can reach it. The specification's synthetic adapter is
+  met only through its vector, `specification_vector.rs`:
+  `meets_the_specification_s_synthetic_adapter_only_through_its_vector`. A
+  real adapter is met only through `compatibility.json`:
+  `meets_a_real_adapter_only_through_the_compatibility_run`. An engine tested
+  against the adapters it has met passes those adapters, not the contract.
+- **The library never touches a filesystem**:
+  `lets_only_the_resolver_name_the_filesystem`. A host that is not a
+  directory supplies bytes by IRI instead.
 - **Nothing is fetched.** The JSON-LD context is bundled in
-  `crates/bridge/src/contexts/`. A crate naming another context fails to load
-  instead of reaching the network.
-- **Each unit gets a store of its own.** A mapping sees one unit, lifted with
-  the unit as root, so no query can reach into another record.
-- **Every dependency is pinned exactly**, `=x.y.z`, and `Cargo.lock` is
-  committed. A range lets the engine change under a green run.
-- **Every query is parsed once per adapter.** `prepare` parses and keeps the
-  algebra; a unit clones it. Re-parsing per unit was a measured cost of a
-  binding that exposes no prepared query.
+  `crates/bridge/src/contexts/`.
+- **Each unit gets a store of its own**, so no query can reach into another
+  record.
+- **Every dependency is pinned exactly**, and `Cargo.lock` is committed:
+  `pins_every_dependency_to_an_exact_version_or_a_git_rev`.
+- **Every query is read once per `prepare`**:
+  `reads_each_query_of_the_adapter_once_per_prepare`.
 
 ## Conventions
 
 - `cargo fmt --all`, `cargo clippy --all-targets -- -D warnings`,
   `sh hosts/node/setup.sh`, `cargo test`. CI runs all four, and
-  `cargo test -- --ignored` where it has checked out the counterpart a vector
-  reads. setup.sh is the one build step: it builds the module the node host
-  tests load, and `cargo test` never builds or installs anything.
-- Conventional commits. Impersonal. No archaeology: what a file used to be is
-  git's job.
-- Why, never what. A comment restating the line below it goes.
+  the specification's vector, `specification_vector.rs`, with `--ignored`
+  where it has checked out the specification. setup.sh is the one build step:
+  it builds the module the node host tests load, and `cargo test` never builds
+  or installs anything.
+- Conventional commits. Impersonal.

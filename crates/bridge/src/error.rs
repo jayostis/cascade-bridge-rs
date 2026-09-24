@@ -1,6 +1,4 @@
-// One error type, carrying a sentence. A harness puts that sentence in an
-// entry's description, so it is written to be read there and not only in a
-// stack trace.
+// A harness puts an error's sentence in an entry's description: write it to be read there.
 use std::fmt;
 
 #[derive(Debug)]
@@ -17,7 +15,6 @@ impl Error {
         }
     }
 
-    /// A file asked for that does not exist, as against one refused.
     pub fn missing(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),

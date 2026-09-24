@@ -13,7 +13,6 @@ fn refusal(variant: &Variant) -> String {
         .to_string()
 }
 
-/// A refusal that opens with the file's name and names it nowhere else.
 fn names_once(refused: &str, iri: &str) {
     assert!(refused.starts_with(&format!("{iri}: ")), "{refused}");
     assert_eq!(refused.matches(iri).count(), 1, "{refused}");

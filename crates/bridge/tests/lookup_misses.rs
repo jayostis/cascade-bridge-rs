@@ -1,14 +1,3 @@
-// An accounting entry may say where its path's values are looked up, and a
-// Bridge then reports each distinct value of that path the concept map holds no
-// notation for — the gap kind a verdict could never name, because it is true of
-// a value and not of the path.
-//
-// A lookup finding is per value rather than per path: it is addressed at that
-// value's first occurrence, carries the value as the record wrote it, and counts
-// the nodes holding that value. So the walk that keeps a path's first occurrence
-// and its count has to keep values too, and an element's value is not known when
-// its start tag is read: it arrives between the start and the end, in as many
-// pieces as the parser hands it over in.
 mod common;
 
 use common::{
@@ -19,14 +8,10 @@ use oxrdf::{Quad, Term};
 
 const STATUS_GAP: &str = "urn:example:catalog#statusOutsideTheTable";
 
-/// The two halves of a lookup declaration, as an entry writes them: the concept
-/// map relative to the accounting that names it, and the gap its misses body.
 const LOOKUP_IN: &str = "bridge:lookupIn <catalog-statuses.ttl>";
 const LOOKUP_NAMES_GAP: &str = "bridge:lookupNamesGap ex:statusOutsideTheTable";
 
-/// Every lookup finding a run produced, by the node it is, in the order the run
-/// wrote them. A lookup's gap is of the one kind no verdict may report, so its
-/// body tells a lookup finding from a census finding and from an entry's.
+/// In the order the run wrote them; a lookup's gap kind tells it from every other finding.
 fn lookups(findings: &[Quad]) -> Vec<String> {
     let mut annotations: Vec<String> = Vec::new();
     for quad in findings {
@@ -44,9 +29,7 @@ fn lookups(findings: &[Quad]) -> Vec<String> {
     annotations
 }
 
-/// Each lookup finding as what it says and where it says it: the value it
-/// names, the record it is about, and the occurrence inside that record it is
-/// addressed at.
+/// Each lookup finding as its value, its record, and the occurrence it is addressed at.
 fn missed(findings: &[Quad]) -> Vec<(String, String, String)> {
     let mut rows: Vec<(String, String, String)> = lookups(findings)
         .iter()
@@ -63,12 +46,10 @@ fn missed(findings: &[Quad]) -> Vec<(String, String, String)> {
     rows
 }
 
-/// A row of `missed`, spelled as a test writes one.
 fn row(value: &str, record: &str, within: &str) -> (String, String, String) {
     (value.to_owned(), record.to_owned(), within.to_owned())
 }
 
-/// The values a run's lookup findings name, in the order the run wrote them.
 fn in_order(findings: &[Quad]) -> Vec<String> {
     lookups(findings)
         .iter()
@@ -76,7 +57,6 @@ fn in_order(findings: &[Quad]) -> Vec<String> {
         .collect()
 }
 
-/// The one lookup finding about this value.
 fn about(findings: &[Quad], value: &str) -> String {
     let mut found = lookups(findings)
         .into_iter()
@@ -90,8 +70,6 @@ fn about(findings: &[Quad], value: &str) -> String {
     first.expect("checked above")
 }
 
-/// What every annotation a run produced bodies, so a finding standing beside
-/// another at one node can be counted.
 fn bodies(findings: &[Quad]) -> Vec<String> {
     let mut named: Vec<String> = annotations(findings)
         .iter()
@@ -104,20 +82,15 @@ fn bodies(findings: &[Quad]) -> Vec<String> {
 const MAP_PREAMBLE: &str =
     "@prefix skos: <http://www.w3.org/2004/02/skos/core#> .\n@prefix ex:   <urn:example:catalog#> .\n";
 
-/// The entry a case is about: a path whose values the committed concept map is
-/// looked up in, under whichever verdict the case names.
 fn looks_up(path: &str, verdict: &str) -> String {
     entry(path, verdict, &[LOOKUP_IN, LOOKUP_NAMES_GAP])
 }
 
-/// The tiny adapter with its accounting replaced, so a declaration can be
-/// varied without being committed.
 fn declaring(accounting: String) -> Variant {
     Variant::of(tiny()).with(ACCOUNTING, accounting)
 }
 
-/// An accounting whose one entry looks its notes up, which is every case about
-/// what a record holds rather than about what an entry says.
+/// An accounting whose one entry looks its notes up.
 fn notes() -> Variant {
     declaring(accounting(&[looks_up("/item/note", "consumed")]))
 }
@@ -445,7 +418,6 @@ fn refuses_an_entry_declaring_two_maps_or_two_gaps_for_its_misses() {
     }
 }
 
-/// Neither Turtle nor anything else: a concept map that cannot be read at all.
 const UNPARSEABLE: &str = "@prefix skos: <http://www.w3.org/2004/02/skos/core#\n";
 
 #[test]

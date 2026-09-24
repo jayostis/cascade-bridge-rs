@@ -1,8 +1,6 @@
 #!/bin/sh
-# Builds the module cascade-bridge.mjs loads, into hosts/node/pkg, with the
-# tools it needs: the wasm32 target, wasm-bindgen-cli at exactly the version of
-# the wasm-bindgen crate in Cargo.lock, since the two must agree, and wasm-opt.
-# Every tool is installed under the target directory, never into $CARGO_HOME.
+# wasm-bindgen-cli must be the version of the wasm-bindgen crate in Cargo.lock. Every tool
+# goes under the target directory, never into $CARGO_HOME.
 set -eu
 cd "$(dirname "$0")/../.."
 target="${CARGO_TARGET_DIR:-target}"
@@ -57,14 +55,11 @@ cargo build --release --locked -p cascade-bridge-wasm --target wasm32-unknown-un
 built="$target/wasm32-unknown-unknown/release/cascade_bridge_wasm.wasm"
 pkg=hosts/node/pkg
 loaded=$pkg/cascade_bridge_wasm_bg.wasm
-# The module is rebuilt only when cargo or this script changed since it was
-# written, so a second run on an unchanged tree does nothing.
 if [ -f "$loaded" ] && [ -f "$pkg/cascade_bridge_wasm.js" ] &&
   [ ! "$built" -nt "$loaded" ] && [ ! hosts/node/setup.sh -nt "$loaded" ]; then
   exit 0
 fi
-# Built beside pkg and moved in only once wasm-opt succeeds: a run that stops
-# partway must leave nothing the check above takes for finished.
+# Staged, so a run that stops partway leaves nothing that passes for a finished module.
 staged=$pkg.partial
 rm -rf "$staged"
 "$bindgen_root/bin/wasm-bindgen" --target nodejs --out-dir "$staged" "$built"

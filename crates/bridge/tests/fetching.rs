@@ -6,8 +6,7 @@ use common::{tiny_with_vocabularies, Variant};
 const ENDPOINT: &str = "<https://example.invalid/sparql>";
 const GRAPH: &str = "<https://example.invalid/g>";
 
-/// What preparing the tiny adapter says with this query rewritten, which is
-/// nothing where it prepares.
+/// Empty where the adapter prepares.
 fn refusal(query: &str, from: &str, to: impl Into<String>) -> String {
     let resolver = Variant::of(tiny_with_vocabularies()).replacing(query, from, to);
     let adapter = load_adapter(&resolver).expect("adapter");

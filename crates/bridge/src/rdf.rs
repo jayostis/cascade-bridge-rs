@@ -1,5 +1,3 @@
-// The RDF plumbing every stage shares: the terms it names, the one canonical
-// form graphs are compared in, and the text a produced graph is handed over as.
 use crate::error::Result;
 use oxiri::Iri;
 use oxrdf::dataset::{CanonicalizationAlgorithm, CanonicalizationHashAlgorithm};
@@ -101,7 +99,6 @@ terms! {
     MF_NAME = "http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#", "name";
 }
 
-/// The names every findings graph is written under, whatever the adapter.
 pub const FINDINGS_PREFIXES: [(&str, &str); 4] = [
     ("rdf", "http://www.w3.org/1999/02/22-rdf-syntax-ns#"),
     ("oa", "http://www.w3.org/ns/oa#"),
@@ -109,8 +106,6 @@ pub const FINDINGS_PREFIXES: [(&str, &str); 4] = [
     ("bridge", "https://ns.cascadeprotocol.org/bridge/v1-draft#"),
 ];
 
-/// RDFC-1.0 canonical N-Quads, one line per quad, duplicates removed: two
-/// graphs are isomorphic exactly when these are equal.
 pub fn canonical_lines(quads: impl IntoIterator<Item = Quad>) -> Result<BTreeSet<String>> {
     let mut dataset = Dataset::new();
     for quad in quads {
@@ -122,8 +117,6 @@ pub fn canonical_lines(quads: impl IntoIterator<Item = Quad>) -> Result<BTreeSet
     Ok(dataset.iter().map(|quad| quad.to_string()).collect())
 }
 
-/// The blank nodes a graph holds, each joined to every other one a quad of the
-/// graph names beside it.
 #[derive(Default)]
 struct Joined(HashMap<String, String>);
 
@@ -148,7 +141,6 @@ impl Joined {
     }
 }
 
-/// The blank node a quad belongs to whatever else it names.
 fn blank_of(quad: &Quad) -> Option<&str> {
     match (&quad.subject, &quad.object) {
         (NamedOrBlankNode::BlankNode(node), _) => Some(node.as_str()),
@@ -157,11 +149,8 @@ fn blank_of(quad: &Quad) -> Option<&str> {
     }
 }
 
-/// Each part of a graph no blank node reaches out of, canonicalised on its own
-/// and written as one line. A blank node bijection maps such a part onto such a
-/// part, so two graphs are isomorphic exactly when these multisets are equal —
-/// and what differs is then one whole part, rather than every line a
-/// relabelling moved.
+/// Each part of the graph no blank node reaches out of, canonicalised on its own
+/// as one line: two graphs are isomorphic exactly when these multisets are equal.
 pub fn canonical_parts(quads: impl IntoIterator<Item = Quad>) -> Result<Vec<String>> {
     let quads: HashSet<Quad> = quads.into_iter().collect();
     let mut joined = Joined::default();
@@ -195,7 +184,6 @@ pub fn canonical_parts(quads: impl IntoIterator<Item = Quad>) -> Result<Vec<Stri
     Ok(written)
 }
 
-/// The syntax a produced graph is written in: one to read, one to pipe.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GraphFormat {
     Turtle,
@@ -219,8 +207,6 @@ impl GraphFormat {
     }
 }
 
-/// Every IRI a quad names, for deciding which of the offered prefixes the
-/// graph can be spelled with.
 fn iris(quad: &Quad) -> [Option<&str>; 3] {
     [
         match &quad.subject {
@@ -237,9 +223,6 @@ fn iris(quad: &Quad) -> [Option<&str>; 3] {
     ]
 }
 
-/// The namespace of every IRI in the graph: what stands before its "#", or
-/// before its last "/" where it has none. An IRI has the one namespace, so a
-/// name a path of it merely starts with is not one the graph uses.
 fn namespaces(quads: &[Quad]) -> HashSet<&str> {
     let mut namespaces = HashSet::new();
     for iri in quads.iter().flat_map(iris).flatten() {
@@ -250,12 +233,6 @@ fn namespaces(quads: &[Quad]) -> HashSet<&str> {
     namespaces
 }
 
-/// The graph as text.
-///
-/// Each triple is written once: two mappings that construct the same triple,
-/// or one constructed for every record, describe the graph no more than once.
-/// A prefix is declared only where the graph uses it, so a mapping's lift
-/// namespaces do not reach output they never appear in.
 pub fn serialise(
     quads: &[Quad],
     format: GraphFormat,
@@ -264,12 +241,6 @@ pub fn serialise(
     serialise_at(quads, format, prefixes, None)
 }
 
-/// The reference a file standing at `base` names `iri` by, where it can name
-/// it at all: the same scheme and authority, no query or fragment on either,
-/// no "." or ".." step on either, and a path a run of "../" reaches from the
-/// file's own directory.
-///
-/// Nothing else is relative, and an IRI this cannot name is named in full.
 fn relative_to(base: &Iri<&str>, iri: &str) -> Option<String> {
     let target = Iri::parse(iri).ok()?;
     if target.scheme() != base.scheme()
@@ -285,13 +256,11 @@ fn relative_to(base: &Iri<&str>, iri: &str) -> Option<String> {
     {
         return None;
     }
-    // A relative reference is resolved against the directory the file stands
-    // in, so the file's own name is not part of the way back up.
+    // A reference resolves against the file's directory, not the file.
     let mut here: Vec<&str> = base.path().split('/').collect();
     here.pop()?;
     let there: Vec<&str> = target.path().split('/').collect();
-    // A reader removes dot segments once more when it resolves the reference,
-    // so a step this carried through would name a file neither IRI did.
+    // A reader removes dot segments again, so a carried step would name another file.
     let dotted = |steps: &[&str]| steps.iter().any(|step| matches!(*step, "." | ".."));
     if dotted(&here) || dotted(&there) {
         return None;
@@ -314,8 +283,6 @@ fn relative_to(base: &Iri<&str>, iri: &str) -> Option<String> {
     ))
 }
 
-/// Every IRI of the graph a file standing at `base` can name relative to
-/// itself, named that way.
 fn relative(quads: &[Quad], base: &Iri<&str>) -> Vec<Quad> {
     let named = |node: &NamedNode| match relative_to(base, node.as_str()) {
         Some(reference) => NamedNode::new_unchecked(reference),
@@ -340,16 +307,7 @@ fn relative(quads: &[Quad], base: &Iri<&str>) -> Vec<Quad> {
         .collect()
 }
 
-/// The graph as the text of a file standing at `at`, which every IRI it can
-/// name relative to itself is named relative to.
-///
-/// No base is written into the file. A reader resolves a Turtle file's
-/// relative IRIs against the IRI it read the file from, which is what lets a
-/// committed oracle name its own checkout's documents; a base written into the
-/// file would resolve them against the machine that produced it instead, which
-/// is the defect this is here to close.
-///
-/// N-Triples has no relative IRI, so `at` does nothing there.
+/// Every IRI the file standing at `at` can name relative to itself is named that way.
 pub fn serialise_at(
     quads: &[Quad],
     format: GraphFormat,
@@ -388,9 +346,6 @@ mod tests {
         relative_to(&Iri::parse(ORACLE).expect("the file's own IRI"), iri)
     }
 
-    /// A reference is right when the reader that resolves it arrives at the
-    /// IRI it was made from. Comparing it to the string it was expected to be
-    /// agrees just as readily with one that arrives somewhere else.
     fn resolves_back_to(iri: &str) {
         let Some(reference) = named(iri) else {
             return;
@@ -441,9 +396,6 @@ mod tests {
         }
     }
 
-    /// What is refused is the step, not the characters that spell one: a name
-    /// reading `%2E%2E` is a name, and naming its file in full would be a
-    /// guard turned on a file this can perfectly well name.
     #[test]
     fn reads_a_percent_encoded_dot_segment_as_a_name_and_not_a_step() {
         assert_eq!(

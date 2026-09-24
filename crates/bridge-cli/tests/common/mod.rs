@@ -1,6 +1,3 @@
-// What the command's tests and the node host's both read: the tiny adapter,
-// the checkout its shapes stand in, a written graph as a graph, and a scratch
-// directory of this run's own.
 #![allow(dead_code)]
 
 use oxrdf::Quad;
@@ -21,15 +18,11 @@ pub fn tiny() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../bridge/tests/tiny-adapter")
 }
 
-/// Where the engine command's `--vocabularies` argument points: the picked
-/// checkout of `the-cascade-protocol/spec`, which the compatibility tooling
-/// appends as it appends `--earl`.
 pub fn vocabularies() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../bridge/tests/tiny-vocabularies")
 }
 
-/// A directory no earlier run wrote to, so a file a run failed to write cannot
-/// be stood in for by one left behind. It goes when the value does.
+/// A directory no earlier run wrote to, so a file left behind cannot stand in for one.
 pub fn scratch() -> TempDir {
     tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).expect("a scratch directory")
 }
@@ -50,8 +43,6 @@ pub fn canonical(bytes: &[u8], format: RdfFormat, base: &str) -> BTreeSet<String
     cascade_bridge::canonical_lines(quads(bytes, format, base)).expect("one canonical graph")
 }
 
-/// A written file, read against its own IRI: a findings file names its
-/// document relative to itself, as a committed oracle does.
 pub fn read_at_its_own_iri(path: &Path, format: RdfFormat) -> Vec<Quad> {
     quads(
         &std::fs::read(path).expect("the written file"),
@@ -60,14 +51,12 @@ pub fn read_at_its_own_iri(path: &Path, format: RdfFormat) -> Vec<Quad> {
     )
 }
 
-/// Whether any triple names this IRI as its object.
 pub fn names(quads: &[Quad], iri: &str) -> bool {
     quads
         .iter()
         .any(|quad| matches!(&quad.object, oxrdf::Term::NamedNode(n) if n.as_str() == iri))
 }
 
-/// The whole adapter where a different checkout would stand.
 pub fn copied_to(from: &Path, to: &Path) {
     std::fs::create_dir_all(to).expect("the copy's directory");
     for entry in std::fs::read_dir(from).expect("the directory to copy") {

@@ -8,9 +8,7 @@ use oxrdfio::RdfFormat;
 use std::collections::{BTreeMap, BTreeSet};
 use std::process::{Command, Stdio};
 
-/// The stamp the tiny adapter's expected graph carries and no stage of this
-/// Bridge writes yet: the harness drops it from both sides, and a converted
-/// graph has to be read the same way until the stamp stage exists.
+/// The stamp the expected graph carries and no stage of this Bridge writes yet.
 const STAMP: &str = "http://www.w3.org/ns/prov#generatedAtTime";
 
 fn cascade_bridge(arguments: &[&str]) -> std::process::Output {
@@ -47,7 +45,6 @@ fn expected() -> BTreeSet<String> {
     )
 }
 
-/// Each entry's outcome, by its name, as `test` prints them.
 fn entry_lines(stdout: &str) -> BTreeMap<String, String> {
     stdout
         .lines()
@@ -276,8 +273,6 @@ fn says_the_adapter_the_records_and_the_detect_answer_on_standard_error() {
     assert!(stderr.contains("Detect   true"), "{stderr}");
 }
 
-/// What `| head -5` does to the command: the reader goes away mid-graph, and
-/// the documented statuses are the only ones a caller is given.
 #[test]
 fn reports_a_standard_output_that_has_gone_away_rather_than_panicking() {
     let document = tiny().join("fixtures/in/two.xml");
@@ -328,8 +323,6 @@ fn writes_the_same_graph_as_n_triples_and_to_the_file_out_names() {
     );
 }
 
-/// The oracle the tiny adapter commits for the document, read against its own
-/// IRI so the document it names relatively is the document the entry names.
 fn expected_findings() -> BTreeSet<String> {
     let path = tiny().join("fixtures/findings/two.ttl");
     canonical(
@@ -339,8 +332,6 @@ fn expected_findings() -> BTreeSet<String> {
     )
 }
 
-/// The one that matters: the oracle a Bridge writes is the oracle a Bridge
-/// judges.
 #[test]
 fn writes_the_findings_the_adapter_expects_of_the_document_where_findings_names() {
     let scratch = scratch();
@@ -371,11 +362,6 @@ fn writes_the_findings_the_adapter_expects_of_the_document_where_findings_names(
     );
 }
 
-/// The failure the flag exists to prevent. An oracle is written once and read
-/// on every checkout afterwards, from whatever path that checkout stands at,
-/// so a finding naming its document absolutely holds where it was written and
-/// nowhere else — and the flag is worth nothing unless what it writes can be
-/// committed as it stands.
 #[test]
 fn writes_findings_the_adapter_can_commit_and_a_checkout_at_another_path_can_read() {
     let scratch = scratch();
@@ -495,15 +481,12 @@ fn exits_non_zero_and_writes_no_graph_when_the_findings_file_cannot_be_written()
     assert!(!stderr.contains("usage:"), "{stderr}");
 }
 
-/// The namespaces nearly every IRI of a findings graph is in, none of which a
-/// mapping query has reason to declare.
+/// A namespace no mapping query has reason to declare.
 const OA: &str = "http://www.w3.org/ns/oa#";
 const SH: &str = "http://www.w3.org/ns/shacl#";
 /// The tiny adapter's gap scheme names its gaps here.
 const GAPS: &str = "urn:example:catalog#";
 
-/// A committed oracle is what a reviewer reads, so a findings file names
-/// what it can by a prefix rather than in full.
 #[test]
 fn writes_findings_under_the_prefixes_a_findings_graph_uses() {
     let scratch = scratch();
@@ -559,9 +542,7 @@ fn writes_findings_under_the_prefixes_a_findings_graph_uses() {
     assert_eq!(declared(SH).as_deref(), Some("sh"), "{text}");
 }
 
-/// Prefixes spell a graph; they may not change a triple of it. That every
-/// committed input's findings read back the same both ways is the library's
-/// serialiser to show; this is the command carrying `--format` through to it.
+/// The command carrying `--format` through to the library's serialiser.
 #[test]
 fn writes_the_same_findings_graph_as_turtle_as_it_does_as_n_triples() {
     let scratch = scratch();

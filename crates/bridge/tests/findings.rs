@@ -1,12 +1,5 @@
-// A findings query is a CONSTRUCT whose annotations name the record by
-// bridge:thisRecord. The Bridge puts the document in that name's place and
-// moves the query's selector under the record's own position, so an adapter
-// says what inside a record a finding is about and the Bridge says which
-// record that was.
-//
-// Every adapter here has its accounting struck out of its crate: a census
-// finding and the finding an entry reports are neither of them a query's, and
-// what a findings query says is what this file is about.
+// Every adapter here has its accounting struck out: what a findings query says is what
+// this file is about.
 mod common;
 
 use cascade_bridge::{convert, load_adapter, prepare, Conversion, Resolver, Source};
@@ -24,8 +17,6 @@ fn findings_through(resolver: &dyn Resolver, input: &str) -> Vec<Quad> {
     conversion(resolver, input).expect("conversion").findings
 }
 
-/// A findings query is judged on what it constructs, so the adapter must load
-/// and prepare: a refusal these tests look for is the conversion's.
 fn conversion(resolver: &dyn Resolver, input: &str) -> cascade_bridge::Result<Conversion> {
     let adapter = load_adapter(resolver).expect("adapter");
     let prepared = prepare(&adapter, resolver).expect("prepared");
@@ -50,8 +41,8 @@ fn rewritten(replacements: &[(&str, &str)]) -> Variant {
         })
 }
 
-/// Every object of a predicate, whatever its subject, as N-Triples writes it:
-/// two blank nodes are one node exactly where they write the same.
+/// Every object of a predicate as N-Triples writes it: two blank nodes are one node
+/// exactly where they write the same.
 fn every(quads: &[Quad], predicate: &str) -> Vec<String> {
     let mut written: Vec<String> = quads
         .iter()
@@ -62,9 +53,7 @@ fn every(quads: &[Quad], predicate: &str) -> Vec<String> {
     written
 }
 
-/// Where each finding is addressed: the record its selector names, and the
-/// step below it the selector is refined onto. Kept as rows so which record a
-/// refinement hangs under is asserted, not only which refinements exist.
+/// Each finding's record selector and the step it is refined onto.
 fn addresses(findings: &[Quad]) -> Vec<(String, String)> {
     let mut rows: Vec<(String, String)> = annotations(findings)
         .iter()
@@ -78,8 +67,6 @@ fn row(record: &str, within: &str) -> (String, String) {
     (record.to_owned(), within.to_owned())
 }
 
-/// The document a committed input is read from, as the IRI a finding's
-/// oa:hasSource must be.
 fn document(input: &str) -> Term {
     NamedNode::new(format!("{}fixtures/in/{input}", tiny().root()))
         .expect("an IRI")
@@ -162,9 +149,6 @@ fn selects_the_record_itself_for_a_query_that_writes_no_selector() {
 
 const TARGET: &str = "[\n      oa:hasSource bridge:thisRecord ;\n      oa:hasSelector [ a oa:XPathSelector ; rdf:value ?at ]\n    ]";
 
-/// The note query with the target it builds rewritten to name the record
-/// itself, which the specification forbids: one name is one node for every
-/// finding the query produces.
 #[test]
 fn refuses_a_findings_query_whose_target_is_a_name() {
     let Err(refusal) = conversion(&rewritten(&[(TARGET, "bridge:thisRecord")]), "two.xml") else {
@@ -344,17 +328,13 @@ fn refuses_a_findings_query_that_names_the_annotation_it_constructs() {
     );
 }
 
-/// The gap scheme and the note query rewritten together: what a concept
-/// declares and what a template writes are the two halves of a finding's
-/// severity, and a test of one sets the other.
+/// The gap scheme and the note query rewritten together.
 fn severities(scheme: &[(&str, &str)], query: &[(&str, &str)]) -> Variant {
     scheme.iter().fold(rewritten(query), |variant, (from, to)| {
         variant.replacing("vocab/catalog-gaps.ttl", from, *to)
     })
 }
 
-/// The severity of the annotation whose body is this one, of the two findings
-/// two.xml draws: the note the query addresses, and the item with no title.
 fn severity_of(findings: &[Quad], body: &str) -> Term {
     let named: Vec<String> = findings
         .iter()
@@ -366,7 +346,6 @@ fn severity_of(findings: &[Quad], body: &str) -> Term {
     one(findings, &named[0], &format!("{SH}resultSeverity")).expect("a severity")
 }
 
-/// The severity of the one annotation the query gave no body.
 fn severity_of_the_unbodied(findings: &[Quad]) -> Term {
     let unbodied: Vec<String> = annotations(findings)
         .into_iter()
@@ -450,9 +429,6 @@ fn keeps_the_severity_the_query_s_template_wrote_over_the_concept_s() {
     assert_eq!(severity_of(&findings, NOTE_HAS_NO_TERM), severity("Info"));
 }
 
-/// Two bodies on one annotation is not conforming output, the specification's
-/// `<#SourceFinding>` taking exactly one: what is under test is that the
-/// severity does not turn on which body a query happened to write first.
 #[test]
 fn takes_the_concept_s_severity_whichever_way_round_a_template_wrote_two_bodies() {
     for bodies in [

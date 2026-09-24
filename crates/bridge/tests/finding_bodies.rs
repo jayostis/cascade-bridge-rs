@@ -1,7 +1,3 @@
-// A finding's body is a code and its address is the node it is about: a
-// Bridge's own finding carries W3C's rule for the schema rule that was broken,
-// and selects the element it was broken on rather than the record it stood in.
-// No finding, from an adapter or from a Bridge, carries a sentence.
 mod common;
 
 use common::{
@@ -10,10 +6,8 @@ use common::{
 use oxrdf::{Quad, Term};
 use std::path::PathBuf;
 
-/// The anchor of a rule the XML Schema Recommendation defines, by Part.
 const PART_1: &str = "https://www.w3.org/TR/xmlschema-1/#";
 const PART_2: &str = "https://www.w3.org/TR/xmlschema-2/#";
-/// What a schema failure W3C names no rule for carries instead.
 const UNNAMED: &str = "https://ns.cascadeprotocol.org/bridge/v1-draft#schemaRuleUnnamed";
 
 #[test]
@@ -128,8 +122,6 @@ fn selects_the_offending_element_under_the_document_element() {
 }
 
 /// The tiny adapter with schemas in a namespace, for an input written in one.
-/// The validator's own `element_path` is element names alone, so an address
-/// taken from it cannot write a namespaced step at all.
 fn namespaced() -> Variant {
     let schema = |file: &str| {
         std::fs::read_to_string(tiny_directory().join(file)).expect("a committed schema")
@@ -171,8 +163,7 @@ fn writes_a_namespaced_offending_element_as_a_step_no_prefix_is_needed_for() {
     );
 }
 
-/// Each annotation's one body, which must be an IRI: an annotation with no
-/// body, two, or one that is no IRI fails the test reading it.
+/// Each annotation's one body; one with none, with two, or with no IRI fails the test.
 fn bodies(findings: &[Quad], input: &str) -> Vec<String> {
     annotations(findings)
         .iter()

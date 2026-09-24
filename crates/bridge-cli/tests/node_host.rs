@@ -1,9 +1,5 @@
-// The node host runs the library built for wasm32-unknown-unknown and takes
-// the native command's arguments, so every case here runs one command twice,
-// once on each host, and holds the node host to what the native one wrote.
-//
-// Graphs are compared as graphs: spargebra names each aggregate at random per
-// parse, so two runs of one host already differ in their bytes.
+// Every case runs one command on each host. Graphs are compared as graphs: spargebra
+// names each aggregate at random per parse, so two runs already differ in their bytes.
 mod common;
 
 use common::{
@@ -26,8 +22,6 @@ fn node_host_directory() -> PathBuf {
     workspace().join("hosts/node")
 }
 
-/// The module the node host loads is built by a step of its own, as the
-/// compatibility tooling builds it, and never by `cargo test`.
 fn require_the_module() {
     let module = node_host_directory().join("pkg/cascade_bridge_wasm.js");
     assert!(
@@ -63,9 +57,6 @@ fn graph(path: &Path) -> BTreeSet<String> {
     )
 }
 
-/// The node host's findings, once they have been shown to be the native
-/// command's. A findings file names its document relative to itself, so each
-/// is read against its own IRI.
 fn converts_as_the_native_command_does(
     adapter: &Path,
     document: &str,
@@ -317,7 +308,6 @@ fn the_node_host_converts_without_the_vocabularies_and_says_so_as_the_native_com
     );
 }
 
-/// A run whose standard output is closed before the graph is written to it.
 fn convert_into_a_closed_pipe(mut command: Command) -> Output {
     let adapter = tiny().to_string_lossy().into_owned();
     let vocabularies = vocabularies().to_string_lossy().into_owned();
@@ -357,8 +347,6 @@ fn the_node_host_exits_as_the_native_command_does_when_standard_output_is_closed
     assert!(said.contains("standard output"), "{said}");
 }
 
-/// Each entry's outcome, by the test's IRI or, for an entry with none, by the
-/// title the report gives it.
 fn outcomes(report: &Path) -> BTreeMap<String, String> {
     let quads: Vec<_> = RdfParser::from_format(RdfFormat::Turtle)
         .for_slice(&std::fs::read(report).expect("the written report"))

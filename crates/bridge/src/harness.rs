@@ -1,6 +1,3 @@
-// Executing a test manifest. Each entry is judged by the rule its type
-// carries, as the rdfs:comment on that type in the specification's vocabulary
-// states it.
 use crate::annotation;
 use crate::decode::decode;
 use crate::error::{Error, Result};
@@ -32,7 +29,6 @@ pub enum Outcome {
 }
 
 impl Outcome {
-    /// The EARL outcome's local name, which is also what the command prints.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Passed => "passed",
@@ -45,8 +41,6 @@ impl Outcome {
 }
 
 pub struct EntryResult {
-    /// The entry as the manifest lists it. Only an IRI names a test outside
-    /// the manifest; a blank node or a literal does not.
     pub entry: Term,
     pub name: String,
     pub type_iri: String,
@@ -60,8 +54,7 @@ pub struct RunOptions {
     pub datasets: bool,
 }
 
-/// How much of a line the description carries: one of a graph, and one of a
-/// finding, which is a graph's worth of lines written as one.
+/// The widths a description cuts a graph's line and a finding at.
 const LINE: usize = 160;
 const FINDING: usize = 1200;
 
@@ -80,8 +73,6 @@ fn sample<'a>(lines: impl IntoIterator<Item = &'a String>, n: usize, width: usiz
         .join("; ")
 }
 
-/// What the first holds that the second does not, a repeat counting as one of
-/// its own.
 fn beyond(these: &[String], those: &[String]) -> Vec<String> {
     let mut spare: HashMap<&str, usize> = HashMap::new();
     for one in those {
@@ -107,8 +98,6 @@ fn without(quads: Vec<Quad>, ignore: &HashSet<String>) -> Vec<Quad> {
         .collect()
 }
 
-/// A graph a result names, parsed against its own IRI, so a finding writing
-/// its document as a relative reference names the same document the entry does.
 fn graph_at(bytes: &[u8], iri: &str) -> Result<Vec<Quad>> {
     let mut quads = Vec::new();
     for quad in RdfParser::from_format(RdfFormat::Turtle)
@@ -129,8 +118,6 @@ struct Entry<'a> {
 }
 
 impl Entry<'_> {
-    /// The rule of bridge:IsomorphicConversionTest and bridge:InputOnlyTest,
-    /// which share everything up to the judgement.
     fn judge(&self, type_iri: &str) -> Result<(Outcome, String)> {
         let graph = &self.adapter.graph;
         let action = objects(graph, &self.node, MF_ACTION)?
@@ -209,12 +196,7 @@ impl Entry<'_> {
         if let Some(iri) = findings_iri {
             let want = graph_at(&self.resolver.read(&iri)?, &iri)?;
             let wanted = annotation::annotations(&want);
-            // A finding is a part of the graph no blank node reaches out of, so
-            // it is compared as one. Canonicalising the graph whole relabels
-            // every finding in it when one differs, and reports them all.
-            // Two addresses that select one node are one address, so each
-            // side is spelled as this Bridge spells that node before either
-            // is compared with the other.
+            // Two addresses that select one node are one address.
             let source = decode(&bytes)?;
             let spelled = xpath::Spelled::of(&source);
             let want = spelled.respelled(want);
@@ -386,9 +368,6 @@ mod tests {
         lines.iter().map(|line| (*line).to_owned()).collect()
     }
 
-    /// No adapter this engine tests writes one address for two nodes any more,
-    /// so no fixture reaches this: findings are a multiset all the same, and a
-    /// repeat a run produced that its oracle expects once is one extra.
     #[test]
     fn counts_a_finding_produced_twice_and_expected_once_as_one_extra() {
         let once = findings(&["a finding"]);

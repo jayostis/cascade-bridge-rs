@@ -1,6 +1,3 @@
-// The engine's own test subject: a synthetic adapter built so that each
-// outcome is reached by the smallest input that can reach it, and two entries
-// must fail.
 mod common;
 
 use cascade_bridge::{
@@ -64,8 +61,7 @@ fn says_what_differed_in_the_words_of_the_comparison() {
         "{}",
         described("findings-fail")
     );
-    // A finding carries no sentence, so what the comparison reports names it
-    // by the two things it does carry: its body, an IRI, and its address.
+    // A finding carries no sentence, so the comparison names it by its body and address.
     assert!(
         described("findings-fail")
             .contains("<http://www.w3.org/ns/oa#hasBody> <urn:example:catalog#noteHasNoTerm>"),
@@ -383,10 +379,8 @@ fn refuses_a_second_value_of_each_single_valued_property_with_a_sentence_naming_
 
 const MANIFEST: &str = "fixtures/manifest.ttl";
 
-/// The tiny adapter with its manifest's entry list replaced, so an entry, or
-/// the list itself, can be written in a form the adapter on disk does not use.
-/// `list` is what `mf:entries` names in place of the list on disk; `appended`
-/// holds triples for a list Turtle's collection syntax cannot write.
+/// `list` replaces what `mf:entries` names; `appended` holds triples for a list
+/// Turtle's collection syntax cannot write.
 fn entries(list: &str, appended: &str) -> Variant {
     let directory = tiny();
     let iri = format!("{}{MANIFEST}", directory.root());
@@ -414,8 +408,6 @@ fn run_with(entries_written: &'static str) -> (Vec<EntryResult>, Graph) {
     (results, report)
 }
 
-/// What each assertion's earl:test names: its IRI, or the title of a test that
-/// has none.
 fn tests_reported(report: &Graph) -> Vec<String> {
     let test = NamedNode::new(format!("{EARL}test")).expect("iri");
     let title = NamedNode::new("http://purl.org/dc/terms/title").expect("iri");

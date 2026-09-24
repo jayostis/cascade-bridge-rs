@@ -1,13 +1,3 @@
-// A finding's address is an XPath, and this Bridge follows it. An address that
-// selects no node, or several, names nothing the finding can be about, so the
-// Bridge reports it beside the adapter's own finding and produces the graph all
-// the same: verification reports, and never refuses.
-//
-// An address that does select one node is compared by that node: two findings
-// whose addresses reach the same element are one finding however either of
-// them is spelled. Comparison is stricter than conversion: an address on
-// either side that reaches other than one node fails the entry, and is said to
-// have failed it by the address and what it selected.
 mod common;
 
 use cascade_bridge::{
@@ -19,12 +9,10 @@ use oxrdf::{Quad, Term};
 const ADDRESS_NOT_ONE_NODE: &str =
     "https://ns.cascadeprotocol.org/bridge/v1-draft#addressNotOneNode";
 
-/// The findings query whose annotations name a node inside the record: the one
-/// file that decides what a refinement of the tiny adapter says.
+/// The file that decides what a refinement of the tiny adapter says.
 const NOTE_QUERY: &str = "mapping/item-note-findings.rq";
 const NOTE: &str = "rdf:value ?at";
 
-/// The tiny adapter with one string of one of its files replaced.
 fn variant(file: &str, from: &str, to: &str) -> Variant {
     Variant::of(tiny()).replacing(file, from, to)
 }
@@ -107,9 +95,7 @@ fn reports_an_address_two_findings_of_one_record_share_once() {
     );
 }
 
-/// A comment and a processing instruction are no part of the graph the lift
-/// builds, and XPath counts both, so the record the lift writes out again
-/// carries them where the document wrote them.
+/// A comment and a processing instruction: the lift drops both, and XPath counts both.
 #[test]
 fn follows_an_address_through_what_the_graph_leaves_out() {
     for address in ["comment()[1]", "processing-instruction()[1]", "node()[2]"] {
@@ -131,11 +117,6 @@ fn follows_an_address_through_what_the_graph_leaves_out() {
     }
 }
 
-/// A refinement selects one node of the record its selector names, so an
-/// address is followed through the record read as a document of its own, and
-/// one that walks out of the record reaches nothing the finding can be about.
-/// An address rooted at the document is one of those, the record being the
-/// root of what it is read from.
 #[test]
 fn reports_an_address_that_leaves_the_record() {
     for address in [
@@ -156,10 +137,7 @@ fn reports_an_address_that_leaves_the_record() {
     }
 }
 
-/// The guard that verification is not noisy: every address the adapter on disk
-/// writes, for every input it committed, selects the one node it names. It
-/// guards nothing unless some of those findings are addressed below their
-/// record, so it counts them rather than how many inputs there are.
+/// Counts the findings addressed below their record, without which it guards nothing.
 #[test]
 fn reports_nothing_for_any_input_the_adapter_committed() {
     let resolver = tiny();
@@ -200,14 +178,9 @@ fn produces_the_graph_for_a_document_no_tree_can_be_built_from() {
     );
 }
 
-/// The oracle the manifest's passing entry is judged against, and the two
-/// addresses it carries: the record its findings stand in, and the node inside
-/// the record one of them is about.
 const ORACLE: &str = "fixtures/findings/two.ttl";
 const RECORD: &str = "\"/catalog/item[1]\"";
-/// The oracle's copy of the finding the findings query writes, whole. The
-/// census finding of the same record names the same node, so what a shorter
-/// anchor would reach is both of them.
+/// Whole: the census finding of the same record names the same node.
 const QUERY_FINDING: &str = r#"rdf:value "note[1]" ]
     ]
   ] ;
@@ -215,12 +188,11 @@ const QUERY_FINDING: &str = r#"rdf:value "note[1]" ]
   oa:motivatedBy oa:classifying ;
   sh:resultSeverity sh:Info ."#;
 
-/// That finding with its address spelled another way.
 fn query_finding(address: &str) -> String {
     QUERY_FINDING.replacen("note[1]", address, 1)
 }
 
-/// What the manifest made of one of its entries, and what it said about it.
+/// The entry's outcome, and its description.
 fn judged(resolver: &dyn Resolver, entry: &str) -> (String, String) {
     let adapter = load_adapter(resolver).expect("adapter");
     let results = run_manifest(&adapter, resolver, RunOptions::default()).expect("manifest");
@@ -252,10 +224,8 @@ fn passes_a_refinement_spelled_another_correct_way() {
     assert_eq!(outcome, "passed", "{said}");
 }
 
-/// Without this, a comparison that made every address equal would pass the two
-/// above and be reported as the loosening they ask for. The oracle's other
-/// record is the one moved, because both spellings must select a node for the
-/// findings to be compared at all.
+/// The oracle's other record is the one moved: both spellings must select a node to
+/// be compared at all.
 #[test]
 fn fails_an_address_that_selects_another_node_of_the_same_document() {
     let (outcome, said) = judged(&variant(ORACLE, "\"/catalog/item[2]\"", RECORD), "pass");
@@ -263,32 +233,24 @@ fn fails_an_address_that_selects_another_node_of_the_same_document() {
     assert!(said.contains("findings differ"), "{said}");
 }
 
-/// The adapter's own address and the oracle's, each of them the one node the
-/// finding is about, spelled two correct ways.
 fn spelled(adapter: &str, oracle: &str) -> Variant {
     Variant::of(tiny())
         .replacing(NOTE_QUERY, NOTE, format!("rdf:value \"{adapter}\""))
         .replacing(ORACLE, QUERY_FINDING, query_finding(oracle))
 }
 
-/// A text node is a node a finding is about as an element is.
 #[test]
 fn passes_a_refinement_of_a_text_node_spelled_another_correct_way() {
     let (outcome, said) = judged(&spelled("note[1]/text()", "note[1]/text()[1]"), "pass");
     assert_eq!(outcome, "passed", "{said}");
 }
 
-/// The record is one of the nodes its own findings are about.
 #[test]
 fn passes_a_refinement_of_the_record_itself_spelled_another_correct_way() {
     let (outcome, said) = judged(&spelled(".", "self::item"), "pass");
     assert_eq!(outcome, "passed", "{said}");
 }
 
-/// A refinement selects one node of its record where a comparison reads it as
-/// where a conversion writes it, so an address that walks out of the record
-/// fails the entry by the address and what it selected, rather than being
-/// compared by the node it reached out there.
 #[test]
 fn fails_an_entry_whose_refinement_leaves_the_record() {
     let (outcome, said) = judged(&spelled("../item[2]", "following-sibling::item[1]"), "pass");
@@ -303,8 +265,6 @@ fn fails_an_entry_whose_refinement_leaves_the_record() {
     );
 }
 
-/// The Bridge's own report of the address, as the oracle carries it beside the
-/// finding whose address it is about.
 const REPORTED: &str = "@prefix ex:  <urn:example:catalog#> .
 
 [] a oa:Annotation ;
@@ -318,9 +278,6 @@ const REPORTED: &str = "@prefix ex:  <urn:example:catalog#> .
   sh:resultSeverity sh:Violation .
 ";
 
-/// Both sides carry the same findings and the same address, so a comparison
-/// of them holds nothing missing and nothing extra: what fails the entry is
-/// the address itself, said as the address and what it selected.
 #[test]
 fn fails_an_entry_whose_address_selects_no_node() {
     let (outcome, said) = judged(
@@ -342,8 +299,7 @@ fn fails_an_entry_whose_address_selects_no_node() {
     assert!(!said.contains("findings differ"), "{said}");
 }
 
-/// The first record of `order.xml` holds two notes, so a step with no index
-/// selects both where each finding is about one.
+/// The first record of `order.xml` holds two notes.
 #[test]
 fn fails_an_entry_whose_address_selects_several_nodes() {
     let (outcome, said) = judged(
@@ -354,8 +310,6 @@ fn fails_an_entry_whose_address_selects_several_nodes() {
     assert!(said.contains("produced \"note\" selects 2 nodes"), "{said}");
 }
 
-/// An oracle's own address is judged by the same rule as the one the adapter
-/// wrote.
 #[test]
 fn fails_an_entry_whose_expected_address_selects_several_nodes() {
     let (outcome, said) = judged(&variant(ORACLE, RECORD, "\"/catalog/item\""), "pass");

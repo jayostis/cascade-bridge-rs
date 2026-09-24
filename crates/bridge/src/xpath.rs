@@ -1,24 +1,6 @@
-// Following an address, rather than only writing one. A finding's address is
-// an XPath, and what the finding is about is the node that XPath selects, so
-// an address selecting no node, or several, is reported where a conversion
-// wrote it and fails the entry where a comparison reads it, and two findings
-// whose addresses reach one node are compared as one however either is
-// spelled.
-//
-// The tree is parsed here rather than read out of the lifted store, because
 // XPath counts what the lift drops: a comment, a processing instruction and a
-// whitespace-only text node each take a place among their siblings, so a
-// positional step read off the store would stand at a different node. The
-// characters are decoded exactly as the lift decodes them, so an address is
-// followed through the text the lift saw.
-//
-// An address selects one node of what it is read from: a refinement one node
-// of its record, a record's own selector one node of the document. So a
-// conversion follows a refinement through the record read as a document of its
-// own, which the lift writes out with the comments and instructions XPath
-// counts, and holds one record where it would otherwise hold the document. A
-// comparison also reads a record's selector, which is absolute, and is the one
-// stage here that builds a tree of the whole document.
+// whitespace-only text node each take a place among their siblings. So an address is
+// followed through a tree parsed here, never through the lifted store.
 use crate::annotation::{self, Record};
 use crate::decode::{normalise_attribute_value, normalise_line_endings};
 use crate::error::Result;
@@ -36,15 +18,11 @@ use xpath_eval::{
     evaluate, parse, Document, EvaluationContext, ExpandedName, Expr, Node, NodeKind, Value,
 };
 
-/// The document node, which is where an absolute address is read from and the
-/// first node of any tree.
 const DOCUMENT: usize = 0;
 
 struct Data {
     kind: NodeKind,
     name: Option<ExpandedName>,
-    /// Where it stands among the siblings one step of an address counts, which
-    /// is the place that step carries.
     position: usize,
     text: String,
     parent: Option<usize>,
@@ -79,8 +57,6 @@ impl Data {
     }
 }
 
-/// What one step of an address names a node by: an element by its expanded
-/// name, and every other node by its kind, a node test naming no other.
 #[derive(Clone, PartialEq, Eq, Hash)]
 enum Among {
     Named(Option<String>, String),
@@ -96,8 +72,6 @@ fn among(data: &Data) -> Among {
     }
 }
 
-/// Where each node stands among the siblings its own node test counts, walked
-/// once for the whole tree so that no later walk of it counts siblings again.
 fn place(nodes: &mut [Data]) {
     for at in 0..nodes.len() {
         let children = std::mem::take(&mut nodes[at].children);
@@ -111,24 +85,16 @@ fn place(nodes: &mut [Data]) {
     }
 }
 
-/// One document as XPath counts it, held in one vector in document order: a
-/// node is an index into it, and one index against another is document order.
+/// Nodes in document order, so comparing two indices compares document order.
 struct Tree {
     nodes: Vec<Data>,
-    /// The tree's own element: a document's document element, and a record's
-    /// own element where the record is the document.
     element: usize,
 }
 
-/// Each address as the parser read it, kept because an address written once in
-/// an adapter is followed once for every record of the document, and it is the
-/// same expression each time. It stands outside the tree, a record being one
-/// tree and the addresses of every record one set of expressions.
 #[derive(Default)]
 struct Parsed(RefCell<HashMap<String, Option<Rc<Expr>>>>);
 
 impl Parsed {
-    /// The expression an address is, or nothing at all where it is no XPath.
     fn expression(&self, written: &str) -> Option<Rc<Expr>> {
         if let Some(expression) = self.0.borrow().get(written) {
             return expression.clone();
@@ -143,7 +109,6 @@ impl Parsed {
     }
 }
 
-/// An owned name, where the parser bound one.
 fn resolved(namespace: ResolveResult) -> Option<Option<String>> {
     match namespace {
         ResolveResult::Bound(bound) => Some(Some(std::str::from_utf8(bound.as_ref()).ok()?.into())),
@@ -152,18 +117,12 @@ fn resolved(namespace: ResolveResult) -> Option<Option<String>> {
 }
 
 impl Tree {
-    /// The document, or nothing at all where it is not one tree: a stage that
-    /// reports never refuses, so a document no tree can be built from is a
-    /// document this says nothing about.
     fn of(xml: &str) -> Option<Self> {
         let mut reader = NsReader::from_str(xml);
         reader.config_mut().expand_empty_elements = true;
         let mut nodes = vec![Data::of(NodeKind::Root, None)];
         let mut open: Vec<usize> = vec![DOCUMENT];
-        // The text node still taking characters. Adjacent character data is one
-        // text node however many events it arrived in, and a node standing
-        // between two runs of character data leaves them not adjacent, so the
-        // run after it begins a second text node.
+        // The text node still taking characters: adjacent character data is one text node.
         let mut taking: Option<usize> = None;
         loop {
             let (namespace, event) = reader.read_resolved_event().ok()?;
@@ -181,8 +140,6 @@ impl Tree {
                     for attribute in start.attributes() {
                         let attribute = attribute.ok()?;
                         let key = attribute.key;
-                        // A namespace declaration is no attribute of the
-                        // element it stands on.
                         if key.as_ref() == b"xmlns" || key.as_ref().starts_with(b"xmlns:") {
                             continue;
                         }
@@ -270,11 +227,7 @@ impl Tree {
         Handle { tree: self, at }
     }
 
-    /// One record of this tree as the document of its own that a refinement is
-    /// followed through, which is the tree a conversion builds from the record
-    /// the lift writes out again. A comparison reads a record's own selector,
-    /// which only the document can answer, and reads each refinement of it
-    /// here, so neither stage can answer an address the other reports.
+    /// The record as a document of its own, the tree a conversion builds from a unit.
     fn record(&self, at: usize) -> Self {
         let mut nodes = vec![Data::of(NodeKind::Root, None)];
         let element = nodes.len();
@@ -283,8 +236,7 @@ impl Tree {
         Self { nodes, element }
     }
 
-    /// A node and everything below it, in document order: a node's attributes
-    /// stand before its children, as the parser reads them.
+    /// Attributes before children, as the parser reads them, which keeps document order.
     fn copy(&self, from: usize, parent: usize, nodes: &mut Vec<Data>) {
         let source = &self.nodes[from];
         let at = nodes.len();
@@ -304,11 +256,6 @@ impl Tree {
         }
     }
 
-    /// Whether a node is one of the node an address was read from: a
-    /// refinement selects one node of its record, and a node standing outside
-    /// the record is no node of it however an address reaches it. A record
-    /// read on its own carries a document node of its own, which the record
-    /// does not hold either.
     fn holds(&self, from: usize, at: usize) -> bool {
         let mut walk = Some(at);
         while let Some(node) = walk {
@@ -329,9 +276,7 @@ impl Tree {
         })
     }
 
-    /// One step of an address, which tells a node from its siblings: an
-    /// element by its name, every other node by its node test, and an
-    /// attribute by its name alone, an element carrying one of each name.
+    /// An attribute takes no index: an element carries one of each name.
     fn spell_step(&self, at: usize, indexed: bool) -> Option<String> {
         let data = &self.nodes[at];
         let test = match data.kind {
@@ -348,8 +293,6 @@ impl Tree {
         })
     }
 
-    /// A node of the document as this Bridge spells it from the document
-    /// element: for a record element, the record's own selector.
     fn spell_absolute(&self, at: usize) -> Option<String> {
         let Some(parent) = self.nodes[at].parent else {
             return Some("/".to_owned());
@@ -364,8 +307,6 @@ impl Tree {
         ))
     }
 
-    /// A node of a record as this Bridge spells it from the record, which is
-    /// what a finding's oa:refinedBy carries.
     fn spell_relative(&self, at: usize, from: usize) -> Option<String> {
         let mut steps = Vec::new();
         let mut walk = at;
@@ -382,9 +323,7 @@ impl Tree {
     }
 }
 
-/// Characters said inside the element the walk is in, which the text node
-/// already taking them takes where there is one. Character data outside the
-/// document element is XML's own whitespace and no node.
+/// Character data outside the document element is XML's own whitespace and no node.
 fn say(nodes: &mut Vec<Data>, taking: &mut Option<usize>, open: &[usize], characters: String) {
     let Some(&parent) = open.last().filter(|&&node| node != DOCUMENT) else {
         return;
@@ -432,11 +371,7 @@ impl<'a> Node<'a> for Handle<'a> {
         tree.nodes[self.at].attributes.iter().map(|&at| tree.at(at))
     }
 
-    /// No namespace node. An address is written of `local-name()` and
-    /// `namespace-uri()`, which read an element's own expanded name, so the
-    /// axis that would list the declarations in scope is one nothing here
-    /// walks, and one an address walking it is reported for rather than
-    /// answered wrongly.
+    /// No namespace node: an address walking that axis is reported rather than answered wrongly.
     fn namespaces(self) -> impl Iterator<Item = Self> + 'a {
         std::iter::empty()
     }
@@ -482,18 +417,10 @@ impl Document for Tree {
 
 #[cfg(test)]
 thread_local! {
-    /// How many addresses this thread has put through the evaluator, which a
-    /// test reads to hold a record's lookup off it.
     static EVALUATED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
-    /// How many addresses this thread has put through the parser, which a test
-    /// reads to hold an address every record carries off it once a record.
     static PARSED: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
-/// Every node of the context node an address selects from it; nothing at all
-/// where it is no XPath, or is one whose value is not a set of nodes. A node
-/// the context does not hold is no node of what the address is about, so an
-/// address reaching one reaches nothing.
 fn selects(tree: &Tree, parsed: &Parsed, context: usize, written: &str) -> Option<Vec<usize>> {
     #[cfg(test)]
     EVALUATED.with(|count| count.set(count.get() + 1));
@@ -511,8 +438,6 @@ fn selects(tree: &Tree, parsed: &Parsed, context: usize, written: &str) -> Optio
     }
 }
 
-/// What an address selected, where it did not select the one node a finding is
-/// about.
 enum Missed {
     Nodes(usize),
     NoNodeSet,
@@ -528,7 +453,6 @@ impl std::fmt::Display for Missed {
     }
 }
 
-/// The node an address selects, or what it selected instead.
 fn followed(
     tree: &Tree,
     parsed: &Parsed,
@@ -544,13 +468,10 @@ fn followed(
     }
 }
 
-/// The node an address selects, where it selects the one.
 fn one(tree: &Tree, parsed: &Parsed, context: usize, written: &str) -> Option<usize> {
     followed(tree, parsed, context, written).ok()
 }
 
-/// Each address the findings refine their record by, once however many
-/// findings carry it.
 fn refinements(findings: &[Quad]) -> BTreeSet<String> {
     let refined: HashSet<&BlankNode> = findings
         .iter()
@@ -576,21 +497,12 @@ fn refinements(findings: &[Quad]) -> BTreeSet<String> {
         .collect()
 }
 
-/// Each record's refinements, followed through the record read as a document
-/// of its own: a refinement selects one node of its record, so the record is
-/// the whole of what one can reach, and a conversion holds one record's tree
-/// and never the document's. The expressions are kept across records, an
-/// address written once in an adapter being followed once for every record.
 #[derive(Default)]
 pub(crate) struct Followed {
     parsed: Parsed,
 }
 
 impl Followed {
-    /// A report for each address these findings carry that does not select
-    /// exactly one node of the record they are about, selecting the document
-    /// element as every report does. A record no tree can be built from is one
-    /// this Bridge says nothing about.
     pub(crate) fn unresolved(
         &self,
         document: &Record,
@@ -614,11 +526,7 @@ impl Followed {
     }
 }
 
-/// The source document as XPath counts it, for a comparison: a record's own
-/// selector is an absolute address, which only the document can answer, so
-/// this is the one stage that holds a tree of the whole document. A
-/// conformance run holds both finding graphs whole and is bounded by the
-/// fixtures it is given, where a conversion is bounded by nothing.
+/// The one stage that holds a tree of the whole document: a record's selector is absolute.
 pub(crate) struct Spelled<'a> {
     xml: &'a str,
     tree: OnceCell<Option<Tree>>,
@@ -638,9 +546,6 @@ impl<'a> Spelled<'a> {
         self.tree.get_or_init(|| Tree::of(self.xml)).as_ref()
     }
 
-    /// These findings with every address re-spelled as this Bridge spells the
-    /// node it selects, so two findings about one node are one finding however
-    /// either of them was spelled.
     pub(crate) fn respelled(&self, findings: Vec<Quad>) -> Respelled {
         let Some(tree) = self.tree() else {
             return Respelled {
@@ -673,11 +578,7 @@ impl<'a> Spelled<'a> {
     }
 }
 
-/// What each selector node of these findings is to be re-spelled as: a record
-/// selector by the node it selects of the document, and each address refining
-/// it by the node that one selects of the record. Beside it, each address that
-/// selected other than the one node, as the address and what it selected, once
-/// however many findings carry it.
+/// Each selector node's new spelling, and each address that selected other than one node.
 fn respelling(
     tree: &Tree,
     parsed: &Parsed,
@@ -704,7 +605,6 @@ fn respelling(
 
     let mut respell: HashMap<BlankNode, String> = HashMap::new();
     let mut missed: BTreeSet<String> = BTreeSet::new();
-    // One record is one tree, however many of its findings name it.
     let mut records: HashMap<usize, Tree> = HashMap::new();
     for quad in quads {
         let Term::BlankNode(selector) = &quad.object else {
@@ -717,12 +617,9 @@ fn respelling(
         let Some(address) = written.get(selector) else {
             continue;
         };
-        // An absolute address is read from the document node.
         let record = match followed(tree, parsed, DOCUMENT, address) {
             Ok(node) => node,
             Err(other) => {
-                // A refinement of a record this names no one of cannot be
-                // followed either, and says nothing a reader does not read here.
                 missed.insert(format!("{address:?} {other}"));
                 continue;
             }
@@ -734,8 +631,7 @@ fn respelling(
             let Some(address) = written.get(refined) else {
                 continue;
             };
-            // A refinement is read from the record as a document of its own,
-            // which is where a conversion reads it.
+            // Read from the record alone, which is where a conversion reads it.
             let alone = records.entry(record).or_insert_with(|| tree.record(record));
             let node = match followed(alone, parsed, alone.element, address) {
                 Ok(node) => node,
@@ -752,8 +648,6 @@ fn respelling(
     (respell, missed)
 }
 
-/// Findings with every address re-spelled as this Bridge spells the node it
-/// selects, and every address that selected other than that one node.
 pub(crate) struct Respelled {
     pub(crate) findings: Vec<Quad>,
     pub(crate) missed: BTreeSet<String>,
@@ -771,14 +665,10 @@ mod tests {
         Tree::of(xml).expect("a tree")
     }
 
-    /// The one node an address selects of the node it is read from, with no
-    /// expression kept from one call to the next.
     fn selects(tree: &Tree, from: usize, written: &str) -> Option<usize> {
         one(tree, &Parsed::default(), from, written)
     }
 
-    /// One finding refining its record by an address, which is what a record's
-    /// findings carry for a Bridge to follow.
     fn refining(address: &str) -> Vec<Quad> {
         let selector = BlankNode::default();
         let refined = BlankNode::default();
@@ -862,9 +752,6 @@ mod tests {
         );
     }
 
-    /// One spelling rule: what the lift writes for a record is what following
-    /// that address and spelling the node it reaches writes again, and the
-    /// steps it wrote that address from reach the same node without it.
     #[test]
     fn spells_a_record_as_the_lift_wrote_its_selector() {
         let document =
@@ -882,8 +769,6 @@ mod tests {
         }
     }
 
-    /// Two addresses that reach one node are one address, so every node a
-    /// record holds is spelled the one way from the record.
     #[test]
     fn spells_the_node_an_address_reaches_however_it_was_written() {
         let tree = tree(
@@ -909,18 +794,12 @@ mod tests {
         }
     }
 
-    /// A refinement selects one node of its record, so an address reaching
-    /// anything else reaches no node the finding could be about: a node
-    /// standing outside the record, and the document node a record read on its
-    /// own carries, which the record does not hold either.
     #[test]
     fn selects_no_node_for_an_address_that_leaves_the_record() {
         let whole =
             tree(r#"<catalog><item>said<!-- aside --><note a="b"/></item><item/></catalog>"#);
         let record = selects(&whole, DOCUMENT, "/catalog/item[1]").expect("the record");
-        // A record taken out of the document and the same record read on its
-        // own are one tree, so a comparison and a conversion follow an address
-        // through the same nodes.
+        // Taken out of the document or read alone, a record is one tree.
         let taken = whole.record(record);
         let alone = tree(r#"<item>said<!-- aside --><note a="b"/></item>"#);
         for written in [
@@ -955,9 +834,6 @@ mod tests {
         }
     }
 
-    /// Each record is a document of its own, whose element is the record, so a
-    /// conversion puts each address of a record's findings through the
-    /// evaluator and the record's own selector not at all.
     #[test]
     fn reaches_each_record_without_evaluating_its_selector() {
         let document =
@@ -984,9 +860,6 @@ mod tests {
         assert_eq!(EVALUATED.with(std::cell::Cell::get), units.len());
     }
 
-    /// An address is one expression however many records carry it, so a
-    /// conversion parses each distinct address once and not once per record,
-    /// however many trees it builds.
     #[test]
     fn parses_an_address_once_however_many_records_are_followed_for_it() {
         let document =

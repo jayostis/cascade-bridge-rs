@@ -1,10 +1,3 @@
-// An adapter accounts for each path of its source, and a Bridge reports the
-// paths a record carries that the accounting says nothing about: one finding
-// per distinct path per record, addressed at that path's first occurrence.
-// This is the only finding a Bridge invents that no query wrote.
-//
-// A crate naming no accounting gets no census, which is every adapter that
-// exists, so the whole of it has to be additive.
 mod common;
 
 use cascade_bridge::Resolver;
@@ -18,7 +11,6 @@ use std::collections::BTreeSet;
 
 const SOURCE_PATH: &str = "https://ns.cascadeprotocol.org/bridge/v1-draft#sourcePath";
 
-/// Every annotation the census made, by the node it is.
 fn censuses(findings: &[Quad]) -> Vec<String> {
     findings
         .iter()
@@ -28,9 +20,7 @@ fn censuses(findings: &[Quad]) -> Vec<String> {
         .collect()
 }
 
-/// Each census finding as what it says and where it says it: the path it
-/// names, the record it is about, and the occurrence inside that record it is
-/// addressed at.
+/// Each census finding as its path, its record, and the occurrence it is addressed at.
 fn census(findings: &[Quad]) -> Vec<(String, String, String)> {
     let mut rows: Vec<(String, String, String)> = censuses(findings)
         .iter()
@@ -47,8 +37,7 @@ fn census(findings: &[Quad]) -> Vec<(String, String, String)> {
     rows
 }
 
-/// Each census finding as the path it names, the record it is about, and the
-/// count it carries.
+/// Each census finding as its path, its record, and the count it carries.
 fn counted(findings: &[Quad]) -> Vec<(String, String, Option<String>)> {
     let mut rows: Vec<(String, String, Option<String>)> = censuses(findings)
         .iter()
@@ -64,9 +53,7 @@ fn counted(findings: &[Quad]) -> Vec<(String, String, Option<String>)> {
     rows
 }
 
-/// How many nodes below the record this finding's record selector is refined
-/// onto, where an empty refinement in a row above could as well have been a
-/// selector carrying two.
+/// How many nodes below the record this finding's record selector is refined onto.
 fn refinements(findings: &[Quad], annotation: &str) -> usize {
     let target = node(findings, annotation, &format!("{OA}hasTarget"));
     let selector = node(findings, &target, &format!("{OA}hasSelector"));
@@ -77,8 +64,7 @@ fn refinements(findings: &[Quad], annotation: &str) -> usize {
         .count()
 }
 
-/// Where a finding is addressed, as one path: the record's own selector, and
-/// the steps below it the finding is refined onto.
+/// The record's selector and the steps it is refined onto, as one path.
 fn located(findings: &[Quad], annotation: &str) -> String {
     match address(findings, annotation) {
         (record, below) if below.is_empty() => record,
@@ -86,8 +72,6 @@ fn located(findings: &[Quad], annotation: &str) -> String {
     }
 }
 
-/// Where each schema violation is addressed, the record's schema and the
-/// document's alike.
 fn violations(findings: &[Quad]) -> BTreeSet<String> {
     findings
         .iter()
@@ -99,7 +83,6 @@ fn violations(findings: &[Quad]) -> BTreeSet<String> {
         .collect()
 }
 
-/// The paths a census named, each once however many records named it.
 fn paths(findings: &[Quad]) -> BTreeSet<String> {
     census(findings)
         .into_iter()
@@ -107,11 +90,8 @@ fn paths(findings: &[Quad]) -> BTreeSet<String> {
         .collect()
 }
 
-/// Every finding as what it says and where it says it: its body, its
-/// severity, the path it names where it names one, the record it is about,
-/// and the node below that record it selects. Only a finding read from the
-/// accounting names a path, so striking the accounting out leaves exactly the
-/// rows whose path is empty.
+/// Each finding as its body, severity, path, record, and the node below the record it
+/// selects.
 fn said(findings: &[Quad]) -> Vec<(String, String, String, String, String)> {
     let mut rows: Vec<(String, String, String, String, String)> = annotations(findings)
         .iter()
@@ -147,9 +127,8 @@ fn source_paths(iri: &str, turtle: &[u8]) -> Vec<String> {
     named
 }
 
-/// The committed accounting with the entry for one path taken out. The text
-/// is cut at the blank line between entries, and the cut is read back as
-/// Turtle to show it took out that entry and no other.
+/// The committed accounting with the entry for one path cut out, checked by reading it
+/// back.
 fn without(path: &str) -> Variant {
     let directory = tiny();
     let iri = format!("{}{ACCOUNTING}", directory.root());
@@ -411,10 +390,8 @@ fn writes_a_namespaced_path_as_the_lift_writes_a_step_of_a_record_s_own_address(
     );
 }
 
-/// The paths of `every-verdict.xml`'s record, each with the step below the
-/// record a finding about it selects. An attribute of the record element
-/// selects nothing below the record: the target's selector already names the
-/// element it stands on.
+/// The paths of `every-verdict.xml`'s record, each with the step below the record a
+/// finding about it selects; none for an attribute of the record element.
 const EVERY_VERDICT: [(&str, &str); 7] = [
     ("/item/@id", ""),
     ("/item/@internal", ""),
@@ -449,10 +426,8 @@ fn reports_nothing_for_a_record_every_path_of_which_has_an_entry_whatever_its_ve
     }
 }
 
-/// Neither Turtle nor anything else: an accounting that cannot be read at all.
 const UNPARSEABLE: &str = "@prefix bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#\n";
 
-/// An accounting begun and left empty, which accounts for nothing.
 const NOTHING_ACCOUNTED: &str = "# no path of the catalog format is accounted for yet\n";
 
 #[test]
@@ -515,9 +490,7 @@ fn accounts_for_no_path_with_an_empty_accounting_where_an_absent_one_accounts_fo
     );
 }
 
-/// A path hung on a node that says nothing about what it is. Whether such a
-/// file is well formed is the accounting's shapes' to say, and a Bridge reads
-/// what it is handed.
+/// A path hung on a node that says nothing about what it is.
 const NO_PATH_ENTRY: &str = r#"@prefix bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
 
 [] bridge:sourcePath "/item/@id" ;
