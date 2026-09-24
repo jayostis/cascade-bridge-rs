@@ -35,11 +35,14 @@ So:
 - **Nothing here pins another repository.** Which version of each
   one a run uses is `jayostis/cascade-bridge-spec`'s
   [`compatibility.md`](https://github.com/jayostis/cascade-bridge-spec/blob/main/compatibility.md).
-- **Its own tests use only the tiny adapter,
+- **Its own tests use the tiny adapter,
   `crates/bridge/tests/tiny-adapter`**, built so each outcome is reached by the
-  smallest input that can reach it; `meets_a_real_adapter_only_through_the_compatibility_run`.
-  An engine tested against the adapters it has met passes those adapters, not
-  the contract.
+  smallest input that can reach it. The specification's synthetic adapter is
+  met only through its vector, `specification_vector.rs`:
+  `meets_the_specification_s_synthetic_adapter_only_through_its_vector`. A
+  real adapter is met only through `compatibility.json`:
+  `meets_a_real_adapter_only_through_the_compatibility_run`. An engine tested
+  against the adapters it has met passes those adapters, not the contract.
 - **The library never touches a filesystem**:
   `lets_only_the_resolver_name_the_filesystem`. A host that is not a
   directory supplies bytes by IRI instead.
@@ -49,14 +52,15 @@ So:
   record.
 - **Every dependency is pinned exactly**, and `Cargo.lock` is committed:
   `pins_every_dependency_to_an_exact_version_or_a_git_rev`.
-- **Every query is parsed once per adapter**:
+- **Every query is read once per `prepare`**:
   `reads_each_query_of_the_adapter_once_per_prepare`.
 
 ## Conventions
 
 - `cargo fmt --all`, `cargo clippy --all-targets -- -D warnings`,
   `sh hosts/node/setup.sh`, `cargo test`. CI runs all four, and
-  `cargo test -- --ignored` where it has checked out the counterpart a vector
-  reads. setup.sh is the one build step: it builds the module the node host
-  tests load, and `cargo test` never builds or installs anything.
+  the specification's vector, `specification_vector.rs`, with `--ignored`
+  where it has checked out the specification. setup.sh is the one build step:
+  it builds the module the node host tests load, and `cargo test` never builds
+  or installs anything.
 - Conventional commits. Impersonal.

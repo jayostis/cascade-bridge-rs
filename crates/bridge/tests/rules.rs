@@ -20,6 +20,27 @@ fn members() -> Vec<PathBuf> {
     members
 }
 
+fn quoted<'a>(table: &'a str, key: &str) -> Option<&'a str> {
+    let (_, rest) = table.split_once(&format!("{key} = \""))?;
+    rest.split_once('"').map(|(value, _)| value)
+}
+
+fn exact_version(requirement: &str) -> bool {
+    let Some(version) = requirement.strip_prefix('=') else {
+        return false;
+    };
+    let core = version.split(['-', '+']).next().unwrap_or_default();
+    let parts: Vec<&str> = core.split('.').collect();
+    parts.len() == 3
+        && parts
+            .iter()
+            .all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()))
+}
+
+fn full_rev(rev: &str) -> bool {
+    rev.len() == 40 && rev.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
 fn unpinned(manifest: &str) -> Vec<String> {
     let mut offenders = Vec::new();
     let mut listing = false;
@@ -44,12 +65,16 @@ fn unpinned(manifest: &str) -> Vec<String> {
         let requirement = requirement.trim();
         let pinned = if requirement.starts_with('{') {
             if requirement.contains("git =") {
-                requirement.contains("rev = \"")
+                quoted(requirement, "rev").is_some_and(full_rev)
             } else {
-                requirement.contains("version = \"=") || requirement.contains("workspace = true")
+                quoted(requirement, "version").is_some_and(exact_version)
+                    || requirement.contains("workspace = true")
             }
         } else {
-            requirement.starts_with("\"=")
+            requirement
+                .strip_prefix('"')
+                .and_then(|rest| rest.strip_suffix('"'))
+                .is_some_and(exact_version)
         };
         if !pinned {
             offenders.push(line.to_owned());
@@ -150,7 +175,7 @@ fn files_under(directory: &Path) -> Vec<PathBuf> {
     let mut files = Vec::new();
     let mut stack = vec![directory.to_owned()];
     while let Some(directory) = stack.pop() {
-        for entry in std::fs::read_dir(&directory).expect("read tests") {
+        for entry in std::fs::read_dir(&directory).expect("read directory") {
             let path = entry.expect("entry").path();
             if path.is_dir() {
                 stack.push(path);
@@ -162,24 +187,44 @@ fn files_under(directory: &Path) -> Vec<PathBuf> {
     files
 }
 
+fn files_naming(name: &str) -> Vec<String> {
+    let workspace = workspace();
+    let mut naming: Vec<String> = files_under(&workspace.join("crates"))
+        .into_iter()
+        .filter(|file| {
+            String::from_utf8_lossy(&std::fs::read(file).expect("read file")).contains(name)
+        })
+        .map(|file| {
+            file.strip_prefix(&workspace)
+                .expect("under the workspace")
+                .to_string_lossy()
+                .replace('\\', "/")
+        })
+        .collect();
+    naming.sort();
+    naming
+}
+
 #[test]
 fn meets_a_real_adapter_only_through_the_compatibility_run() {
     let adapters = must_pass_with();
     assert!(!adapters.is_empty(), "compatibility.json names no adapter");
-    let mut offenders = Vec::new();
-    for tests in members().iter().map(|member| member.join("tests")) {
-        if !tests.is_dir() {
-            continue;
-        }
-        for file in files_under(&tests) {
-            let text =
-                String::from_utf8_lossy(&std::fs::read(&file).expect("read file")).into_owned();
-            for adapter in &adapters {
-                if text.contains(adapter.as_str()) {
-                    offenders.push(format!("{}: {adapter}", file.display()));
-                }
-            }
-        }
-    }
+    let offenders: Vec<(String, String)> = adapters
+        .iter()
+        .flat_map(|adapter| {
+            files_naming(adapter)
+                .into_iter()
+                .map(move |file| (file, adapter.clone()))
+        })
+        .collect();
+    assert_eq!(offenders, Vec::<(String, String)>::new());
+}
+
+#[test]
+fn meets_the_specification_s_synthetic_adapter_only_through_its_vector() {
+    let offenders: Vec<String> = files_naming("fixtures/synthetic-adapter")
+        .into_iter()
+        .filter(|file| file != "crates/bridge-cli/tests/specification_vector.rs" && file != file!())
+        .collect();
     assert_eq!(offenders, Vec::<String>::new());
 }
