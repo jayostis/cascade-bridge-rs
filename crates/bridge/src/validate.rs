@@ -215,12 +215,12 @@ pub(crate) fn compile(iri: &str, resolver: &dyn Resolver) -> Result<Schema> {
         let base =
             Iri::parse(location.clone()).map_err(|e| Error::msg(format!("{location}: {e}")))?;
         let directed = directives(&text).map_err(|e| Error::msg(format!("{location}: {e}")))?;
-        for Directive { imported, named } in directed {
+        for Directive { namespace, named } in directed {
             let joined = base
                 .resolve(&named)
                 .map_err(|e| Error::msg(format!("{location} names {named}: {e}")))?
                 .into_inner();
-            let copy = imported
+            let copy = namespace
                 .filter(|namespace| SUPPLIED_BY_THE_BRIDGE.contains(&namespace.as_str()))
                 .and_then(|namespace| catalog.lookup(&namespace));
             match copy {
@@ -266,7 +266,7 @@ pub(crate) fn compile(iri: &str, resolver: &dyn Resolver) -> Result<Schema> {
 }
 
 struct Directive {
-    imported: Option<String>,
+    namespace: Option<String>,
     named: String,
 }
 
@@ -301,7 +301,7 @@ fn directives(text: &str) -> Result<Vec<Directive>> {
                 }
                 if let Some(location) = location {
                     named.push(Directive {
-                        imported,
+                        namespace: imported,
                         named: location,
                     });
                 }
@@ -334,7 +334,6 @@ fn key(location: &str) -> String {
     format!("{}///{}", all[at].to_ascii_lowercase(), segments.join("/"))
 }
 
-/// A whole segment that is a scheme and its colon.
 fn is_scheme(segment: &str) -> bool {
     segment
         .strip_suffix(':')

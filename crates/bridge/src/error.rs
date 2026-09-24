@@ -15,7 +15,6 @@ impl Error {
         }
     }
 
-    /// A file asked for that does not exist, as against one refused.
     pub fn missing(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),

@@ -59,8 +59,6 @@ impl Directory {
     }
 }
 
-/// A file a host could not supply, named by its IRI and followed by the
-/// host's own reason.
 pub fn unread(iri: &str, reason: &str) -> Error {
     Error::msg(format!("{iri}: {reason}"))
 }

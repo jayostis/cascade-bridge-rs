@@ -38,7 +38,6 @@ function pathToFileIri(path) {
   return `file://${text.startsWith("/") ? "" : "/"}${encoded(text)}`;
 }
 
-// A message would name again the file its IRI already names.
 function reason(e, path) {
   return e.code ?? String(e.message ?? e).replaceAll(path, "");
 }
@@ -94,7 +93,6 @@ class Directory {
     this.iri = `${pathToFileIri(this.path)}/`;
   }
 
-  // What the module is handed, or the reason it reports after the IRI.
   read(iri, what) {
     const bare = iri.split("#")[0];
     const path = bare.startsWith("file://") && authority(bare) === authority(this.iri)
