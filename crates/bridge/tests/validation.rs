@@ -3,7 +3,7 @@
 // produced all the same.
 mod common;
 
-use cascade_bridge::{load_adapter, prepare};
+use cascade_bridge::{load_adapter, prepare, DirectoryResolver, Error, Resolver, Result};
 use common::{address, annotations, converted, says, tiny, Variant, OA, SH};
 use oxrdf::{NamedOrBlankNode, Quad};
 
@@ -110,5 +110,65 @@ fn reports_nothing_about_a_record_carrying_a_comment_and_an_instruction() {
         Vec::<(String, String)>::new(),
         "{:?}",
         rows(&aside.findings)
+    );
+}
+
+/// The tiny adapter served from an object store: every IRI under its own root
+/// is read from the directory, and nothing else is.
+struct Rehomed {
+    root: String,
+    directory: DirectoryResolver,
+}
+
+impl Resolver for Rehomed {
+    fn root(&self) -> &str {
+        &self.root
+    }
+
+    fn read(&self, iri: &str) -> Result<Vec<u8>> {
+        let Some(rest) = iri.strip_prefix(self.root.as_str()) else {
+            return Err(Error::msg(format!("not under {}: {iri}", self.root)));
+        };
+        self.directory
+            .read(&format!("{}{rest}", self.directory.root()))
+    }
+}
+
+#[test]
+fn applies_an_included_schema_under_a_root_that_is_not_a_file() {
+    let rehomed = Rehomed {
+        root: "s3://b/a/".to_owned(),
+        directory: tiny(),
+    };
+    let records: Vec<String> = violations(&converted(&rehomed, "invalid.xml").findings)
+        .into_iter()
+        .map(|(record, _)| record)
+        .collect();
+    assert!(
+        records.contains(&"/catalog/item[2]".to_owned()),
+        "the item without the id its included schema requires: {records:?}"
+    );
+}
+
+#[test]
+fn reports_nothing_about_a_record_whose_schema_imports_the_xml_namespace() {
+    let lang = Variant::of(tiny())
+        .replacing(
+            "schema/item.xsd",
+            "<xs:element name=\"item\"",
+            "<xs:import namespace=\"http://www.w3.org/XML/1998/namespace\"/>\n\n  <xs:element name=\"item\"",
+        )
+        .replacing(
+            "schema/item.xsd",
+            "<xs:attribute name=\"internal\" type=\"xs:string\"/>",
+            "<xs:attribute name=\"internal\" type=\"xs:string\"/>\n    <xs:attribute ref=\"xml:lang\"/>",
+        )
+        .replacing("fixtures/in/two.xml", "<item id=\"1\">", "<item id=\"1\" xml:lang=\"en\">");
+    let conversion = converted(&lang, "two.xml");
+    assert_eq!(
+        violations(&conversion.findings),
+        Vec::<(String, String)>::new(),
+        "{:?}",
+        rows(&conversion.findings)
     );
 }
