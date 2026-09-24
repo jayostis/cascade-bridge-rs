@@ -11,7 +11,5 @@ crate-type = ["cdylib"]
 
 [dependencies]
 cascade-bridge = { path = "../bridge", version = "=0.1.0" }
-# SPARQL's clock and its randomness, from the host rather than from std,
-# which panics for either on wasm32-unknown-unknown.
 oxigraph = { version = "=0.5.11", default-features = false, features = ["js"] }
 wasm-bindgen = "=0.2.128"

@@ -120,9 +120,6 @@ fn declared(documents: &[Document]) -> Result<HashSet<String>> {
     Ok(declared)
 }
 
-/// Refused where the crate names a vocabulary file and the command was given
-/// no checkout to read it from, rather than produce a graph that nothing was
-/// read against.
 pub fn require_vocabularies(adapter: &Adapter, resolver: &dyn Resolver) -> Result<()> {
     if adapter.vocabulary_files.is_empty() || resolver.vocabularies().is_some() {
         return Ok(());

@@ -710,9 +710,7 @@ fn asks_a_service(expression: &Expression) -> bool {
     }
 }
 
-/// The clause that would have the query read anything but the dataset the
-/// Bridge builds for a unit, where it holds one.
-fn fetching_clause(query: &spargebra::Query) -> Option<&'static str> {
+fn what_fetches(query: &spargebra::Query) -> Option<&'static str> {
     let (dataset, pattern) = match query {
         spargebra::Query::Select {
             dataset, pattern, ..
@@ -728,7 +726,7 @@ fn fetching_clause(query: &spargebra::Query) -> Option<&'static str> {
         } => (dataset, pattern),
     };
     if holds_a_service(pattern) {
-        return Some("SERVICE");
+        return Some("a SERVICE pattern");
     }
     let dataset = dataset.as_ref()?;
     if dataset
@@ -736,9 +734,9 @@ fn fetching_clause(query: &spargebra::Query) -> Option<&'static str> {
         .as_ref()
         .is_some_and(|named| !named.is_empty())
     {
-        return Some("FROM NAMED");
+        return Some("a FROM NAMED clause");
     }
-    (!dataset.default.is_empty()).then_some("FROM")
+    (!dataset.default.is_empty()).then_some("a FROM clause")
 }
 
 fn query(resolver: &dyn Resolver, iri: &str, expected: Form, what: &str) -> Result<Query> {
@@ -756,9 +754,9 @@ fn query(resolver: &dyn Resolver, iri: &str, expected: Form, what: &str) -> Resu
             expected.keyword()
         )));
     }
-    if let Some(clause) = fetching_clause(&parsed) {
+    if let Some(held) = what_fetches(&parsed) {
         return Err(Error::msg(format!(
-            "{what} {iri} holds a {clause} clause; a query reads the dataset built for its unit, \
+            "{what} {iri} holds {held}; a query reads the dataset built for its unit, \
              and nothing is fetched"
         )));
     }
