@@ -8,10 +8,11 @@
 mod common;
 
 use cascade_bridge::{load_adapter, prepare, Conversion, DirectoryResolver, Resolver};
-use common::Subject;
+use common::{with, Shared, Subject};
 use oxrdf::{Quad, Term};
 use std::collections::BTreeSet;
 use std::path::PathBuf;
+use std::sync::{LazyLock, Mutex};
 
 const OA: &str = "http://www.w3.org/ns/oa#";
 const SH: &str = "http://www.w3.org/ns/shacl#";
@@ -55,13 +56,11 @@ fn run(resolver: &dyn Resolver, input: &str) -> (Conversion, String) {
     )
 }
 
-thread_local! {
-    static AGAINST_THE_VOCABULARY: Subject<DirectoryResolver> =
-        Subject::of(read_against_the_vocabulary());
-}
+static AGAINST_THE_VOCABULARY: Shared<DirectoryResolver> =
+    LazyLock::new(|| Mutex::new(Subject::of(read_against_the_vocabulary())));
 
 fn converted(input: &str) -> (Conversion, String) {
-    AGAINST_THE_VOCABULARY.with(|tiny| {
+    with(&AGAINST_THE_VOCABULARY, |tiny| {
         let iri = format!("{}fixtures/in/{input}", tiny.resolver.root());
         (tiny.conversion(input), iri)
     })

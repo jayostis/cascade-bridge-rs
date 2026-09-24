@@ -1,6 +1,7 @@
 // Preparing an adapter is most of what a conversion test costs, so an adapter
-// every test reads unchanged is prepared once per test thread rather than once
-// per test. Per thread, because a compiled XML schema is not `Sync`.
+// every test in a file reads unchanged is prepared by the first test to ask and
+// shared by the rest. Shared behind a lock, because a prepared adapter is `Send`
+// and not `Sync`, and each test runs on a thread of its own.
 #![allow(dead_code)]
 
 use cascade_bridge::{
@@ -9,6 +10,7 @@ use cascade_bridge::{
 };
 use oxrdf::Quad;
 use std::path::PathBuf;
+use std::sync::{LazyLock, Mutex, PoisonError};
 
 pub fn tiny_directory() -> DirectoryResolver {
     DirectoryResolver::new(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/tiny-adapter"))
@@ -63,11 +65,19 @@ impl<R: Resolver> Subject<R> {
     }
 }
 
-thread_local! {
-    static ON_DISK: Subject<DirectoryResolver> = Subject::of(tiny_directory());
+/// A subject every test in a file converts with, prepared once for all of them.
+pub type Shared<R> = LazyLock<Mutex<Subject<R>>>;
+
+/// A test that failed while holding the lock left the subject as it found it:
+/// converting reads a prepared adapter and never changes it.
+pub fn with<R, T>(shared: &Shared<R>, using: impl FnOnce(&Subject<R>) -> T) -> T {
+    using(&shared.lock().unwrap_or_else(PoisonError::into_inner))
 }
+
+static ON_DISK: Shared<DirectoryResolver> =
+    LazyLock::new(|| Mutex::new(Subject::of(tiny_directory())));
 
 /// The tiny adapter as it stands on disk, converting one of its committed inputs.
 pub fn on_disk(input: &str) -> Conversion {
-    ON_DISK.with(|tiny| tiny.conversion(input))
+    with(&ON_DISK, |tiny| tiny.conversion(input))
 }

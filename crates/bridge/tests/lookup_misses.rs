@@ -12,9 +12,10 @@
 mod common;
 
 use cascade_bridge::{DirectoryResolver, Resolver};
-use common::{conversion, Subject};
+use common::{conversion, with, Shared, Subject};
 use oxrdf::{Quad, Term};
 use std::path::PathBuf;
+use std::sync::{LazyLock, Mutex};
 
 const OA: &str = "http://www.w3.org/ns/oa#";
 const SH: &str = "http://www.w3.org/ns/shacl#";
@@ -260,12 +261,10 @@ fn notes() -> Adapted {
     Adapted::declaring(accounting(&[looks_up("/item/note", "consumed")])).built()
 }
 
-thread_local! {
-    static NOTES: Subject<Adapted> = Subject::of(notes());
-}
+static NOTES: Shared<Adapted> = LazyLock::new(|| Mutex::new(Subject::of(notes())));
 
 fn noted(input: &str) -> Vec<Quad> {
-    NOTES.with(|notes| notes.findings(input))
+    with(&NOTES, |notes| notes.findings(input))
 }
 
 /// One gap concept, under the kind and at the severity a case turns on.

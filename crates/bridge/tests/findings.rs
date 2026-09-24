@@ -6,10 +6,11 @@
 mod common;
 
 use cascade_bridge::{Conversion, DirectoryResolver, Resolver};
-use common::Subject;
+use common::{with, Shared, Subject};
 use oxrdf::{Quad, Term};
 use std::collections::BTreeSet;
 use std::path::PathBuf;
+use std::sync::{LazyLock, Mutex};
 
 const OA: &str = "http://www.w3.org/ns/oa#";
 const RDF_TYPE: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
@@ -57,13 +58,11 @@ fn tiny() -> Queries {
     }
 }
 
-thread_local! {
-    static QUERIES: Subject<Queries> = Subject::of(tiny());
-}
+static QUERIES: Shared<Queries> = LazyLock::new(|| Mutex::new(Subject::of(tiny())));
 
 /// The tiny adapter's findings for one of its committed inputs.
 fn findings_for(input: &str) -> Vec<Quad> {
-    QUERIES.with(|queries| queries.findings(input))
+    with(&QUERIES, |queries| queries.findings(input))
 }
 
 fn findings_through(resolver: &dyn Resolver, input: &str) -> Vec<Quad> {
