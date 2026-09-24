@@ -1,26 +1,23 @@
 // The engine's own test subject: a synthetic adapter built so that each
 // outcome is reached by the smallest input that can reach it, and two entries
 // must fail.
+mod common;
+
 use cascade_bridge::{
-    earl_report_at, load_adapter, run_manifest, DirectoryResolver, EntryResult, ReportSubject,
-    Resolver, RunOptions,
+    earl_report_at, load_adapter, run_manifest, EntryResult, ReportSubject, Resolver, RunOptions,
 };
-use oxrdf::{Graph, NamedNode, TermRef, Triple};
+use common::{tiny, Variant, RDF_TYPE};
+use oxrdf::{Graph, NamedNode, NamedOrBlankNodeRef, TermRef, Triple};
 use oxrdfio::{RdfFormat, RdfParser};
 use std::collections::BTreeMap;
-use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
 const EARL: &str = "http://www.w3.org/ns/earl#";
 
-fn tiny() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/tiny-adapter")
-}
-
 fn run() -> Vec<cascade_bridge::EntryResult> {
-    let resolver = DirectoryResolver::new(tiny()).expect("resolver");
+    let resolver = tiny();
     let adapter = load_adapter(&resolver).expect("adapter");
     run_manifest(&adapter, &resolver, RunOptions::default()).expect("manifest")
 }
@@ -90,13 +87,28 @@ fn says_what_differed_in_the_words_of_the_comparison() {
 
 #[test]
 fn runs_nothing_when_the_adapter_requires_a_profile_this_bridge_does_not_offer() {
-    let resolver = DirectoryResolver::new(tiny()).expect("resolver");
+    let resolver = tiny();
     let mut adapter = load_adapter(&resolver).expect("adapter");
     adapter
         .required_profiles
         .push("https://ns.cascadeprotocol.org/bridge/v1-draft#xslt-3".to_owned());
     let results = run_manifest(&adapter, &resolver, RunOptions::default()).expect("manifest");
-    assert!(results.iter().all(|r| r.outcome.as_str() == "inapplicable"));
+    assert_eq!(results.len(), run().len(), "every entry is reported");
+    for result in &results {
+        assert_eq!(
+            result.outcome.as_str(),
+            "inapplicable",
+            "{}: {}",
+            result.name,
+            result.description
+        );
+        assert!(
+            result.description.contains("xslt-3"),
+            "{}: {}",
+            result.name,
+            result.description
+        );
+    }
 }
 
 #[test]
@@ -119,8 +131,9 @@ fn reports_one_earl_assertion_per_entry_its_outcome_on_the_test_result() {
         graph.insert(&Triple::new(quad.subject, quad.predicate, quad.object));
     }
 
-    let type_of = NamedNode::new("http://www.w3.org/1999/02/22-rdf-syntax-ns#type").expect("iri");
+    let type_of = NamedNode::new(RDF_TYPE).expect("iri");
     let assertion = NamedNode::new(format!("{EARL}Assertion")).expect("iri");
+    let test_of = NamedNode::new(format!("{EARL}test")).expect("iri");
     let result_of = NamedNode::new(format!("{EARL}result")).expect("iri");
     let outcome_of = NamedNode::new(format!("{EARL}outcome")).expect("iri");
 
@@ -128,6 +141,7 @@ fn reports_one_earl_assertion_per_entry_its_outcome_on_the_test_result() {
         .subjects_for_predicate_object(type_of.as_ref(), assertion.as_ref())
         .collect();
     assert_eq!(assertions.len(), results.len());
+    let mut reported: BTreeMap<String, String> = BTreeMap::new();
     for a in assertions {
         assert_eq!(
             graph
@@ -136,27 +150,35 @@ fn reports_one_earl_assertion_per_entry_its_outcome_on_the_test_result() {
             0,
             "the outcome belongs to the TestResult, not to the Assertion"
         );
-        let result = graph
-            .objects_for_subject_predicate(a, result_of.as_ref())
-            .next()
-            .expect("a result");
-        let result = match result {
-            oxrdf::TermRef::BlankNode(b) => oxrdf::NamedOrBlankNodeRef::BlankNode(b),
-            oxrdf::TermRef::NamedNode(n) => oxrdf::NamedOrBlankNodeRef::NamedNode(n),
+        let result = match graph
+            .object_for_subject_predicate(a, result_of.as_ref())
+            .expect("a result")
+        {
+            TermRef::BlankNode(b) => NamedOrBlankNodeRef::BlankNode(b),
+            TermRef::NamedNode(n) => NamedOrBlankNodeRef::NamedNode(n),
             other => panic!("unexpected result node {other}"),
         };
-        assert_eq!(
-            graph
-                .objects_for_subject_predicate(result, outcome_of.as_ref())
-                .count(),
-            1
-        );
+        let outcomes: Vec<_> = graph
+            .objects_for_subject_predicate(result, outcome_of.as_ref())
+            .collect();
+        let [TermRef::NamedNode(outcome)] = outcomes[..] else {
+            panic!("a result carries one outcome IRI: {outcomes:?}");
+        };
+        let test = graph
+            .object_for_subject_predicate(a, test_of.as_ref())
+            .expect("a test");
+        reported.insert(test.to_string(), outcome.as_str().to_owned());
     }
+    let expected: BTreeMap<String, String> = results
+        .iter()
+        .map(|r| (r.entry.to_string(), format!("{EARL}{}", r.outcome.as_str())))
+        .collect();
+    assert_eq!(reported, expected, "each entry's outcome, on its own test");
 }
 
 #[test]
 fn fails_every_entry_when_the_adapter_names_no_element_name_of_each_record() {
-    let resolver = DirectoryResolver::new(tiny()).expect("resolver");
+    let resolver = tiny();
     let mut adapter = load_adapter(&resolver).expect("adapter");
     adapter.element_name_of_each_record = None;
     let results = run_manifest(&adapter, &resolver, RunOptions::default()).expect("manifest");
@@ -180,40 +202,23 @@ fn fails_every_entry_when_the_adapter_names_no_element_name_of_each_record() {
     }
 }
 
+const MANIFEST: &str = "fixtures/manifest.ttl";
+
 /// The tiny adapter with its manifest's entry list replaced, so an entry, or
 /// the list itself, can be written in a form the adapter on disk does not use.
-struct Entries {
-    directory: DirectoryResolver,
-    /// What `mf:entries` names in place of the list on disk.
-    list: String,
-    /// Triples appended to the manifest, for a list Turtle's collection syntax
-    /// cannot write.
-    appended: &'static str,
+/// `list` is what `mf:entries` names in place of the list on disk; `appended`
+/// holds triples for a list Turtle's collection syntax cannot write.
+fn entries(list: &str, appended: &str) -> Variant {
+    let directory = tiny();
+    let iri = format!("{}{MANIFEST}", directory.root());
+    let text = String::from_utf8(directory.read(&iri).expect("the manifest")).expect("utf-8");
+    let (head, rest) = text.split_once("mf:entries (").expect("an entry list");
+    let tail = &rest[rest.find(')').expect("the list's end") + 1..];
+    Variant::of(directory).with(MANIFEST, format!("{head}mf:entries {list}{tail}{appended}"))
 }
 
-impl Resolver for Entries {
-    fn root(&self) -> &str {
-        self.directory.root()
-    }
-
-    fn read(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
-        let bytes = self.directory.read(iri)?;
-        if !iri.ends_with("fixtures/manifest.ttl") {
-            return Ok(bytes);
-        }
-        let text = String::from_utf8(bytes).expect("utf-8");
-        let (head, list) = text.split_once("mf:entries (").expect("an entry list");
-        let tail = &list[list.find(')').expect("the list's end") + 1..];
-        Ok(format!("{head}mf:entries {}{tail}{}", self.list, self.appended).into_bytes())
-    }
-}
-
-fn run_with(entries: &'static str) -> (Vec<EntryResult>, Graph) {
-    let resolver = Entries {
-        directory: DirectoryResolver::new(tiny()).expect("resolver"),
-        list: format!("( {entries} )"),
-        appended: "",
-    };
+fn run_with(entries_written: &'static str) -> (Vec<EntryResult>, Graph) {
+    let resolver = entries(&format!("( {entries_written} )"), "");
     let adapter = load_adapter(&resolver).expect("adapter");
     let results = run_manifest(&adapter, &resolver, RunOptions::default()).expect("manifest");
     let subject = ReportSubject {
@@ -292,12 +297,10 @@ fn reports_a_literal_entry_instead_of_leaving_it_out() {
 
 #[test]
 fn refuses_an_entry_list_that_loops_back_on_itself() {
-    let resolver = Entries {
-        directory: DirectoryResolver::new(tiny()).expect("resolver"),
-        list: "_:cell".to_owned(),
-        appended: "_:cell <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:cell .
-",
-    };
+    let resolver = entries(
+        "_:cell",
+        "_:cell <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> _:cell .\n",
+    );
     let adapter = load_adapter(&resolver).expect("adapter");
     // Walked without a guard this list never ends, so the run is watched from
     // here: a hang would otherwise be the test's only way to fail.
