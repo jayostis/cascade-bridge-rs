@@ -1,15 +1,5 @@
-// XSD 1.0 validation of the source: every record against the adapter's
-// bridge:sourceSchema, every document against its envelope's
-// bridge:documentSchema. It reports; it never refuses.
-//
-// A schema and everything it includes are read through the host, against the
-// including schema's own IRI, before the validator is built: the loader the
-// validator is given answers out of what was read and can reach nothing else,
-// so an xs:include the host refuses is refused here and nothing is fetched.
-//
-// An error's address is taken from the validator's element events and not from
-// ValidationError::element_path, which holds bare local names and so cannot
-// write a step for an element in a namespace.
+// An error's address comes from the element events: ValidationError::element_path
+// holds bare local names.
 use crate::error::{Error, Result};
 use crate::lift::{Step, UTF_8_DECLARATION};
 use crate::rdf::BRIDGE_SCHEMA_RULE_UNNAMED;
@@ -38,9 +28,6 @@ const SUPPLIED_BY_THE_BRIDGE: [&str; 2] = [
 const XMLSCHEMA_1: &str = "https://www.w3.org/TR/xmlschema-1/#";
 const XMLSCHEMA_2: &str = "https://www.w3.org/TR/xmlschema-2/#";
 
-/// The rules each Recommendation defines, of every code `xsd-schema` writes.
-/// A code neither names is a schema failure W3C names no rule for, so a
-/// validator that grows one cannot produce a body that opens nothing.
 const DEFINED_BY_STRUCTURES: [&str; 10] = [
     "cos-st-restricts",
     "cvc-assess-attr",
@@ -73,16 +60,13 @@ pub(crate) struct Schema {
     set: SchemaSet,
 }
 
-/// One XSD error: W3C's code for the rule it broke, and where the instance
-/// broke it.
 pub(crate) struct SchemaFinding {
     constraint: &'static str,
     within: Option<String>,
 }
 
 impl SchemaFinding {
-    /// The anchor of the rule, read from the code up to its first dot: a rule
-    /// and not one of its clauses.
+    /// Up to the code's first dot: a rule, not one of its clauses.
     pub(crate) fn body(&self) -> String {
         let rule = self
             .constraint
@@ -97,20 +81,16 @@ impl SchemaFinding {
         BRIDGE_SCHEMA_RULE_UNNAMED.to_owned()
     }
 
-    /// The element the rule was broken on, relative to the element validated,
-    /// and nothing where it is that element itself.
+    /// Relative to the element validated; none where it is that element.
     pub(crate) fn within(&self) -> Option<&str> {
         self.within.as_deref()
     }
 }
 
-/// Where the validator is, shared by the handler that moves it and the sink
-/// that reads it: the two are separate objects, and an error arrives on one
-/// while only the other knows which element drew it.
+/// Shared: an error reaches the sink while only the handler knows which element
+/// drew it.
 type At = Rc<RefCell<Vec<Step>>>;
 
-/// The steps below the element validated, each indexed among its siblings of
-/// its name.
 fn within(at: &[Step]) -> Option<String> {
     let below = at.get(1..).unwrap_or_default();
     (!below.is_empty()).then(|| {
@@ -122,9 +102,8 @@ fn within(at: &[Step]) -> Option<String> {
     })
 }
 
-/// The element the validator is in, kept as it walks: a step is pushed before
-/// the element is validated, so an error the element itself draws is addressed
-/// to it and not to its parent.
+/// A step is pushed before its element is validated, so an error the element
+/// draws is addressed to it.
 struct Walked {
     at: At,
     siblings: Vec<HashMap<(String, Option<String>), usize>>,
@@ -168,7 +147,6 @@ impl ValidationEventHandler for Walked {
     }
 }
 
-/// Each error the run draws, addressed to wherever the walk had reached.
 struct Reported {
     at: At,
     findings: Rc<RefCell<Vec<SchemaFinding>>>,
@@ -187,7 +165,6 @@ impl ValidationSink for Reported {
 }
 
 impl Schema {
-    /// Every XSD error the instance draws, empty when it is valid.
     pub(crate) fn errors(&self, xml: &str) -> Result<Vec<SchemaFinding>> {
         let document = utf8_declaration(xml);
         let validator = SchemaValidator::new(
@@ -216,7 +193,6 @@ impl Schema {
     }
 }
 
-/// Read a schema and everything it names, then compile it.
 pub(crate) fn compile(iri: &str, resolver: &dyn Resolver) -> Result<Schema> {
     let mut catalog = SchemaCatalog::new();
     catalog.add_xml_catalog();
@@ -289,15 +265,11 @@ pub(crate) fn compile(iri: &str, resolver: &dyn Resolver) -> Result<Schema> {
     })
 }
 
-/// A schemaLocation as the schema writes it, and the namespace it is for where
-/// it is an xs:import's.
 struct Directive {
     imported: Option<String>,
     named: String,
 }
 
-/// Every schemaLocation an xs:include, xs:import, xs:redefine or xs:override
-/// names.
 fn directives(text: &str) -> Result<Vec<Directive>> {
     let mut reader = quick_xml::NsReader::from_str(text);
     reader.config_mut().expand_empty_elements = true;
@@ -340,11 +312,9 @@ fn directives(text: &str) -> Result<Vec<Directive>> {
     }
 }
 
-/// One name for a location however it is spelled. `xsd-schema` resolves a
-/// relative schemaLocation as a filesystem path, whatever the scheme: the
-/// double slash collapses, and natively the current directory is put in front
-/// of an IRI it does not take for absolute, so the string it asks for is not
-/// the string the host was given.
+/// `xsd-schema` asks for a relative location as a filesystem path: the double
+/// slash collapses, and natively the current directory goes in front of an IRI
+/// it does not take for absolute.
 fn key(location: &str) -> String {
     let spelled = location.replace('\\', "/");
     let all: Vec<&str> = spelled.split('/').collect();
@@ -381,9 +351,7 @@ fn is_scheme_name(name: &str) -> bool {
         && characters.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
 }
 
-/// The document with its XML declaration replaced, since the characters no
-/// longer carry the encoding the document was written in. A target that merely
-/// begins with `xml` is another instruction's, and the document has none.
+/// The characters no longer carry the encoding the document was written in.
 fn utf8_declaration(xml: &str) -> String {
     let declaration = xml
         .strip_prefix("<?xml")
@@ -398,10 +366,8 @@ fn utf8_declaration(xml: &str) -> String {
     format!("{UTF_8_DECLARATION}{body}")
 }
 
-/// The schemas the host supplied and those the Bridge supplies itself, and the
-/// record of anything asked for that neither did: a location this answers
-/// nothing for loads nothing, and `xsd-schema` treats that as non-fatal, so it
-/// is caught here instead.
+/// `xsd-schema` treats a location that loads nothing as non-fatal, so this
+/// records it.
 struct Preloaded {
     documents: HashMap<String, String>,
     answered_by_the_bridge: HashMap<String, String>,

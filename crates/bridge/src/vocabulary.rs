@@ -1,6 +1,3 @@
-// What a produced graph is read against: the ontology and shapes files the
-// crate's bridge:vocabularyFile names, resolved against the checkout the engine
-// command was given and read through the host from there and nowhere else.
 use crate::annotation::{self, Record};
 use crate::error::{Error, Result};
 use crate::load::Adapter;
@@ -15,7 +12,6 @@ use oxrdf::{NamedOrBlankNode, Quad, Term};
 use oxrdfio::{RdfFormat, RdfParser};
 use std::collections::{BTreeSet, HashSet};
 
-/// The classes a declaration types a predicate with.
 const DECLARES_A_PREDICATE: [&str; 4] = [
     RDF_PROPERTY,
     OWL_DATATYPE_PROPERTY,
@@ -31,8 +27,6 @@ pub(crate) struct Vocabulary {
 }
 
 impl Vocabulary {
-    /// The vocabulary the files name, where the command named a checkout to
-    /// read them from and the crate named any.
     pub(crate) fn read(
         files: &[String],
         stamps: HashSet<String>,
@@ -63,7 +57,6 @@ impl Vocabulary {
         }))
     }
 
-    /// Every finding the vocabulary draws on one record's produced graph.
     pub(crate) fn findings(&self, record: &Record<'_>, quads: &[Quad]) -> Result<Vec<Quad>> {
         let mut findings = Vec::new();
         for result in self.shapes.results(quads)? {
@@ -87,8 +80,6 @@ impl Vocabulary {
         Ok(findings)
     }
 
-    /// The predicates the graph writes that no file of the vocabulary declares,
-    /// each once however many triples wrote it.
     fn undeclared<'a>(&self, quads: &'a [Quad]) -> BTreeSet<&'a str> {
         quads
             .iter()

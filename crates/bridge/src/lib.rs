@@ -2,9 +2,6 @@
 //! Specification's `sparql-1.1` profile. It runs a Cascade Bridge Adapter, a
 //! data package for one source format, over a source document, and executes
 //! the adapter's test manifest.
-//!
-//! The specification is the authority: a test type's rule is the
-//! `rdfs:comment` on that type in its `vocab/bridge.ttl`.
 
 mod annotation;
 mod decode;

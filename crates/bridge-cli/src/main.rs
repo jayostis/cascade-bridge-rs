@@ -1,5 +1,3 @@
-// cascade-bridge test <adapter-dir> [--vocabularies <directory>] [--earl <out.ttl>] [--datasets]
-// cascade-bridge convert <adapter-dir> <document.xml> [--vocabularies <directory>] [--out <file>] [--findings <file>] [--format turtle|ntriples]
 use cascade_bridge::{
     convert, earl_report, file_iri, load_adapter, prepare, require_vocabularies, run_manifest,
     serialise, serialise_at, unvalidated_output, DirectoryResolver, EntryResult, GraphFormat,
@@ -11,7 +9,6 @@ use std::process::ExitCode;
 const USAGE: &str = "usage: cascade-bridge test <adapter-dir> [--vocabularies <directory>] [--earl <out.ttl>] [--datasets]
        cascade-bridge convert <adapter-dir> <document.xml> [--vocabularies <directory>] [--out <file>] [--findings <file>] [--format turtle|ntriples]";
 
-/// A run proves nothing when an entry failed or could not be run at all.
 const FAILING: [Outcome; 2] = [Outcome::Failed, Outcome::Inapplicable];
 
 fn subject() -> ReportSubject {
@@ -48,9 +45,6 @@ struct Convert {
     format: GraphFormat,
 }
 
-/// The adapter's directory, and the checkout of `the-cascade-protocol/spec` the
-/// vocabulary files are read from where the command named one. Between them
-/// they are everything a run reads.
 fn resolver(directory: &str, vocabularies: Option<&str>) -> Result<DirectoryResolver, String> {
     let resolver = DirectoryResolver::new(directory).map_err(|e| e.to_string())?;
     match vocabularies {
@@ -184,8 +178,6 @@ fn test(arguments: Test) -> Result<ExitCode, String> {
     })
 }
 
-/// Standard output carries the graph and nothing else, so a caller can pipe it
-/// into a store; everything the run has to say goes to standard error.
 fn convert_document(arguments: Convert) -> Result<ExitCode, String> {
     let resolver = resolver(&arguments.directory, arguments.vocabularies.as_deref())?;
     let adapter = load_adapter(&resolver).map_err(|e| e.to_string())?;
@@ -199,9 +191,6 @@ fn convert_document(arguments: Convert) -> Result<ExitCode, String> {
     let prepared = prepare(&adapter, &resolver).map_err(|e| e.to_string())?;
     let document =
         std::fs::read(&arguments.document).map_err(|e| format!("{}: {e}", arguments.document))?;
-    // A finding names the document it is about, and the document is the
-    // caller's rather than the adapter's, so its own IRI is the only one there
-    // is to name it by.
     let iri = file_iri(&arguments.document).map_err(|e| e.to_string())?;
     let conversion = convert(
         &prepared,
@@ -230,8 +219,6 @@ fn convert_document(arguments: Convert) -> Result<ExitCode, String> {
         conversion.triples(),
         conversion.annotations()
     );
-    // Reported, never enforced: a document the adapter would route elsewhere
-    // is still converted, and the caller is the one told about it.
     eprintln!(
         "Detect   {}",
         match conversion.detected {
@@ -242,16 +229,10 @@ fn convert_document(arguments: Convert) -> Result<ExitCode, String> {
         }
     );
 
-    // Before the graph, so a findings file that cannot be written leaves
-    // standard output carrying nothing, as the non-zero exit says it does.
+    // Before the graph, so a findings file that cannot be written leaves standard output empty.
     if let Some(path) = &arguments.findings {
-        // The file is created before it is filled, because what goes in it
-        // names this document relative to the IRI the file will be read back
-        // from, and that IRI is the file's own. An author commits what this
-        // writes as their bridge:expectedFindings, and a finding naming an
-        // absolute path would hold on this machine and no other. It is not
-        // emptied here: an author regenerating a committed oracle in place
-        // keeps what they have until there is something to put in its place.
+        // Created first, since its own IRI names the document; not emptied, so a run that
+        // fails leaves a committed oracle as it was.
         std::fs::OpenOptions::new()
             .create(true)
             .write(true)
@@ -275,8 +256,7 @@ fn convert_document(arguments: Convert) -> Result<ExitCode, String> {
             std::fs::write(path, graph).map_err(|e| format!("{path}: {e}"))?;
             eprintln!("Graph    {path}");
         }
-        // The reader of a pipe may go away mid-graph, and a caller is owed one
-        // of the statuses this command documents rather than a panic.
+        // A pipe's reader may go away mid-graph; the caller is owed a status, not a panic.
         None => {
             let mut stdout = std::io::stdout();
             stdout
@@ -288,8 +268,6 @@ fn convert_document(arguments: Convert) -> Result<ExitCode, String> {
     Ok(ExitCode::SUCCESS)
 }
 
-/// The outcomes in the order they were first reached, which is the order the
-/// entries are in.
 fn tally(results: &[EntryResult]) -> String {
     let mut counts: Vec<(Outcome, usize)> = Vec::new();
     for result in results {

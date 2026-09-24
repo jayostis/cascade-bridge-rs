@@ -1,6 +1,4 @@
-//! `test` and `convert` for a host that is not a process. The host reads every
-//! file and writes every output; this side is handed bytes by IRI and hands
-//! back text, so the same module runs wherever the host can supply bytes.
+//! `test` and `convert` for a host that is not a process.
 //!
 //! What these functions take and return is the node host's business and
 //! promises nothing to anyone else.
@@ -14,8 +12,7 @@ use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 extern "C" {
-    /// The host's files. Each method throws a string saying why a file could
-    /// not be read.
+    /// Each method throws a string saying why a file could not be read.
     pub type Files;
 
     #[wasm_bindgen(method, catch)]
@@ -31,8 +28,7 @@ extern "C" {
     fn error(message: &str);
 }
 
-/// A panic reaches the host as a trap that says only "unreachable", so its
-/// message is written out before it.
+/// A panic reaches the host as a trap saying only "unreachable", so its message goes first.
 #[wasm_bindgen(start)]
 fn start() {
     std::panic::set_hook(Box::new(|panic| error(&panic.to_string())));
@@ -79,8 +75,7 @@ fn thrown(error: Error) -> JsError {
     JsError::new(&error.to_string())
 }
 
-/// The adapter a run reads, named by the IRI of its directory and of the
-/// vocabularies checkout, each ending in "/".
+/// `root` and `vocabularies` name directories, each ending in "/".
 fn host(root: String, vocabularies: Option<String>, files: Files) -> Host {
     Host {
         root,
@@ -97,14 +92,11 @@ fn subject() -> ReportSubject {
     }
 }
 
-/// A run proves nothing when an entry failed or could not be run at all.
 const FAILING: [Outcome; 2] = [Outcome::Failed, Outcome::Inapplicable];
 
 #[wasm_bindgen(getter_with_clone)]
 pub struct TestRun {
-    /// What a person reads: the adapter, each entry's outcome, the tally.
     pub summary: String,
-    /// The EARL report, in Turtle.
     pub earl: String,
     pub holds: bool,
 }
@@ -163,8 +155,6 @@ pub fn test(
     })
 }
 
-/// The outcomes in the order they were first reached, which is the order the
-/// entries are in.
 fn tally(results: &[EntryResult]) -> String {
     let mut counts: Vec<(Outcome, usize)> = Vec::new();
     for result in results {
@@ -180,7 +170,6 @@ fn tally(results: &[EntryResult]) -> String {
         .join(", ")
 }
 
-/// A document converted, held until the host knows where each graph goes.
 #[wasm_bindgen]
 pub struct Converted {
     conversion: Conversion,
@@ -192,7 +181,6 @@ pub struct Converted {
 
 #[wasm_bindgen]
 impl Converted {
-    /// What a person reads: the adapter, the document's counts, detection.
     #[wasm_bindgen(getter)]
     pub fn summary(&self) -> String {
         self.summary.clone()
@@ -202,8 +190,6 @@ impl Converted {
         serialise(&self.conversion.quads, self.format, &self.prefixes).map_err(thrown)
     }
 
-    /// The findings as a file standing at `at` writes them, naming the
-    /// document relative to itself.
     pub fn findings(&self, at: &str) -> Result<String, JsError> {
         serialise_at(
             &self.conversion.findings,
@@ -262,8 +248,6 @@ pub fn convert(
         conversion.triples(),
         conversion.annotations()
     );
-    // Reported, never enforced: a document the adapter would route elsewhere
-    // is still converted, and the caller is the one told about it.
     let _ = write!(
         summary,
         "Detect   {}",

@@ -1,13 +1,3 @@
-// Running an adapter on one document, per unit: lift the unit, validate it,
-// load the tables beside it, run every mapping and union the graphs, then run
-// every findings query and make its annotations about that unit. Each unit
-// gets a store of its own, so no query can see another unit, and each query
-// execution's blank nodes are kept apart from every other's, so two findings
-// never fuse into one.
-//
-// Everything an adapter runs is read and parsed once, here, before any
-// document: a query's text is never handed to the engine twice, and a schema
-// is compiled once however many records it validates.
 use crate::annotation::{self, Minted, Record};
 use crate::decode::{decode, XML_SPACE};
 use crate::error::{Error, Result};
@@ -36,9 +26,6 @@ use std::time::Duration;
 // std's clock panics on wasm32-unknown-unknown, where this one asks the host.
 use web_time::Instant;
 
-/// The form a query's own text declares, decided when it is parsed. Deciding
-/// it from a result instead accepts a SELECT that matched nothing as a
-/// CONSTRUCT that produced nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Form {
     Select,
@@ -70,21 +57,16 @@ impl Form {
 pub struct Query {
     pub iri: String,
     pub form: Form,
-    /// The names the query's prologue gives namespaces, so a graph a mapping
-    /// built can be written back in the mapping's own spelling.
     pub prefixes: Vec<(String, String)>,
     prepared: PreparedSparqlQuery,
 }
 
 impl Query {
     fn on(&self, store: &Store) -> Result<QueryResults<'static>> {
-        // Cloning the prepared query copies the algebra the parser already
-        // built; the text is not seen again.
+        // Copies the algebra already parsed; the text is not parsed again.
         Ok(self.prepared.clone().on_store(store).execute()?)
     }
 
-    /// The graph the CONSTRUCT built, with this execution's blank nodes kept
-    /// apart from every other execution's.
     fn graph(&self, store: &Store) -> Result<Vec<Quad>> {
         let QueryResults::Graph(triples) = self.on(store)? else {
             return Err(Error::msg(format!(
@@ -118,23 +100,15 @@ pub struct Prepared {
     pub mappings: Vec<Query>,
     pub findings_queries: Vec<Query>,
     pub detect: Option<Query>,
-    /// The tables, parsed once rather than once per unit.
     pub tables: Vec<Quad>,
-    /// Every name the mappings give a namespace, the first binding of a name
-    /// winning, as a query's own prologue binds it.
+    /// Every name the mappings give a namespace, the first binding of a name winning.
     pub prefixes: Vec<(String, String)>,
-    /// The names a findings graph is written under: the fixed ones, then those
-    /// the gap scheme declares that neither rename nor rebind them.
     pub findings_prefixes: Vec<(String, String)>,
     envelopes: Vec<Envelope>,
     source_schema: Option<Schema>,
-    /// What each record's produced graph is read against, where the command
-    /// named a checkout to read it from.
     vocabulary: Option<Vocabulary>,
     accounting: Option<Accounting>,
-    /// The severity each gap concept declares, by the IRI a finding's body
-    /// names it by. An accounting entry carries its own in `Reported` and
-    /// `Lookup`; a findings query's annotation is given none, and reads here.
+    /// By gap concept IRI, for a findings query's annotation that declares no severity.
     gap_severities: HashMap<String, String>,
 }
 
@@ -146,8 +120,6 @@ impl Prepared {
             .ok_or_else(|| Error::msg(format!("the adapter declares no envelope {iri}")))
     }
 
-    /// The envelope a document arrived in, when the caller names none: the one
-    /// whose document root element the document's own is.
     fn envelope_of(&self, document_element: Option<&str>) -> Option<&Envelope> {
         let element = document_element?;
         self.envelopes
@@ -168,10 +140,8 @@ pub struct Ms {
 
 pub struct Conversion {
     pub quads: Vec<Quad>,
-    /// Every finding about the source document, as Web Annotations.
     pub findings: Vec<Quad>,
     pub units: usize,
-    /// The detect query's answer over the skeleton, when the adapter has one.
     pub detected: Option<bool>,
     pub ms: Ms,
 }
@@ -181,23 +151,19 @@ impl Conversion {
         annotation::annotations(&self.findings)
     }
 
-    /// How many triples the graph holds. `quads` is the records' raw union, and
-    /// a triple constructed for every record stands in it once per record and
-    /// in the graph once.
+    /// `quads` holds a triple constructed for every record once per record, the graph once.
     pub fn triples(&self) -> usize {
         self.quads.iter().collect::<HashSet<&Quad>>().len()
     }
 }
 
-/// A document to convert: its bytes, the IRI a finding about it names, and the
-/// envelope it arrived in where the caller knows it.
 pub struct Source<'a> {
     pub iri: &'a str,
     pub envelope: Option<&'a str>,
     pub xml: &'a [u8],
 }
 
-/// Whitespace and comments, which stand between any two tokens of a prologue.
+/// Skips whitespace and comments.
 fn between(text: &str) -> &str {
     let mut rest = text.trim_start();
     while let Some(comment) = rest.strip_prefix('#') {
@@ -209,7 +175,6 @@ fn between(text: &str) -> &str {
     rest
 }
 
-/// What follows the keyword, where the text begins with it.
 fn keyword<'a>(text: &'a str, word: &str) -> Option<&'a str> {
     let rest = text.get(word.len()..)?;
     (text[..word.len()].eq_ignore_ascii_case(word)
@@ -217,24 +182,18 @@ fn keyword<'a>(text: &'a str, word: &str) -> Option<&'a str> {
     .then_some(rest)
 }
 
-/// A declaration's name, up to the colon that ends it, and what follows.
 fn declared_name(text: &str) -> Option<(&str, &str)> {
     let (name, rest) = text.split_once(':')?;
     (!name.contains(char::is_whitespace)).then_some((name, rest))
 }
 
-/// The IRI the angle brackets hold, and what follows.
 fn iri_ref(text: &str) -> Option<(&str, &str)> {
     let rest = text.strip_prefix('<')?;
     let end = rest.find('>')?;
     Some((&rest[..end], &rest[end + 1..]))
 }
 
-/// The prologue's PREFIX declarations. SPARQL keeps them out of the algebra a
-/// parser returns, and they are the only names for these namespaces anyone has
-/// written down. It is read as SPARQL writes it — a run of BASE and PREFIX
-/// declarations, laid out however the author laid them out, ending where the
-/// query form begins.
+/// Read from the text: SPARQL keeps PREFIX declarations out of the algebra.
 fn prologue_prefixes(text: &str) -> Vec<(String, String)> {
     let mut prefixes = Vec::new();
     let mut rest = between(text);
@@ -260,73 +219,50 @@ fn prologue_prefixes(text: &str) -> Vec<(String, String)> {
     prefixes
 }
 
-/// What a finding about the document selects: the document's own element, or,
-/// where the document has none, the element its envelope describes. Validation
-/// reports and never refuses, so a document with no element at all is still
-/// addressed, by whatever name there is for the element it was to have.
 fn document_selector(document: Option<String>, described: Option<&str>) -> String {
     document
         .or_else(|| described.map(|element| format!("/{element}")))
         .unwrap_or_else(|| "/*".to_owned())
 }
 
-/// One path of the source, what the adapter does with it, and the gap it opens
-/// where it opens one.
 struct Entry {
     path: String,
     verdict: Option<String>,
     gap: Option<String>,
-    /// The concept map the values at this path are looked up in, and the gap a
-    /// value it holds no notation for bodies.
+    /// The concept map a value is looked up in; `miss` is the gap for a value it lacks.
     map: Option<String>,
     miss: Option<String>,
 }
 
-/// What a concept of an adapter's gap scheme declares about itself.
 #[derive(Default)]
 struct Gap {
     kind: Option<String>,
     severity: Option<String>,
 }
 
-/// The verdicts that may name a gap at all.
 const NAMES_A_GAP: [&str; 2] = [BRIDGE_NO_HOME, BRIDGE_CARRIED_IN_PART];
 
-/// The kinds of gap true of the path rather than of what a record happens to
-/// hold at it. Only some of a path's occurrences are carried with loss or left
-/// unmapped, and an entry cannot say which, so a kind true of what a record
-/// holds is left to a findings query, which can count and compare.
+/// The kinds of gap true of the path, not of what a record holds at it.
 const REPORTS: [&str; 2] = [BRIDGE_NO_PREDICATE, BRIDGE_SOURCE_LACKS_REQUIRED];
 
-/// The severities a gap concept may declare, which are the severities the
-/// adapter profile's shape for a source finding accepts.
 const SEVERITIES: [&str; 3] = [SH_INFO, SH_WARNING, SH_VIOLATION];
 
-/// A gap a path's entry reports, and the severity its concept gives it.
 struct Reported {
     gap: String,
     severity: String,
 }
 
-/// A concept map an entry looks a path's values up in: the notations the one
-/// scheme the file holds carries, the gap a value outside them bodies, and the
-/// severity that gap's concept gives it. Nothing else about a concept is a
-/// Bridge's business; the term each one matches is the mapping query's.
 struct Lookup {
     gap: String,
     severity: String,
     notations: Arc<HashSet<String>>,
 }
 
-/// A value's key: the value lowercased and trimmed of XML's S production,
-/// which is the form a `skos:notation` is written in.
+/// The form a `skos:notation` is written in.
 fn key(value: &str) -> String {
     value.trim_matches(XML_SPACE).to_lowercase()
 }
 
-/// What an adapter's accounting says about the paths of a record: which of
-/// them it carries at all, which of them an entry reports a gap at, and which
-/// of them an entry looks the values at up.
 struct Accounting {
     paths: HashSet<String>,
     reported: HashMap<String, Vec<Reported>>,
@@ -334,10 +270,6 @@ struct Accounting {
 }
 
 impl Accounting {
-    /// A gap an entry names and the scheme cannot say the kind of is refused
-    /// here rather than passed over. Whether it reports is not a question this
-    /// Bridge can answer about such a gap, and answering "it does not" drops a
-    /// finding for a reason no reader of the output can see.
     fn of(
         entries: Vec<Entry>,
         scheme: &HashMap<String, Gap>,
@@ -432,8 +364,7 @@ impl Accounting {
             }
             paths.insert(entry.path);
         }
-        // A graph has no order of its own, so a run's output does not depend on
-        // which way a hash happened to fall.
+        // Sorted, so a run's output does not depend on which way a hash fell.
         for gaps in reported.values_mut() {
             gaps.sort_by(|one, two| one.gap.cmp(&two.gap));
         }
@@ -448,9 +379,6 @@ impl Accounting {
     }
 }
 
-/// The one IRI an entry declares for a predicate, where it declares any. Two
-/// leave the parse order deciding what the entry says, and a literal says
-/// nothing an entry can be read by.
 fn declared(objects: &[Term], iri: &str, path: &str, predicate: &str) -> Result<Option<String>> {
     if let [first, second, ..] = objects {
         return Err(Error::msg(format!(
@@ -467,15 +395,8 @@ fn declared(objects: &[Term], iri: &str, path: &str, predicate: &str) -> Result<
     Ok(Some(named.as_str().to_owned()))
 }
 
-/// The entries an accounting carries, each a `bridge:PathEntry` with a literal
-/// `bridge:sourcePath`. A crate that names an accounting and cannot show it is
-/// refused here, where a crate that names none is never asked.
-///
-/// A verdict and a gap are read from an entry and from nothing else, so what
-/// neither is read from is refused for neither. A `bridge:sourcePath` is the
-/// standing exception: dropping one that is no literal would leave the census
-/// reporting the path as unaccounted, which is a wrong finding and not an
-/// absent one.
+/// A `bridge:sourcePath` that is no literal is refused: dropping it would report the
+/// path as unaccounted.
 fn entries(resolver: &dyn Resolver, iri: &str) -> Result<Vec<Entry>> {
     let bytes = resolver.read(iri)?;
     let mut typed = HashSet::new();
@@ -530,18 +451,6 @@ fn entries(resolver: &dyn Resolver, iri: &str) -> Result<Vec<Entry>> {
 
 type Prefixes = Vec<(String, String)>;
 
-/// Each concept of an adapter's gap scheme, by the IRI an entry names it by. A
-/// crate that names a scheme and cannot show it is refused here, as its
-/// accounting is, and so is one whose concept declares a severity outside the
-/// three the specification fixes: the finding it would carry is one the
-/// adapter profile's own shape for a source finding refuses. One declaring two
-/// severities is refused for the neighbouring reason — keeping either leaves
-/// the parse order deciding how loud the gap is — and one declaring two
-/// `skos:broader` for the same reason one step harder, where the parse order
-/// would decide whether the gap reports at all.
-///
-/// The prefixes the file declares come with it, as the names its gaps are
-/// written under.
 fn gap_scheme(resolver: &dyn Resolver, iri: &str) -> Result<(HashMap<String, Gap>, Prefixes)> {
     let bytes = resolver.read(iri)?;
     let mut scheme: HashMap<String, Gap> = HashMap::new();
@@ -595,10 +504,6 @@ fn gap_scheme(resolver: &dyn Resolver, iri: &str) -> Result<(HashMap<String, Gap
     Ok((scheme, prefixes))
 }
 
-/// Every `skos:notation` a concept map carries, which is the whole of what a
-/// Bridge reads from one. A file holding other than one `skos:ConceptScheme` is
-/// refused: which scheme a value is looked up in would otherwise be the parse
-/// order's to decide, or nothing's.
 fn concept_map(resolver: &dyn Resolver, iri: &str) -> Result<HashSet<String>> {
     let bytes = resolver.read(iri)?;
     let mut schemes = HashSet::new();
@@ -768,11 +673,7 @@ fn query(resolver: &dyn Resolver, iri: &str, expected: Form, what: &str) -> Resu
     })
 }
 
-/// The predicates the adapter's test manifest stamps a produced graph with,
-/// which the adapter wrote for a Bridge rather than out of an ontology, and
-/// which no ontology is asked about. The set is the manifest's own: an entry
-/// that carries its own replaces it for that entry alone, where the harness
-/// compares it, and for no conversion.
+/// The manifest's own: an entry's replaces it only where the harness compares.
 fn stamps(adapter: &Adapter) -> Result<HashSet<String>> {
     Ok(values(
         &adapter.graph,
@@ -783,14 +684,10 @@ fn stamps(adapter: &Adapter) -> Result<HashSet<String>> {
     .collect())
 }
 
-/// Read, parse and check everything an adapter runs, once, before any
-/// document.
 pub fn prepare(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prepared> {
     if adapter.mappings.is_empty() {
         return Err(Error::msg("the adapter names no bridge:mapping"));
     }
-    // Without a unit nothing is split off, so no mapping would run and an
-    // empty result would pass for a conversion.
     let unit = adapter
         .element_name_of_each_record
         .clone()
@@ -910,8 +807,6 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
         .envelope
         .map(|iri| prepared.named_envelope(iri))
         .transpose()?;
-    // Decoding is the one stage that holds the whole document at once, so the
-    // document schema below reads these characters rather than its own copy.
     let text = decode(source.xml)?;
     let followed = xpath::Followed::default();
     let paths = match &prepared.accounting {
@@ -974,7 +869,7 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
                     )?);
                 }
             }
-            // A graph has no order of its own, as the gaps above have none.
+            // Sorted, so a run's output does not depend on which way a hash fell.
             let mut held: Vec<&Valued> = unit.values().iter().collect();
             held.sort_by(|one, two| (&one.path, &one.value).cmp(&(&two.path, &two.value)));
             for valued in held {
@@ -1013,9 +908,6 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
         }
         ms.mappings += at.elapsed();
 
-        // Reported, never enforced: what the shapes say of the record's graph
-        // is a finding about the record, and the graph is produced whatever
-        // they say.
         let at = Instant::now();
         if let Some(vocabulary) = &prepared.vocabulary {
             findings.extend(vocabulary.findings(&record, &produced)?);
@@ -1036,8 +928,7 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
         ms.findings += at.elapsed();
 
         let at = Instant::now();
-        // A record was read, so the document element was, and what a report
-        // selects is known without the envelope this document has yet to name.
+        // A record was read, so the document element was: no envelope is needed yet.
         let element = document_selector(lift.document_selector(), None);
         let reports = followed.unresolved(
             &Record {
@@ -1064,11 +955,7 @@ pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
             source: source.iri,
             selector: &selector,
         };
-        // A finding about the document is about no record, and the address it
-        // refines the document by is written from the walk the validator made,
-        // as a record's own selector is from the lift's: this Bridge wrote it
-        // and no adapter did, so following it would cost a tree of the whole
-        // document to check what cannot be wrong.
+        // This Bridge wrote these addresses, so they are not followed as an adapter's are.
         for broken in schema.errors(&text)? {
             findings.extend(annotation::violation(
                 &record,

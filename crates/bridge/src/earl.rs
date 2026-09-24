@@ -1,5 +1,3 @@
-// The report: one earl:Assertion per manifest entry, the form every W3C test
-// suite's implementation reports take.
 use crate::error::Result;
 use crate::harness::EntryResult;
 use oxrdf::vocab::{rdf, xsd};
@@ -62,9 +60,6 @@ pub fn earl_report_at(
     );
 
     for result in results {
-        // An entry with no IRI has no name outside its manifest, so it is
-        // reported as an anonymous test carrying the entry's name: the report
-        // still holds one assertion per entry.
         let test = match &result.entry {
             Term::NamedNode(test) => NamedOrBlankNode::from(test.clone()),
             _ => {

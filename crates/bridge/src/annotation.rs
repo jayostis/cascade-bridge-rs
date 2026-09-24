@@ -1,11 +1,5 @@
-// A finding about the source document, as the Web Annotation Data Model
-// writes it. The adapter's query names what inside the record the finding is
-// about; the Bridge names the document and where in it the record stood, and
-// moves the query's selector under the record's own as its oa:refinedBy.
-//
-// Every annotation carries a record selector of its own: selectors on one node
-// are alternative ways of selecting the same thing, so annotations sharing one
-// would claim to be alternatives of each other.
+// Every annotation carries a record selector of its own: selectors on one node are
+// alternatives of each other.
 use crate::error::{Error, Result};
 use crate::rdf::{
     BRIDGE_ADDRESS_NOT_ONE_NODE, BRIDGE_OCCURRENCES, BRIDGE_PATH_NOT_ACCOUNTED, BRIDGE_THIS_RECORD,
@@ -17,14 +11,11 @@ use oxrdf::vocab::xsd;
 use oxrdf::{BlankNode, GraphName, Literal, NamedNode, NamedOrBlankNode, Quad, Term};
 use std::collections::{HashMap, HashSet};
 
-/// Where a record stood: the document it was read from, and the XPath that
-/// selects it there.
 pub struct Record<'a> {
     pub source: &'a str,
     pub selector: &'a str,
 }
 
-/// How many annotations a graph of findings holds.
 pub fn annotations(quads: &[Quad]) -> usize {
     quads
         .iter()
@@ -50,7 +41,6 @@ fn named(iri: &str) -> Result<Term> {
     Ok(Term::from(NamedNode::new(iri)?))
 }
 
-/// The record's selector as a node of its own, refining nothing yet.
 fn record_selector(record: &Record, into: &mut Vec<Quad>) -> Result<BlankNode> {
     let node = BlankNode::default();
     into.push(triple(node.clone(), RDF_TYPE, named(OA_XPATH_SELECTOR)?)?);
@@ -62,9 +52,6 @@ fn record_selector(record: &Record, into: &mut Vec<Quad>) -> Result<BlankNode> {
     Ok(node)
 }
 
-/// What each blank node carries, by that node. A walk that instead scanned the
-/// graph per node it reached would cost the square of what one query produced
-/// for one record, and a record draws findings in the thousands.
 fn described(quads: &[Quad]) -> HashMap<&BlankNode, Vec<&Quad>> {
     let mut description: HashMap<&BlankNode, Vec<&Quad>> = HashMap::new();
     for quad in quads {
@@ -75,9 +62,7 @@ fn described(quads: &[Quad]) -> HashMap<&BlankNode, Vec<&Quad>> {
     description
 }
 
-/// A blank node's description made over as a node of its own: what the query
-/// hung on it, and on every blank node reached from it. Each node copied maps
-/// to the node standing for it.
+/// Each node copied, mapped to the node standing for it.
 fn copy(
     node: &BlankNode,
     from: &HashMap<&BlankNode, Vec<&Quad>>,
@@ -110,10 +95,6 @@ fn copy(
     made
 }
 
-/// The finding a Bridge stage made itself: what it names as its body, the node
-/// inside the record it is addressed at where that is not the record itself,
-/// its severity, what its body alone cannot say, how many nodes of the record
-/// it stands for, and whatever else the stage names it by.
 fn finding(
     record: &Record,
     body: &str,
@@ -176,18 +157,12 @@ fn finding(
     Ok(quads)
 }
 
-/// The rule a Bridge stage found broken, and the element inside the record it
-/// was broken on.
 pub fn violation(record: &Record, body: &str, within: Option<&str>) -> Result<Vec<Quad>> {
     finding(record, body, within, SH_VIOLATION, None, 1, &[])
 }
 
-/// One result the record's produced graph drew when it was read against the
-/// vocabulary's shapes: the constraint component it broke, at the path and the
-/// severity the result carries, naming the node the result is about where that
-/// node has a name to give. The record is addressed no more finely: the result
-/// is about a node of the graph, and which node of the source stands behind it
-/// is the mapping's to know and no one's to recover.
+/// Addressed no more finely than the record: which node of the source stands
+/// behind a node of the graph is the mapping's to know.
 pub fn drawn(
     record: &Record,
     body: &str,
@@ -205,11 +180,7 @@ pub fn drawn(
     finding(record, body, None, severity, None, 1, &carries)
 }
 
-/// An address a finding carries that this Bridge could not follow: it selects
-/// no node, or more than one, so which node the finding is about is not
-/// recoverable. The finding whose address it is stands; this stands beside it,
-/// selecting the document element, the one node a Bridge addresses without
-/// following anything, so that a report is never the case it reports.
+/// Addressed to the document element, the one node found without following an address.
 pub fn address(document: &Record, written: &str) -> Result<Vec<Quad>> {
     finding(
         document,
@@ -222,8 +193,6 @@ pub fn address(document: &Record, written: &str) -> Result<Vec<Quad>> {
     )
 }
 
-/// A path of the record the adapter's accounting says nothing about, named as
-/// the entry that would silence it, at its first occurrence.
 pub fn unaccounted(
     record: &Record,
     path: &str,
@@ -241,8 +210,6 @@ pub fn unaccounted(
     )
 }
 
-/// The gap an accounting entry names at a path of the record, at that path's
-/// first occurrence and at the severity the gap's own concept declares.
 pub fn gap(
     record: &Record,
     gap: &str,
@@ -254,10 +221,6 @@ pub fn gap(
     finding(record, gap, within, severity, Some(path), occurrences, &[])
 }
 
-/// The gap an entry's lookup names for a value the record holds at its path
-/// that the concept map carries no notation for, at that value's first
-/// occurrence. A gap finding's sh:value is the path, standing for every node at
-/// it; a lookup finding stands for one value, and the path is in the address.
 pub fn lookup(
     record: &Record,
     gap: &str,
@@ -269,11 +232,6 @@ pub fn lookup(
     finding(record, gap, within, severity, Some(value), occurrences, &[])
 }
 
-/// What a findings query constructed, made about this record: bridge:thisRecord
-/// becomes the document, and each annotation's target becomes a node of its own
-/// carrying a record selector, the query's selector under it. An annotation the
-/// template left without a severity takes the one the gap scheme declares for
-/// the concept its body names, and `sh:Info` where neither says.
 pub fn about(
     record: &Record,
     query: &str,
@@ -286,8 +244,7 @@ pub fn about(
         Term::NamedNode(n) if n == this_record => Term::from(source.clone()),
         other => other,
     };
-    // Read before the substitution below, so this names the term the query's
-    // author wrote rather than the document it became.
+    // Before the substitution, so the error names the term the query wrote.
     if let Some(named) = constructed
         .iter()
         .filter(|q| q.predicate.as_str() == RDF_TYPE)
@@ -304,10 +261,6 @@ pub fn about(
              is then unrecoverable"
         )));
     }
-    // Every pass below is keyed on a node of this graph, and a query may name
-    // the record where a node of its own would do, so the substitution comes
-    // first: keyed on the constructed graph they would part company over the
-    // node an annotation is.
     let quads: Vec<Quad> = constructed
         .iter()
         .map(|quad| {
@@ -346,8 +299,7 @@ pub fn about(
             continue;
         }
         let Term::BlankNode(target) = &quad.object else {
-            // The written term, not the substituted one: a query naming
-            // bridge:thisRecord here must read its own name back.
+            // The written term: a query naming bridge:thisRecord reads its own name back.
             return Err(Error::msg(format!(
                 "findings query {query} targets {}; a findings query's oa:hasTarget is a blank node",
                 written.object
@@ -413,9 +365,6 @@ pub fn about(
         }
     }
 
-    // Every annotation's severity and named bodies in one pass, so no
-    // annotation costs a pass of its own over the graph, and which severity a
-    // body declares does not turn on the order a query wrote its bodies in.
     let mut severe: HashSet<&NamedOrBlankNode> = HashSet::new();
     let mut bodies: HashMap<&NamedOrBlankNode, Vec<&str>> = HashMap::new();
     for quad in &quads {
@@ -427,8 +376,7 @@ pub fn about(
             }
         }
     }
-    // Read in the graph's order rather than the annotation set's, so what a
-    // query produced twice comes out the same way round each run.
+    // In the graph's order, not the set's, so a run's output is the same each run.
     let mut declared = Vec::new();
     for annotation in quads
         .iter()
@@ -462,7 +410,6 @@ pub fn about(
     Ok(findings)
 }
 
-/// A copied node this quad names, noted as one whose own description stays.
 fn keep(
     quad: &Quad,
     copied: &HashSet<BlankNode>,
@@ -476,9 +423,6 @@ fn keep(
     }
 }
 
-/// Blank nodes minted by one query execution, kept apart from every other
-/// execution's. Two executions may label a blank node alike, and merging their
-/// graphs would then fuse two findings into one and lose the count.
 #[derive(Default)]
 pub struct Minted(HashMap<String, BlankNode>);
 

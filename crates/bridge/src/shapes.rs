@@ -1,10 +1,4 @@
-// The SHACL engine, behind the interface the rest of this crate sees: shapes
-// compiled from bytes, and a graph already in memory read against them, one row
-// per result.
-//
-// Nothing here opens a file or starts a thread of its own, so the browser
-// export stays reachable and another engine takes this one's place by answering
-// the same two calls.
+// Nothing here opens a file or starts a thread, so the browser export stays reachable.
 use crate::error::{Error, Result};
 use crate::rdf::{SH_INFO, SH_SEVERITY, SH_VIOLATION, SH_WARNING};
 use oxrdf::Quad;
@@ -19,8 +13,7 @@ use shacl::validator::processor::{GraphValidation, ShaclProcessor};
 use shacl::validator::{ShaclConfig, ShaclValidationMode};
 use std::io::Cursor;
 
-/// A file of the vocabulary: the IRI it was read from, which is the base its
-/// own relative terms are read against, and its bytes.
+/// The IRI a file of the vocabulary was read from, its base, and its bytes.
 pub(crate) type Document = (String, Vec<u8>);
 
 /// One result, in the terms a finding carries it in.
@@ -29,8 +22,7 @@ pub(crate) struct Drawn {
     pub(crate) component: String,
     pub(crate) severity: String,
     pub(crate) path: Option<String>,
-    /// The node the result is about, where it is a node a reader can look up.
-    /// A blank node's label belongs to this run and names nothing outside it.
+    /// None for a blank node, whose label names nothing outside this run.
     pub(crate) focus: Option<String>,
 }
 
@@ -39,7 +31,6 @@ pub(crate) struct Shapes {
 }
 
 impl Shapes {
-    /// The shapes every document draws, as one shapes graph.
     pub(crate) fn of(documents: &[Document]) -> Result<Self> {
         let mut graph = OxigraphInMemory::new();
         for (iri, bytes) in documents {
@@ -63,8 +54,7 @@ impl Shapes {
         })
     }
 
-    /// Every result the graph draws, in an order of its own rather than the one
-    /// the engine's workers happened to finish in.
+    /// Sorted, not in the order the engine's workers finished in.
     pub(crate) fn results(&self, quads: &[Quad]) -> Result<Vec<Drawn>> {
         let mut data = OxigraphInMemory::new();
         for quad in quads {
@@ -99,13 +89,8 @@ impl Shapes {
     }
 }
 
-/// The severities a finding carries, which are the specification's finding
-/// shape's and no more.
 const REPORTED: [&str; 3] = [SH_INFO, SH_WARNING, SH_VIOLATION];
 
-/// A shapes graph may give a shape a severity of its own; a finding has no room
-/// for one. The whole vocabulary is in hand here, so the run ends on the
-/// vocabulary rather than on the first record to fail that shape.
 fn declares_a_reported_severity(iri: &str, bytes: &[u8]) -> Result<()> {
     for quad in RdfParser::from_format(RdfFormat::Turtle)
         .with_base_iri(iri)?
@@ -146,8 +131,6 @@ fn severity(severity: &Severity) -> Result<String> {
     }
 }
 
-/// A path written as one IRI. A sequence, an alternative or a quantified path
-/// is not one, and `sh:resultPath` on a finding is.
 fn predicate(path: &SHACLPath) -> Option<String> {
     match path {
         SHACLPath::Predicate { pred } => Some(pred.as_str().to_owned()),

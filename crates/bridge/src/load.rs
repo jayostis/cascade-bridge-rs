@@ -1,6 +1,3 @@
-// Loading an adapter: the crate and its test manifest as one graph, each
-// parsed with its own location as base, so every link between them is a walk
-// through the graph rather than a match on a file name.
 use crate::error::{Error, Result};
 use crate::rdf::{
     BRIDGE_ADAPTER, BRIDGE_DETECT_QUERY, BRIDGE_DOCUMENT_SCHEMA, BRIDGE_DOC_ROOT_ELEMENT_NAME,
@@ -14,7 +11,6 @@ use oxrdf::{Graph, NamedNode, NamedOrBlankNode, Term, Triple};
 use oxrdfio::{JsonLdProfile, JsonLdProfileSet, LoadedDocument, RdfFormat, RdfParser};
 use std::collections::HashSet;
 
-/// The contexts a crate may name, bundled: loading an adapter fetches nothing.
 const RO_CRATE_1_2: &str = "https://w3id.org/ro/crate/1.2/context";
 const RO_CRATE_1_2_BODY: &[u8] = include_bytes!("contexts/ro-crate-1.2.json");
 
@@ -52,8 +48,7 @@ pub struct Adapter {
     pub identifier: Option<String>,
     pub element_name_of_each_record: Option<String>,
     pub source_schema: Option<String>,
-    /// The vocabulary files the produced graph is read against, as paths in the
-    /// checkout the engine command is given rather than files of the crate.
+    /// Paths in the checkout the engine command is given, not files of the crate.
     pub vocabulary_files: Vec<String>,
     pub source_accounting: Option<String>,
     pub gap_scheme: Option<String>,
@@ -76,8 +71,7 @@ pub fn objects(graph: &Graph, s: &NamedOrBlankNode, predicate: &str) -> Result<V
         .objects_for_subject_predicate(s.as_ref(), predicate.as_ref())
         .map(Term::from)
         .collect();
-    // A graph has no insertion order to preserve, so a run's output does not
-    // depend on which way a hash happened to fall.
+    // Sorted, so a run's output does not depend on which way a hash fell.
     terms.sort_by_cached_key(ToString::to_string);
     Ok(terms)
 }
@@ -112,7 +106,6 @@ pub fn term_value(term: &Term) -> String {
     }
 }
 
-/// A term as a subject, for walking on from an object.
 pub fn as_subject(term: &Term) -> Option<NamedOrBlankNode> {
     match term {
         Term::NamedNode(n) => Some(n.clone().into()),
@@ -121,8 +114,6 @@ pub fn as_subject(term: &Term) -> Option<NamedOrBlankNode> {
     }
 }
 
-/// The members of an RDF list, in order. A list that comes back to a cell it
-/// has already passed is refused, since walking it would never end.
 pub fn list(graph: &Graph, head: Option<&Term>) -> Result<Vec<Term>> {
     let mut out = Vec::new();
     let mut passed = HashSet::new();
@@ -149,9 +140,7 @@ pub fn list(graph: &Graph, head: Option<&Term>) -> Result<Vec<Term>> {
 fn parse_into(graph: &mut Graph, bytes: &[u8], base: &str, format: RdfFormat) -> Result<()> {
     let parser = RdfParser::from_format(format)
         .with_base_iri(base)?
-        // Two files parsed into one graph must not share a blank node label by
-        // accident; a walk from an entry to its input would then cross into
-        // the other file.
+        // Two files in one graph must not share a blank node label by accident.
         .rename_blank_nodes();
     for quad in parser.for_slice(bytes).with_document_loader(context) {
         let quad = quad.map_err(|e| Error::msg(format!("{base}: {e}")))?;

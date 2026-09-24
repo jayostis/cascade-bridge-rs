@@ -1,18 +1,10 @@
-// An XML document says what its bytes mean, in a byte-order mark or in its
-// declaration. Assuming UTF-8 silently corrupts every other encoding, so the
-// bytes are read before the parser sees them.
 use crate::error::{Error, Result};
 use encoding_rs::{Encoding, UTF_16BE, UTF_16LE, UTF_8};
 use std::borrow::Cow;
 
-/// How far into the document a declaration may still be found. The XML
-/// declaration is the first thing in an entity, so a short window is enough
-/// and a document without one costs nothing.
+/// The XML declaration is the first thing in an entity.
 const WINDOW: usize = 256;
 
-/// The document's characters. A UTF-8 document borrows its bytes; any other
-/// encoding is transcoded, which is the one case that holds the whole
-/// document at once.
 pub fn decode(bytes: &[u8]) -> Result<Cow<'_, str>> {
     let (encoding, rest) = sniff(bytes)?;
     if encoding == UTF_8 {
@@ -28,8 +20,6 @@ pub fn decode(bytes: &[u8]) -> Result<Cow<'_, str>> {
     Ok(Cow::Owned(text.into_owned()))
 }
 
-/// The encoding, and the bytes after any byte-order mark. A mark wins over a
-/// declaration, as XML requires; a declaration wins over the default.
 fn sniff(bytes: &[u8]) -> Result<(&'static Encoding, &[u8])> {
     if let Some(rest) = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]) {
         return Ok((UTF_8, rest));
@@ -60,8 +50,6 @@ fn sniff(bytes: &[u8]) -> Result<(&'static Encoding, &[u8])> {
     }
 }
 
-/// The `encoding` pseudo-attribute of the XML declaration, if the document
-/// opens with one.
 fn declared(bytes: &[u8]) -> Option<String> {
     let head = &bytes[..bytes.len().min(WINDOW)];
     let head = String::from_utf8_lossy(head);
@@ -77,17 +65,12 @@ fn declared(bytes: &[u8]) -> Option<String> {
     Some(value[..value.find(quote)?].to_owned())
 }
 
-/// XML's S production, and nothing else. A no-break space is a character.
 pub const XML_SPACE: [char; 4] = [' ', '\t', '\r', '\n'];
 
-/// A text child made only of XML's S production is dropped.
 pub fn is_xml_space(s: &str) -> bool {
     s.chars().all(|c| XML_SPACE.contains(&c))
 }
 
-/// XML normalises every line ending to a single line feed before a parser
-/// sees a character, so a document checked out with CRLF lifts to the same
-/// graph as one checked out with LF.
 pub fn normalise_line_endings(s: &str) -> Cow<'_, str> {
     if !s.contains('\r') {
         return Cow::Borrowed(s);
@@ -95,9 +78,8 @@ pub fn normalise_line_endings(s: &str) -> Cow<'_, str> {
     Cow::Owned(s.replace("\r\n", "\n").replace('\r', "\n"))
 }
 
-/// An attribute value as XML normalises it: every line ending, then every tab
-/// and line feed, becomes a space. It runs on the raw value, before any
-/// character reference is resolved, which is what keeps "&#10;" a line feed.
+/// Runs on the raw value, before any character reference is resolved, which
+/// keeps "&#10;" a line feed.
 pub fn normalise_attribute_value(raw: &str) -> Cow<'_, str> {
     if !raw.contains(['\t', '\r', '\n']) {
         return Cow::Borrowed(raw);

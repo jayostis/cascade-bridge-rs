@@ -1,20 +1,7 @@
-// The lift of the sparql-1.1 profile: XML into Facade-X-shaped triples.
-//
-// A mapping never sees the document. It sees one unit, lifted with the unit
-// element as the root; the detect query sees the skeleton, which is the whole
-// document with every unit reduced to an empty container. One pass yields
-// both, so no unit is ever lifted inside another's graph, and a unit is handed
-// over as soon as its end tag is read: a release the size of a disk costs one
-// unit of memory, not one document.
-//
-// The same pass writes each unit out again as XML, since a validator brings
-// its own parser and the decoded document is behind a reader by then. It
-// carries the declarations in scope where the unit stood, so a unit whose
-// prefixes were bound by an ancestor still parses on its own.
-//
-// Triples go into the store as triples. There is no N-Triples text in
-// between, so nothing is serialised on one side of a call and parsed back on
-// the other.
+// The skeleton the detect query reads is the whole document with every unit reduced
+// to an empty container. A unit is handed over as soon as its end tag is read, and
+// written out again as XML with the declarations in scope where it stood, for a
+// validator that brings its own parser.
 use crate::decode::{decode, is_xml_space, normalise_attribute_value, normalise_line_endings};
 use crate::error::Result;
 use oxigraph::model::{BlankNode, GraphName, Literal, NamedNode, NamedOrBlankNode, Quad, Term};
@@ -30,14 +17,9 @@ const RDF: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
 pub const FX: &str = "http://sparql.xyz/facade-x/ns/";
 pub const XYZ: &str = "http://sparql.xyz/facade-x/data/";
 
-/// The declaration a unit is written out under, and validated under: by the
-/// time a unit is written its characters are characters, whatever bytes the
-/// document arrived as.
 pub(crate) const UTF_8_DECLARATION: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>";
 
-/// What RFC 3987 calls `iunreserved`: the characters an IRI carries as
-/// themselves. Almost every XML name character is one, so almost every name
-/// reads in an IRI as it read in the document.
+/// RFC 3987's `iunreserved`.
 fn iunreserved(character: char) -> bool {
     matches!(character,
         'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '.' | '_' | '~'
@@ -49,10 +31,7 @@ fn iunreserved(character: char) -> bool {
         | '\u{D0000}'..='\u{DFFFD}' | '\u{E1000}'..='\u{EFFFD}')
 }
 
-/// Anything else is percent-encoded as its UTF-8 octets, which is what
-/// percent-encoding is defined over, so an odd name costs a readable IRI and
-/// never a parse failure. `%` is no XML name character, so no name can spell
-/// another name's encoding and two names never land on one IRI.
+/// `%` is no XML name character, so two names never land on one IRI.
 fn name(namespace: &str, local: &str) -> Result<NamedNode> {
     let mut iri = String::with_capacity(namespace.len() + local.len());
     iri.push_str(namespace);
@@ -82,10 +61,7 @@ fn triple(subject: &BlankNode, predicate: NamedNode, object: impl Into<Term>) ->
     )
 }
 
-/// One step of an XPath: an element, and its place among its siblings of the
-/// same name. Every address this crate writes is written of these, so the
-/// record a finding stood in and the element a schema rule was broken on are
-/// spelled the one way.
+/// One step of an XPath; `position` is among the siblings of the same name.
 #[derive(Clone)]
 pub(crate) struct Step {
     pub(crate) local: String,
@@ -94,8 +70,7 @@ pub(crate) struct Step {
 }
 
 impl Step {
-    /// An XPath carries no prefix bindings and a selector is read where nothing
-    /// can supply them, so a namespace is written out in full.
+    /// A namespace is written out in full: a selector is read where no prefix is bound.
     pub(crate) fn write(&self, indexed: bool) -> String {
         let named = match &self.namespace {
             Some(namespace) => format!(
@@ -111,18 +86,14 @@ impl Step {
     }
 }
 
-/// One path a record carries, written from the record element, the steps below
-/// the record that reach the first occurrence of it, and how many nodes of the
-/// record stand at it. An attribute of the record element stands below nothing.
+/// `within` reaches the path's first occurrence from the record, and is none for
+/// an attribute of the record element.
 pub(crate) struct Occurrence {
     pub(crate) path: String,
     pub(crate) within: Option<String>,
     pub(crate) count: usize,
 }
 
-/// One value a record holds at a path whose entry looks its values up: the
-/// value as the record wrote it, the occurrence it first stood at, and how many
-/// nodes of the record hold it there.
 pub(crate) struct Valued {
     pub(crate) path: String,
     pub(crate) value: String,
@@ -130,16 +101,12 @@ pub(crate) struct Valued {
     pub(crate) count: usize,
 }
 
-/// Whether the paths of each record are kept as it is lifted, and the paths the
-/// values standing at them are kept for.
 #[derive(Clone, PartialEq, Eq)]
 pub enum Paths {
     Kept { valued: HashSet<String> },
     Dropped,
 }
 
-/// An element the walk is inside: where it stands, whether the values at its
-/// path are kept, and whether an element child has taken its text away.
 struct Open {
     path: String,
     within: Option<String>,
@@ -147,9 +114,6 @@ struct Open {
     childless: bool,
 }
 
-/// The distinct paths of one record, each kept at its first occurrence and
-/// counted at every one, and, at a path whose values are kept, each distinct
-/// value the same way.
 #[derive(Default)]
 struct Census {
     below: Vec<Open>,
@@ -164,8 +128,7 @@ impl Census {
         let mut census = Self::default();
         let path = format!("/{}", record.write(false));
         census.attributes(&path, None, attributes, valued);
-        // The record element itself is no path, so nothing is looked up in what
-        // it holds; it stands here to spell the paths below it.
+        // The record element is no path: it stands here to spell the paths below it.
         census.below.push(Open {
             path,
             within: None,
@@ -195,8 +158,6 @@ impl Census {
         });
     }
 
-    /// An element's text arrives between its start and its end, so its value is
-    /// known here and nowhere earlier.
     fn close(&mut self, text: Option<&str>) {
         let Some(closed) = self.below.pop() else {
             return;
@@ -206,8 +167,6 @@ impl Census {
         }
     }
 
-    /// Whether the element about to close holds a value at all. Copying the
-    /// text of every element that closes would copy the document.
     fn wants_value(&self) -> bool {
         self.below
             .last()
@@ -261,8 +220,6 @@ impl Census {
     }
 }
 
-/// One record, lifted, with what a stage outside the lift needs to say where
-/// it stood and to hand its own parser the same characters.
 pub struct Unit {
     pub store: Store,
     pub xml: String,
@@ -272,8 +229,6 @@ pub struct Unit {
 }
 
 impl Unit {
-    /// The XPath from the document element to this record. The document
-    /// element takes no index, having no siblings to be one of.
     pub fn selector(&self) -> String {
         self.path
             .iter()
@@ -291,8 +246,6 @@ impl Unit {
     }
 }
 
-/// An element as the parser read it: what the lift names it by, and what the
-/// document wrote it as.
 struct Element<'a> {
     local: &'a str,
     namespace: Option<&'a str>,
@@ -303,10 +256,7 @@ struct Element<'a> {
     declarations: Vec<(String, String)>,
 }
 
-/// An attribute as the parser read it: what a triple names it, what it says,
-/// and what a path names it, an attribute taking no place among siblings of
-/// its name. Only the census reads a step, so only a lift keeping paths
-/// spells one.
+/// `step` is spelled only by a lift that keeps paths, the one reader of it.
 struct Attribute {
     predicate: NamedNode,
     value: String,
@@ -326,15 +276,11 @@ struct Frame {
     unit: bool,
     qname: String,
     declarations: Vec<(String, String)>,
-    /// Its step, for an element the document element reaches without passing
-    /// through a record.
+    /// Only for an element reached from the document element without passing a record.
     step: Option<Step>,
-    /// How many children of each name have been opened, the next one's place
-    /// among its siblings of that name being one more.
     siblings: HashMap<(String, Option<String>), usize>,
 }
 
-/// A start tag as XML, its declarations written before its attributes.
 fn start_tag(
     qname: &str,
     written: &[(String, String)],
@@ -348,9 +294,7 @@ fn start_tag(
     tag
 }
 
-/// The element names and triples of the pass, without the reader: the parser
-/// borrows its own buffer, and these fields have to stay reachable while it
-/// does.
+/// Apart from the reader, whose buffer the parser borrows while these stay reachable.
 struct Builder {
     unit_name: Option<String>,
     stack: Vec<Frame>,
@@ -401,15 +345,12 @@ impl Builder {
         matches!(self.paths, Paths::Kept { .. })
     }
 
-    /// Characters of the unit, as the document wrote them.
     fn write(&mut self, xml: &str) {
         if self.inside_unit() {
             self.raw.push_str(xml);
         }
     }
 
-    /// Every declaration the open elements bind, the innermost binding of a
-    /// name winning.
     fn in_scope(&self, own: &[(String, String)]) -> Vec<(String, String)> {
         let mut scope: Vec<(String, String)> = Vec::new();
         for (name, value) in self
@@ -506,7 +447,6 @@ impl Builder {
             return Ok(());
         }
 
-        // Outside any unit: the element belongs to the skeleton.
         let id = self.fresh();
         match self.stack.last_mut() {
             Some(top) => {
@@ -569,7 +509,7 @@ impl Builder {
         Ok(())
     }
 
-    /// Closes an element, and says whether the outermost unit ended here.
+    /// Whether the outermost unit ended here.
     fn close(&mut self) -> Result<bool> {
         let value = self
             .census
@@ -590,8 +530,6 @@ impl Builder {
     }
 }
 
-/// One pass over a document, yielding a unit at a time. When the iterator ends
-/// the skeleton is complete.
 pub struct Lift<R: BufRead> {
     reader: NsReader<R>,
     buffer: Vec<u8>,
@@ -599,14 +537,12 @@ pub struct Lift<R: BufRead> {
     done: bool,
 }
 
-/// Lift a slice. With `unit` given, every outermost element of that local name
-/// becomes its own lifted unit and an empty container in the skeleton; without
-/// it, the skeleton is the whole document lifted and there are no units.
+/// Every outermost element named `unit` is lifted on its own; with none, the
+/// skeleton is the whole document.
 pub fn lift_slice<'a>(bytes: &'a [u8], unit: Option<&str>) -> Result<Lift<Box<dyn BufRead + 'a>>> {
     lift_text(decode(bytes)?, unit, Paths::Dropped)
 }
 
-/// Lift a document already read as characters.
 pub fn lift_text<'a>(
     text: Cow<'a, str>,
     unit: Option<&str>,
@@ -622,7 +558,6 @@ pub fn lift_text<'a>(
 impl<R: BufRead> Lift<R> {
     pub fn new(reader: R, unit: Option<&str>, paths: Paths) -> Result<Self> {
         let mut reader = NsReader::from_reader(reader);
-        // An empty element is an element: <e/> and <e></e> lift alike.
         reader.config_mut().expand_empty_elements = true;
         Ok(Self {
             reader,
@@ -632,13 +567,10 @@ impl<R: BufRead> Lift<R> {
         })
     }
 
-    /// The local name of the document's own element, once it has been read.
     pub fn document_element(&self) -> Option<&str> {
         self.builder.document_element.as_deref()
     }
 
-    /// The XPath that selects the document element, which a finding about the
-    /// document rather than about a record carries.
     pub fn document_selector(&self) -> Option<String> {
         self.builder
             .document_step
@@ -646,8 +578,6 @@ impl<R: BufRead> Lift<R> {
             .map(|step| format!("/{}", step.write(false)))
     }
 
-    /// The whole document with every unit emptied: what a detect query reads.
-    /// Complete only once the units have been drained.
     pub fn into_skeleton(mut self) -> Result<Store> {
         while self.next_unit()?.is_some() {}
         store_of(self.builder.skeleton)
@@ -677,9 +607,8 @@ impl<R: BufRead> Lift<R> {
                         let attribute = attribute?;
                         let key = attribute.key;
                         let raw = std::str::from_utf8(&attribute.value)?.to_owned();
-                        // A namespace declaration is not an attribute, but it
-                        // is what makes a unit's own prefixes mean anything
-                        // once the unit is read apart from its document.
+                        // A declaration is no attribute, but a unit read apart from
+                        // its document needs it.
                         if key.as_ref() == b"xmlns" || key.as_ref().starts_with(b"xmlns:") {
                             declarations.push((std::str::from_utf8(key.as_ref())?.to_owned(), raw));
                             continue;
@@ -752,11 +681,8 @@ impl<R: BufRead> Lift<R> {
                     let raw = normalise_line_endings(raw);
                     self.builder.text.push_str(&raw);
                 }
-                // A comment and a processing instruction are no part of the
-                // graph and take no number there: text on either side of one
-                // is a single text child. They are part of the record, and
-                // XPath counts them, so a record written out again carries
-                // them where it read them.
+                // No part of the graph, so text on either side is one text child; but XPath
+                // counts them, so a unit written out again carries them.
                 Event::Comment(comment) => {
                     let raw = comment.into_inner();
                     let raw = std::str::from_utf8(&raw)?;
@@ -767,8 +693,6 @@ impl<R: BufRead> Lift<R> {
                     let raw = std::str::from_utf8(&raw)?;
                     self.builder.write(&format!("<?{raw}?>"));
                 }
-                // The document type declaration and the XML declaration stand
-                // outside every record, which is where they are dropped.
                 Event::Eof => {
                     self.done = true;
                     return Ok(None);
