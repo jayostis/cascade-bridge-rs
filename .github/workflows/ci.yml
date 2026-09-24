@@ -11,11 +11,12 @@ on:
     - cron: '17 3 * * *'
   workflow_dispatch:
 
-# A run supersedes the one before it, and only one started the same way: the
-# nightly never cancels the run testing a merge on main, nor a merge the nightly.
+# A pull request's run supersedes the one before it. Every other run is a
+# group of its own: a group holds one pending run and drops it for the next, so
+# a shared group on main would leave a merge between two others untested.
 concurrency:
-  group: ci-${{ github.ref }}-${{ github.event_name }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
