@@ -15,8 +15,9 @@ oxrdfio = "=0.2.6"
 oxsdatatypes = "=0.2.3"
 quick-xml = "=0.37.5"
 # The graph and the shapes the SHACL engine's own signatures are written in,
-# at the rev the engine is taken from. Its default features carry an HTTP
-# client and an async runtime, for endpoints this Bridge never reaches.
+# at the rev the engine is taken from. Default features off leaves out their
+# SPARQL endpoint client; rudof_rdf still asks, on every target but wasm,
+# for oxigraph's HTTP client and a full tokio.
 rudof_rdf = { git = "https://github.com/jayostis/rudof", rev = "1b6af3ba209ee731e1c4f5996557b84e2aaf7d29", default-features = false }
 shacl = { git = "https://github.com/jayostis/rudof", rev = "1b6af3ba209ee731e1c4f5996557b84e2aaf7d29", default-features = false }
 spargebra = { version = "=0.4.7", features = ["sep-0002", "sep-0006"] }
