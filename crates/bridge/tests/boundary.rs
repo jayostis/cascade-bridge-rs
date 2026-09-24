@@ -17,7 +17,7 @@
 mod common;
 
 use cascade_bridge::{Prepared, Resolver};
-use common::{tiny, tiny_with_vocabularies};
+use common::{tiny, tiny_with_vocabularies, with_accounting, ACCOUNTING};
 use std::path::PathBuf;
 
 const ALLOWED: &str = "resolver.rs";
@@ -150,4 +150,29 @@ fn reads_no_vocabulary_where_the_command_named_no_checkout() {
 fn moves_a_prepared_adapter_to_the_thread_that_converts_with_it() {
     fn sendable<T: Send>() {}
     sendable::<Prepared>();
+}
+
+/// A test's replaced file stands where the adapter's file would, and nowhere
+/// else: a double serving it at any path ending in its name would let a test
+/// pass while the Bridge read that file from outside the adapter.
+#[test]
+fn serves_a_replaced_file_only_where_the_adapter_would_read_it() {
+    let replaced = with_accounting("# replaced\n");
+    let inside = format!("{}{ACCOUNTING}", replaced.root());
+    assert_eq!(replaced.read(&inside).expect("inside"), b"# replaced\n");
+
+    let outside = format!("{}../{ACCOUNTING}", replaced.root());
+    let refused = replaced.read(&outside).expect_err("outside the adapter");
+    assert!(
+        refused.to_string().contains("not inside the adapter"),
+        "{refused}"
+    );
+
+    let refused = replaced
+        .read_vocabulary(&inside)
+        .expect_err("no vocabularies were named");
+    assert!(
+        refused.to_string().contains("named no vocabularies"),
+        "{refused}"
+    );
 }

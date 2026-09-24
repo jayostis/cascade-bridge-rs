@@ -240,6 +240,15 @@ impl Variant {
         for edit in &self.edits {
             match edit {
                 Edit::Whole { file, body } if iri.ends_with(file.as_str()) => {
+                    // Served only where the directory would read a file: it may
+                    // be missing there, and a replaced file often is, but a
+                    // refusal of the path stands.
+                    if let Err(refused) = on_disk() {
+                        let missing = refused.to_string();
+                        if !missing.contains("(os error 2)") && !missing.contains("(os error 3)") {
+                            return Err(refused);
+                        }
+                    }
                     text = Some(body.clone());
                 }
                 Edit::Replace {
