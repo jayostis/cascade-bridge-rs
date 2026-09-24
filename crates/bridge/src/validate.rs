@@ -292,18 +292,19 @@ fn directives(text: &str) -> Result<Vec<String>> {
 }
 
 /// One name for a location however it is spelled. `xsd-schema` resolves a
-/// relative schemaLocation as a filesystem path, which collapses the empty
-/// authority a file IRI carries, so the string it asks for is not the string
-/// the host was given.
+/// relative schemaLocation as a filesystem path, whatever the scheme: the
+/// double slash collapses, and natively the current directory is put in front
+/// of an IRI it does not take for absolute, so the string it asks for is not
+/// the string the host was given.
 fn key(location: &str) -> String {
-    let path = match location.split_once(':') {
-        Some((scheme, rest)) if scheme.eq_ignore_ascii_case("file") => rest,
-        _ => return location.to_owned(),
+    let spelled = location.replace('\\', "/");
+    let all: Vec<&str> = spelled.split('/').collect();
+    let Some(at) = all.iter().rposition(|segment| is_scheme(segment)) else {
+        return location.to_owned();
     };
-    let path = path.replace('\\', "/");
     let mut segments: Vec<&str> = Vec::new();
-    for segment in path.trim_start_matches('/').split('/') {
-        match segment {
+    for segment in &all[at + 1..] {
+        match *segment {
             "." | "" => {}
             ".." => {
                 segments.pop();
@@ -311,7 +312,19 @@ fn key(location: &str) -> String {
             other => segments.push(other),
         }
     }
-    format!("file:///{}", segments.join("/"))
+    format!("{}///{}", all[at].to_ascii_lowercase(), segments.join("/"))
+}
+
+/// A whole segment that is a scheme and its colon. A single letter is a
+/// Windows drive, which no scheme is.
+fn is_scheme(segment: &str) -> bool {
+    let Some(name) = segment.strip_suffix(':') else {
+        return false;
+    };
+    let mut characters = name.chars();
+    characters.next().is_some_and(|c| c.is_ascii_alphabetic())
+        && name.len() > 1
+        && characters.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
 }
 
 /// The document with its XML declaration replaced, since the characters no
@@ -375,6 +388,14 @@ mod tests {
         assert_eq!(key("file:/a/b/c.xsd"), key("file:///a/b/c.xsd"));
         assert_eq!(key("file:///a/b/../c.xsd"), key("file:///a/c.xsd"));
         assert_eq!(key("urn:example:c.xsd"), "urn:example:c.xsd");
+    }
+
+    #[test]
+    fn names_an_iri_of_any_scheme_the_same_after_xsd_schema_resolved_it_as_a_path() {
+        assert_eq!(key("s3://b/a/x.xsd"), key("s3:/b/a/x.xsd"));
+        assert_eq!(key("s3://b/a/x.xsd"), key("/w/crates/bridge/s3:/b/a/x.xsd"));
+        assert_eq!(key("s3://b/a/x.xsd"), key("C:\\w\\s3:\\b\\a\\x.xsd"));
+        assert_eq!(key("file:///C:/a/x.xsd"), key("file:/C:/a/x.xsd"));
     }
 
     #[test]
