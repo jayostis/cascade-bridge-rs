@@ -74,10 +74,16 @@ impl Directory {
             // test and a symbolic link hides the destination from both.
             .filter(|path| resolve(path).is_some_and(|p| p.starts_with(&self.path)));
         let Some(path) = inside else {
-            return Err(Error::msg(format!("not inside {what}: {iri}")));
+            return Err(unread(iri, &format!("not inside {what}")));
         };
-        Ok(fs::read(&path)?)
+        fs::read(&path).map_err(|e| unread(iri, &e.to_string()))
     }
+}
+
+/// A file a host could not supply, named by its IRI and followed by the
+/// host's own reason.
+pub fn unread(iri: &str, reason: &str) -> Error {
+    Error::msg(format!("{iri}: {reason}"))
 }
 
 impl DirectoryResolver {

@@ -308,3 +308,36 @@ fn the_import_check_names_the_import_an_allowlist_one_entry_short_leaves_out() {
     assert!(!run.status.success(), "{said}");
     assert!(said.contains(left_out), "{left_out} is not named: {said}");
 }
+
+#[test]
+fn a_mapping_neither_host_can_read_is_named_once_by_each_and_both_exit_alike() {
+    let scratch = scratch();
+    for (case, named) in ["mapping/missing.rq", "mapping"].into_iter().enumerate() {
+        let adapter = scratch.path().join(format!("adapter-{case}"));
+        copied_to(&tiny(), &adapter);
+        let metadata = adapter.join("ro-crate-metadata.json");
+        let text = std::fs::read_to_string(&metadata).expect("the metadata");
+        assert_eq!(text.matches("\"mapping/item-tag.rq\"").count(), 1);
+        std::fs::write(
+            &metadata,
+            text.replace("\"mapping/item-tag.rq\"", &format!("\"{named}\"")),
+        )
+        .expect("the metadata");
+        let iri = format!(
+            "{}/{named}",
+            cascade_bridge::file_iri(&adapter).expect("the adapter's IRI")
+        );
+        let document = adapter.join("fixtures/in/two.xml");
+        let document = document.to_string_lossy().into_owned();
+        let adapter = adapter.to_string_lossy().into_owned();
+        let native_run = native(&["convert", &adapter, &document]);
+        let node_run = node(&["convert", &adapter, &document]);
+        assert_eq!(native_run.status.code(), Some(2));
+        assert_eq!(node_run.status.code(), native_run.status.code());
+        for run in [native_run, node_run] {
+            let said = String::from_utf8_lossy(&run.stderr);
+            assert!(said.contains(&format!("{iri}: ")), "{said}");
+            assert_eq!(said.matches(&iri).count(), 1, "{said}");
+        }
+    }
+}

@@ -221,10 +221,12 @@ pub(crate) fn compile(iri: &str, resolver: &dyn Resolver) -> Result<Schema> {
         if read.contains_key(&key) {
             continue;
         }
-        let text = String::from_utf8(resolver.read(&location)?)?;
+        let text = String::from_utf8(resolver.read(&location)?)
+            .map_err(|e| Error::msg(format!("{location}: {e}")))?;
         let base =
             Iri::parse(location.clone()).map_err(|e| Error::msg(format!("{location}: {e}")))?;
-        for named in directives(&text)? {
+        let directed = directives(&text).map_err(|e| Error::msg(format!("{location}: {e}")))?;
+        for named in directed {
             let joined = base
                 .resolve(&named)
                 .map_err(|e| Error::msg(format!("{location} names {named}: {e}")))?;

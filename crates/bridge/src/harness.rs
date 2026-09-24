@@ -115,7 +115,7 @@ fn graph_at(bytes: &[u8], iri: &str) -> Result<Vec<Quad>> {
         .with_base_iri(iri)?
         .for_slice(bytes)
     {
-        quads.push(quad?);
+        quads.push(quad.map_err(|e| Error::msg(format!("{iri}: {e}")))?);
     }
     Ok(quads)
 }

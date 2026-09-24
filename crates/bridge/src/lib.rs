@@ -27,5 +27,5 @@ pub use harness::{run_manifest, EntryResult, Outcome, RunOptions, OFFERED_PROFIL
 pub use lift::{lift_slice, lift_text, Lift, Paths, Unit, FX, XYZ};
 pub use load::{load_adapter, Adapter, Envelope};
 pub use rdf::{canonical_lines, serialise, serialise_at, GraphFormat};
-pub use resolver::{file_iri, DirectoryResolver, Resolver};
+pub use resolver::{file_iri, unread, DirectoryResolver, Resolver};
 pub use run::{convert, prepare, Conversion, Form, Ms, Prepared, Source};

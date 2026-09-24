@@ -154,7 +154,7 @@ fn parse_into(graph: &mut Graph, bytes: &[u8], base: &str, format: RdfFormat) ->
         // the other file.
         .rename_blank_nodes();
     for quad in parser.for_slice(bytes).with_document_loader(context) {
-        let quad = quad?;
+        let quad = quad.map_err(|e| Error::msg(format!("{base}: {e}")))?;
         graph.insert(&Triple::new(quad.subject, quad.predicate, quad.object));
     }
     Ok(())

@@ -49,11 +49,16 @@ function pathToFileIri(path) {
   return `file://${text.startsWith("/") ? "" : "/"}${encoded(text)}`;
 }
 
+// A message would name again the file its IRI already names.
+function reason(e, path) {
+  return e.code ?? String(e.message ?? e).replaceAll(path, "");
+}
+
 function canonical(path) {
   try {
     return realpathSync.native(path);
   } catch (e) {
-    throw new Error(`${path}: ${e.message}`);
+    throw new Error(`${path}: ${reason(e, path)}`);
   }
 }
 
@@ -103,7 +108,7 @@ class Directory {
     this.iri = `${pathToFileIri(this.path)}/`;
   }
 
-  // What the module is handed, or a string it reports as the reason.
+  // What the module is handed, or the reason it reports after the IRI.
   read(iri, what) {
     const bare = iri.split("#")[0];
     const path = bare.startsWith("file://") && authority(bare) === authority(this.iri)
@@ -113,12 +118,12 @@ class Directory {
     const within = at === undefined ? undefined : relative(this.path, at);
     const outside = within === ".." || within?.startsWith(`..${sep}`);
     if (within === undefined || outside || isAbsolute(within)) {
-      throw `not inside ${what}: ${iri}`;
+      throw `not inside ${what}`;
     }
     try {
       return readFileSync(at);
     } catch (e) {
-      throw e.message;
+      throw reason(e, at);
     }
   }
 }
