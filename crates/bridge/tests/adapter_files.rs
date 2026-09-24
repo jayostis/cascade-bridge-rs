@@ -1,9 +1,23 @@
 mod common;
 
-use cascade_bridge::{load_adapter, prepare, run_manifest, RunOptions};
-use common::{tiny, Variant, CRATE};
+use cascade_bridge::{load_adapter, prepare, run_manifest, Resolver, RunOptions};
+use common::{accounting, entry, tiny, with_accounting, Variant, ACCOUNTING, CRATE, GAP_SCHEME};
 
 const MANIFEST: &str = "fixtures/manifest.ttl";
+
+fn refusal(variant: &Variant) -> String {
+    let adapter = load_adapter(variant).expect("the crate loads");
+    prepare(&adapter, variant)
+        .err()
+        .expect("the adapter is refused")
+        .to_string()
+}
+
+/// A refusal that opens with the file's name and names it nowhere else.
+fn names_once(refused: &str, iri: &str) {
+    assert!(refused.starts_with(&format!("{iri}: ")), "{refused}");
+    assert_eq!(refused.matches(iri).count(), 1, "{refused}");
+}
 
 #[test]
 fn a_mapping_the_crate_names_and_the_directory_lacks_is_refused_by_its_name() {
@@ -13,12 +27,61 @@ fn a_mapping_the_crate_names_and_the_directory_lacks_is_refused_by_its_name() {
         "mapping/missing.rq",
         1,
     );
-    let adapter = load_adapter(&variant).expect("the crate loads");
-    let refused = prepare(&adapter, &variant)
-        .err()
-        .expect("a missing mapping is refused")
-        .to_string();
-    assert!(refused.contains("missing.rq"), "{refused}");
+    assert_eq!(
+        refusal(&variant),
+        format!("{}mapping/missing.rq: no such file", variant.root())
+    );
+}
+
+#[test]
+fn a_file_the_crate_or_its_accounting_names_and_the_directory_lacks_is_named_once() {
+    let root = tiny().root().to_owned();
+    let accounting_iri = format!("{root}{ACCOUNTING}");
+    let lookup = accounting(&[entry(
+        "/item/note",
+        "consumed",
+        &[
+            "bridge:lookupIn <missing-statuses.ttl>",
+            "bridge:lookupNamesGap ex:statusOutsideTheTable",
+        ],
+    )]);
+    let cases = [
+        (
+            Variant::of(tiny()).replacing_exactly(
+                CRATE,
+                ACCOUNTING,
+                "vocab/missing-accounting.ttl",
+                2,
+            ),
+            format!("{root}vocab/missing-accounting.ttl: no such file"),
+        ),
+        (
+            Variant::of(tiny()).replacing_exactly(CRATE, GAP_SCHEME, "vocab/missing-gaps.ttl", 1),
+            format!("{root}vocab/missing-gaps.ttl: no such file"),
+        ),
+        (
+            with_accounting(&lookup),
+            format!(
+                "{accounting_iri}: the entry for /item/note looks its values up in \
+                 {root}vocab/missing-statuses.ttl: no such file"
+            ),
+        ),
+    ];
+    for (variant, sentence) in cases {
+        assert_eq!(refusal(&variant), sentence);
+    }
+}
+
+#[test]
+fn a_schema_that_is_not_well_formed_is_refused_by_its_name() {
+    let variant = Variant::of(tiny()).with(
+        "schema/item.xsd",
+        r#"<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"><xs:element></xs:schema>"#,
+    );
+    names_once(
+        &refusal(&variant),
+        &format!("{}schema/item.xsd", variant.root()),
+    );
 }
 
 #[test]
@@ -33,7 +96,7 @@ fn a_manifest_that_is_not_turtle_is_refused_by_its_name() {
         .err()
         .expect("a manifest that is not Turtle is refused")
         .to_string();
-    assert!(refused.contains("manifest.ttl"), "{refused}");
+    names_once(&refused, &format!("{}{MANIFEST}", variant.root()));
 }
 
 #[test]
@@ -61,12 +124,10 @@ fn a_table_that_is_not_turtle_is_refused_by_its_name() {
             "vocab/broken-table.ttl",
             "<urn:example:a> <urn:example:b> {",
         );
-    let adapter = load_adapter(&variant).expect("the crate loads");
-    let refused = prepare(&adapter, &variant)
-        .err()
-        .expect("a table that is not Turtle is refused")
-        .to_string();
-    assert!(refused.contains("broken-table.ttl"), "{refused}");
+    names_once(
+        &refusal(&variant),
+        &format!("{}vocab/broken-table.ttl", variant.root()),
+    );
 }
 
 #[test]
