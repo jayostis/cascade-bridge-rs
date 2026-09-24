@@ -1,13 +1,5 @@
-// The cascade-bridge command on Node, over the library built for
-// wasm32-unknown-unknown. It takes the native command's arguments; this side
-// reads and writes every file, and the module sees only bytes named by IRI.
-//
-// Node 19 or later: the module draws randomness from Web Crypto's
-// globalThis.crypto, which earlier Node leaves undefined unless a flag is
-// passed. Run `sh hosts/node/setup.sh` first, which builds the module.
-//
-// cascade-bridge test <adapter-dir> [--vocabularies <directory>] [--earl <out.ttl>] [--datasets]
-// cascade-bridge convert <adapter-dir> <document.xml> [--vocabularies <directory>] [--out <file>] [--findings <file>] [--format turtle|ntriples]
+// The cascade-bridge command on Node, over the library built for wasm32-unknown-unknown.
+// `sh hosts/node/setup.sh` builds the module it loads.
 import { closeSync, openSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -37,9 +29,6 @@ function encoded(text) {
   return out;
 }
 
-// A network path's server is the IRI's authority, as RFC 8089 writes a UNC
-// path; a drive letter needs the empty authority's slash that a POSIX path
-// already carries.
 function pathToFileIri(path) {
   const text = path.replaceAll("\\", "/");
   if (text.startsWith("//")) {
@@ -84,10 +73,8 @@ function fileIriToPath(iri) {
   }
 }
 
-// The path a filesystem would reach, with links followed. A path that does not
-// exist is resolved through the nearest ancestor that does, so a missing file
-// is still judged against the boundary rather than escaping it on the way to a
-// "not found".
+// A missing file resolves through its nearest existing ancestor, so it is still judged
+// against the boundary.
 function reached(path) {
   const tail = [];
   for (let head = resolve(path); ; head = dirname(head)) {
@@ -100,8 +87,7 @@ function reached(path) {
   }
 }
 
-// A directory a run may read, by the IRI its files are named by. The boundary
-// is decided on the path a filesystem reaches, never on the IRI's spelling.
+// The boundary is decided on the path a filesystem reaches, never on the IRI's spelling.
 class Directory {
   constructor(path) {
     this.path = canonical(path);
@@ -193,8 +179,6 @@ function test(a) {
   return run.holds ? 0 : 1;
 }
 
-// Standard output carries the graph and nothing else, so a caller can pipe it
-// into a store; everything the run has to say goes to standard error.
 function convert(a) {
   const { root, vocabularies, files } = host(a);
   let document;
@@ -215,12 +199,9 @@ function convert(a) {
   );
   const graph = converted.graph();
   process.stderr.write(`${converted.summary}\n`);
-  // Before the graph, so a findings file that cannot be written leaves
-  // standard output carrying nothing, as the non-zero exit says it does. The
-  // file is created before it is filled, because what goes in it names the
-  // document relative to the file's own IRI. It is not emptied: an author
-  // regenerating a committed oracle in place keeps it until there is
-  // something to put in its place.
+  // Before the graph, so a findings file that cannot be written leaves standard output
+  // empty. Created first, since its own IRI names the document; not emptied, so a run
+  // that fails leaves a committed oracle as it was.
   if (a.findings !== undefined) {
     try {
       closeSync(openSync(a.findings, "a"));
@@ -253,8 +234,7 @@ function main(argv) {
   }
 }
 
-// The reader of a pipe may go away mid-graph, and a caller is owed one of the
-// statuses this command documents rather than an uncaught exception.
+// A pipe's reader may go away mid-graph; the caller is owed a status, not an exception.
 process.stdout.on("error", (e) => {
   process.stderr.write(`cascade-bridge: standard output: ${e.message}\n`);
   process.exitCode = 2;

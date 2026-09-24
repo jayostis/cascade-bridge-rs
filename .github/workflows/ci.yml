@@ -5,15 +5,11 @@ on:
     types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
-  # Nothing pins the counterparts, so a green run goes stale as their default
-  # branches move; nightly is what notices.
+  # Nothing pins the counterparts; nightly notices when their default branches move.
   schedule:
     - cron: '17 3 * * *'
   workflow_dispatch:
 
-# A pull request's run supersedes the one before it. Every other run is a
-# group of its own: a group holds one pending run and drops it for the next, so
-# a shared group on main would leave a merge between two others untested.
 concurrency:
   group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -31,10 +27,8 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      # start checks this repository out only where it is not already there, and
-      # its first act is compatibility.json's release build, in this directory.
-      # Restoring the cache ahead of start is what lets the longest build in the
-      # job start from anything but cold.
+      # Checked out and cached before start, which checks out only what is missing and
+      # whose first act is the release build.
       - uses: actions/checkout@v7
         with:
           path: ${{ github.event.repository.name }}
@@ -44,13 +38,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ${{ github.event.repository.name }}
-      # start leaves cascade-bridge-spec beside this checkout at the version the
-      # run picked, which is where the vector reads it from and the only place
-      # the two halves are one version: against a default branch, a pull request
-      # changing both would prove the new engine against the old expectations.
       - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
-      # cargo test skips what is #[ignore]d, and the vector is ignored because a
-      # checkout of this repository on its own cannot run it.
       - run: cargo test --locked -- --ignored
         working-directory: ${{ github.event.repository.name }}
 
