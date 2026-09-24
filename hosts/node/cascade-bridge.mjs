@@ -4,9 +4,6 @@ import { closeSync, openSync, readFileSync, realpathSync, writeFileSync } from "
 import { createRequire } from "node:module";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
-const USAGE = `usage: cascade-bridge test <adapter-dir> [--vocabularies <directory>] [--earl <out.ttl>] [--datasets]
-       cascade-bridge convert <adapter-dir> <document.xml> [--vocabularies <directory>] [--out <file>] [--findings <file>] [--format turtle|ntriples]`;
-
 if (globalThis.crypto?.getRandomValues === undefined) {
   process.stderr.write(
     `cascade-bridge: Node ${process.versions.node} has no globalThis.crypto; Node 19 or later is needed\n`,
@@ -15,28 +12,6 @@ if (globalThis.crypto?.getRandomValues === undefined) {
 }
 
 const bridge = createRequire(import.meta.url)("./pkg/cascade_bridge_wasm.js");
-
-// The bytes the native command's resolver leaves unencoded, so both hosts name
-// a file by the same IRI.
-const UNENCODED = /[A-Za-z0-9\-._~/:]/;
-
-function encoded(text) {
-  let out = "";
-  for (const byte of new TextEncoder().encode(text)) {
-    const c = String.fromCharCode(byte);
-    out += UNENCODED.test(c) ? c : `%${byte.toString(16).toUpperCase().padStart(2, "0")}`;
-  }
-  return out;
-}
-
-function pathToFileIri(path) {
-  const text = path.replaceAll("\\", "/");
-  if (text.startsWith("//")) {
-    const [server, ...rest] = text.slice(2).split("/");
-    return `file://${encoded(server)}/${encoded(rest.join("/"))}`;
-  }
-  return `file://${text.startsWith("/") ? "" : "/"}${encoded(text)}`;
-}
 
 function reason(e, path) {
   return e.code ?? String(e.message ?? e).replaceAll(path, "");
@@ -47,28 +22,6 @@ function canonical(path) {
     return realpathSync.native(path);
   } catch (e) {
     throw new Error(`${path}: ${reason(e, path)}`);
-  }
-}
-
-// The server a file IRI names, empty for this machine.
-function authority(iri) {
-  const rest = iri.slice("file://".length);
-  const server = rest.split("/")[0];
-  return server === "localhost" ? "" : server;
-}
-
-function fileIriToPath(iri) {
-  if (!iri.startsWith("file://")) return undefined;
-  const rest = iri.slice("file://".length);
-  const cut = rest.indexOf("/");
-  if (cut === -1) return undefined;
-  try {
-    const server = authority(iri);
-    const decoded = decodeURIComponent(rest.slice(cut));
-    if (server !== "") return `//${decodeURIComponent(server)}${decoded}`;
-    return /^\/[A-Za-z]:/.test(decoded) ? decoded.slice(1) : decoded;
-  } catch {
-    return undefined;
   }
 }
 
@@ -90,13 +43,13 @@ function reached(path) {
 class Directory {
   constructor(path) {
     this.path = canonical(path);
-    this.iri = `${pathToFileIri(this.path)}/`;
+    this.iri = `${bridge.path_to_file_iri(this.path)}/`;
   }
 
   read(iri, what) {
     const bare = iri.split("#")[0];
-    const path = bare.startsWith("file://") && authority(bare) === authority(this.iri)
-      ? fileIriToPath(bare)
+    const path = bare.startsWith("file://") && bridge.authority(bare) === bridge.authority(this.iri)
+      ? bridge.file_iri_to_path(bare)
       : undefined;
     const at = path === undefined ? undefined : reached(path);
     const within = at === undefined ? undefined : relative(this.path, at);
@@ -112,125 +65,50 @@ class Directory {
   }
 }
 
-function host(a) {
-  const adapter = new Directory(a.directory);
-  const vocabularies = a.vocabularies === undefined ? undefined : new Directory(a.vocabularies);
-  return {
-    root: adapter.iri,
-    vocabularies: vocabularies?.iri,
-    files: {
-      read: (iri) => adapter.read(iri, "the adapter"),
-      readVocabulary: (iri) => vocabularies.read(iri, "the vocabularies"),
-    },
+// What throws here reaches the module as the reason it prints.
+function said(f) {
+  return (...a) => {
+    try {
+      return f(...a);
+    } catch (e) {
+      throw e instanceof Error ? e.message : e;
+    }
   };
 }
 
-function parse(argv) {
-  const next = () => argv.shift();
-  const a = { command: next(), directory: next() };
-  if (a.directory === undefined) return undefined;
-  switch (a.command) {
-    case "test":
-      a.datasets = false;
-      for (let flag; (flag = next()) !== undefined; ) {
-        if (flag === "--datasets") a.datasets = true;
-        else if (flag === "--vocabularies" || flag === "--earl") a[flag.slice(2)] = next();
-        else return undefined;
-      }
-      return a;
-    case "convert":
-      a.document = next();
-      a.format = "turtle";
-      if (a.document === undefined) return undefined;
-      for (let flag; (flag = next()) !== undefined; ) {
-        if (!["--vocabularies", "--out", "--findings", "--format"].includes(flag)) return undefined;
-        a[flag.slice(2)] = next();
-      }
-      return a;
-    default:
-      return undefined;
-  }
-}
-
-// A flag given no value leaves its key present and undefined.
-function complete(a) {
-  return Object.values(a).every((value) => value !== undefined)
-    && (a.format === undefined || ["turtle", "ntriples"].includes(a.format));
-}
-
-function write(path, text) {
+function at(path, f) {
   try {
-    writeFileSync(path, text);
+    return f();
   } catch (e) {
-    throw new Error(`${path}: ${e.message}`);
+    throw `${path}: ${e.message}`;
   }
 }
 
-function test(a) {
-  const { root, vocabularies, files } = host(a);
-  const run = bridge.test(root, vocabularies, files, a.datasets);
-  process.stdout.write(`${run.summary}\n`);
-  if (a.earl !== undefined) {
-    write(a.earl, run.earl);
-    process.stdout.write(`EARL     ${a.earl}\n`);
-  }
-  return run.holds ? 0 : 1;
-}
+let adapter;
+let vocabularies;
 
-function convert(a) {
-  const { root, vocabularies, files } = host(a);
-  let document;
-  try {
-    document = readFileSync(a.document);
-  } catch (e) {
-    throw new Error(`${a.document}: ${e.message}`);
-  }
-  const iri = pathToFileIri(canonical(a.document));
-  const converted = bridge.convert(
-    root,
-    vocabularies,
-    files,
-    iri,
-    document,
-    a.format,
-    a.findings !== undefined,
-  );
-  const graph = converted.graph();
-  process.stderr.write(`${converted.summary}\n`);
-  // Before the graph, so a findings file that cannot be written leaves standard output
-  // empty. Created first, since its own IRI names the document; not emptied, so a run
-  // that fails leaves a committed oracle as it was.
-  if (a.findings !== undefined) {
-    try {
-      closeSync(openSync(a.findings, "a"));
-    } catch (e) {
-      throw new Error(`${a.findings}: ${e.message}`);
-    }
-    write(a.findings, converted.findings(pathToFileIri(canonical(a.findings))));
-    process.stderr.write(`Findings ${a.findings}\n`);
-  }
-  if (a.out !== undefined) {
-    write(a.out, graph);
-    process.stderr.write(`Graph    ${a.out}\n`);
-  } else {
-    process.stdout.write(graph);
-  }
-  return 0;
-}
-
-function main(argv) {
-  const a = parse(argv);
-  if (a === undefined || !complete(a)) {
-    process.stderr.write(`${USAGE}\n`);
-    return 2;
-  }
-  try {
-    return a.command === "test" ? test(a) : convert(a);
-  } catch (e) {
-    process.stderr.write(`cascade-bridge: ${e instanceof Error ? e.message : e}\n`);
-    return 2;
-  }
-}
+const host = {
+  adapter: said((path) => {
+    adapter = new Directory(path);
+    return adapter.iri;
+  }),
+  vocabularies: said((path) => {
+    vocabularies = new Directory(path);
+    return vocabularies.iri;
+  }),
+  read: (iri) => adapter.read(iri, "the adapter"),
+  readVocabulary: (iri) => vocabularies.read(iri, "the vocabularies"),
+  readFile: (path) => at(path, () => readFileSync(path)),
+  fileIri: said((path) => bridge.path_to_file_iri(canonical(path))),
+  create: (path) => at(path, () => closeSync(openSync(path, "a"))),
+  write: (path, text) => at(path, () => writeFileSync(path, text)),
+  out: (text) => {
+    process.stdout.write(text);
+  },
+  err: (text) => {
+    process.stderr.write(text);
+  },
+};
 
 // A pipe's reader may go away mid-graph; the caller is owed a status, not an exception.
 process.stdout.on("error", (e) => {
@@ -238,4 +116,4 @@ process.stdout.on("error", (e) => {
   process.exitCode = 2;
 });
 
-process.exitCode = main(process.argv.slice(2));
+process.exitCode = bridge.run(process.argv.slice(2), host);

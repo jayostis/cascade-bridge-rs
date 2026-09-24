@@ -2,8 +2,8 @@
 // holds bare local names.
 use crate::error::{Error, Result};
 use crate::lift::{Step, UTF_8_DECLARATION};
-use crate::rdf::BRIDGE_SCHEMA_RULE_UNNAMED;
 use crate::resolver::Resolver;
+use crate::terms::BRIDGE_SCHEMA_RULE_UNNAMED;
 use oxiri::Iri;
 use quick_xml::events::Event;
 use std::cell::RefCell;

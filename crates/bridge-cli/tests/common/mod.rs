@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
-use oxrdf::Quad;
-use oxrdfio::{RdfFormat, RdfParser};
+use cascade_bridge::oxrdf::{self, Quad};
+use cascade_bridge::oxrdfio::{RdfFormat, RdfParser};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;

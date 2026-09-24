@@ -3,7 +3,7 @@ mod common;
 use cascade_bridge::{
     earl_report_at, load_adapter, run_manifest, EntryResult, ReportSubject, Resolver, RunOptions,
 };
-use common::{tiny, Variant, RDF_TYPE};
+use common::{tiny, Variant, BRIDGE, RDF_TYPE};
 use oxrdf::{Graph, NamedNode, NamedOrBlankNodeRef, TermRef, Triple};
 use oxrdfio::{RdfFormat, RdfParser};
 use std::collections::BTreeMap;
@@ -40,6 +40,30 @@ fn reaches_every_outcome_and_fails_exactly_the_entries_built_to_fail() {
             ("input-only", "cantTell"),
             ("dataset", "untested"),
         ])
+    );
+}
+
+#[test]
+fn names_each_entry_s_type_and_time_and_the_profiles_this_bridge_offers() {
+    let results = run();
+    let typed = |name: &str| {
+        results
+            .iter()
+            .find(|r| r.name == name)
+            .map(|r| r.type_iri.as_str())
+    };
+    assert_eq!(
+        typed("input-only"),
+        Some(format!("{BRIDGE}InputOnlyTest").as_str())
+    );
+    assert_eq!(
+        typed("pass"),
+        Some(format!("{BRIDGE}IsomorphicConversionTest").as_str())
+    );
+    assert!(results.iter().any(|r| r.elapsed > Duration::ZERO));
+    assert_eq!(
+        cascade_bridge::OFFERED_PROFILES,
+        [format!("{BRIDGE}sparql-1.1").as_str()]
     );
 }
 

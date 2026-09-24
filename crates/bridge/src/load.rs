@@ -1,12 +1,12 @@
 use crate::error::{Error, Result};
-use crate::rdf::{
+use crate::resolver::Resolver;
+use crate::terms::{
     BRIDGE_ADAPTER, BRIDGE_DETECT_QUERY, BRIDGE_DOCUMENT_SCHEMA, BRIDGE_DOC_ROOT_ELEMENT_NAME,
     BRIDGE_ELEMENT_NAME_OF_EACH_RECORD, BRIDGE_ENVELOPE, BRIDGE_FINDINGS_QUERY, BRIDGE_GAP_SCHEME,
     BRIDGE_MAPPING, BRIDGE_REQUIRES_PROFILE, BRIDGE_SOURCE_ACCOUNTING, BRIDGE_SOURCE_SCHEMA,
     BRIDGE_TABLE, BRIDGE_TEST_MANIFEST, BRIDGE_VOCABULARY_FILE, RDF_FIRST, RDF_NIL, RDF_REST,
     RDF_TYPE, SCHEMA_ABOUT, SCHEMA_IDENTIFIER, SCHEMA_NAME,
 };
-use crate::resolver::Resolver;
 use oxrdf::{Graph, NamedNode, NamedOrBlankNode, Term, Triple};
 use oxrdfio::{JsonLdProfile, JsonLdProfileSet, LoadedDocument, RdfFormat, RdfParser};
 use std::collections::HashSet;
@@ -33,39 +33,37 @@ fn context(url: &str) -> LoaderResult {
 }
 
 #[derive(Debug, Clone)]
-pub struct Envelope {
-    pub iri: String,
-    pub name: Option<String>,
-    pub doc_root_element_name: Option<String>,
-    pub document_schema: Option<String>,
+pub(crate) struct Envelope {
+    pub(crate) iri: String,
+    pub(crate) doc_root_element_name: Option<String>,
+    pub(crate) document_schema: Option<String>,
 }
 
 pub struct Adapter {
     /// The crate's root entity, the adapter.
-    pub root: String,
-    pub crate_iri: String,
-    pub graph: Graph,
-    pub identifier: Option<String>,
+    pub(crate) root: String,
+    pub(crate) graph: Graph,
+    pub(crate) identifier: Option<String>,
     pub element_name_of_each_record: Option<String>,
-    pub source_schema: Option<String>,
+    pub(crate) source_schema: Option<String>,
     /// Paths in the checkout the engine command is given, not files of the crate.
-    pub vocabulary_files: Vec<String>,
+    pub(crate) vocabulary_files: Vec<String>,
     pub source_accounting: Option<String>,
     pub gap_scheme: Option<String>,
     pub required_profiles: Vec<String>,
     pub mappings: Vec<String>,
     pub findings_queries: Vec<String>,
     pub detect_query: Option<String>,
-    pub tables: Vec<String>,
-    pub envelopes: Vec<Envelope>,
-    pub manifest: String,
+    pub(crate) tables: Vec<String>,
+    pub(crate) envelopes: Vec<Envelope>,
+    pub(crate) manifest: String,
 }
 
-pub fn subject(iri: &str) -> Result<NamedOrBlankNode> {
+pub(crate) fn subject(iri: &str) -> Result<NamedOrBlankNode> {
     Ok(NamedOrBlankNode::from(NamedNode::new(iri)?))
 }
 
-pub fn objects(graph: &Graph, s: &NamedOrBlankNode, predicate: &str) -> Result<Vec<Term>> {
+pub(crate) fn objects(graph: &Graph, s: &NamedOrBlankNode, predicate: &str) -> Result<Vec<Term>> {
     let predicate = NamedNode::new(predicate)?;
     let mut terms: Vec<Term> = graph
         .objects_for_subject_predicate(s.as_ref(), predicate.as_ref())
@@ -76,18 +74,43 @@ pub fn objects(graph: &Graph, s: &NamedOrBlankNode, predicate: &str) -> Result<V
     Ok(terms)
 }
 
-pub fn values(graph: &Graph, s: &NamedOrBlankNode, predicate: &str) -> Result<Vec<String>> {
+pub(crate) fn subjects(graph: &Graph, predicate: &str) -> Result<Vec<NamedOrBlankNode>> {
+    let predicate = NamedNode::new(predicate)?;
+    let mut subjects: Vec<NamedOrBlankNode> = graph
+        .triples_for_predicate(predicate.as_ref())
+        .map(|triple| triple.subject.into_owned())
+        .collect();
+    subjects.sort_by_cached_key(ToString::to_string);
+    subjects.dedup();
+    Ok(subjects)
+}
+
+pub(crate) fn instances(graph: &Graph, class: &str) -> Result<Vec<NamedOrBlankNode>> {
+    let (predicate, class) = (NamedNode::new(RDF_TYPE)?, NamedNode::new(class)?);
+    let mut instances: Vec<NamedOrBlankNode> = graph
+        .subjects_for_predicate_object(predicate.as_ref(), class.as_ref())
+        .map(|instance| instance.into_owned())
+        .collect();
+    instances.sort_by_cached_key(ToString::to_string);
+    Ok(instances)
+}
+
+pub(crate) fn values(graph: &Graph, s: &NamedOrBlankNode, predicate: &str) -> Result<Vec<String>> {
     Ok(objects(graph, s, predicate)?
         .iter()
         .map(term_value)
         .collect())
 }
 
-pub fn value(graph: &Graph, s: &NamedOrBlankNode, predicate: &str) -> Result<Option<String>> {
+pub(crate) fn value(
+    graph: &Graph,
+    s: &NamedOrBlankNode,
+    predicate: &str,
+) -> Result<Option<String>> {
     Ok(values(graph, s, predicate)?.into_iter().next())
 }
 
-pub fn one(graph: &Graph, s: &NamedOrBlankNode, predicate: &str) -> Result<Option<String>> {
+pub(crate) fn one(graph: &Graph, s: &NamedOrBlankNode, predicate: &str) -> Result<Option<String>> {
     let objects = objects(graph, s, predicate)?;
     if let [first, second, ..] = objects.as_slice() {
         return Err(Error::msg(format!(
@@ -97,7 +120,7 @@ pub fn one(graph: &Graph, s: &NamedOrBlankNode, predicate: &str) -> Result<Optio
     Ok(objects.first().map(term_value))
 }
 
-pub fn term_value(term: &Term) -> String {
+pub(crate) fn term_value(term: &Term) -> String {
     match term {
         Term::NamedNode(n) => n.as_str().to_owned(),
         Term::BlankNode(b) => b.as_str().to_owned(),
@@ -106,7 +129,7 @@ pub fn term_value(term: &Term) -> String {
     }
 }
 
-pub fn as_subject(term: &Term) -> Option<NamedOrBlankNode> {
+pub(crate) fn as_subject(term: &Term) -> Option<NamedOrBlankNode> {
     match term {
         Term::NamedNode(n) => Some(n.clone().into()),
         Term::BlankNode(b) => Some(b.clone().into()),
@@ -114,7 +137,7 @@ pub fn as_subject(term: &Term) -> Option<NamedOrBlankNode> {
     }
 }
 
-pub fn list(graph: &Graph, head: Option<&Term>) -> Result<Vec<Term>> {
+pub(crate) fn list(graph: &Graph, head: Option<&Term>) -> Result<Vec<Term>> {
     let mut out = Vec::new();
     let mut passed = HashSet::new();
     let mut node = head.and_then(as_subject);
@@ -137,16 +160,29 @@ pub fn list(graph: &Graph, head: Option<&Term>) -> Result<Vec<Term>> {
     Ok(out)
 }
 
-fn parse_into(graph: &mut Graph, bytes: &[u8], base: &str, format: RdfFormat) -> Result<()> {
-    let parser = RdfParser::from_format(format)
+pub(crate) type Prefixes = Vec<(String, String)>;
+
+fn parse_into(graph: &mut Graph, bytes: &[u8], base: &str, format: RdfFormat) -> Result<Prefixes> {
+    let mut parser = RdfParser::from_format(format)
         .with_base_iri(base)?
         // Two files in one graph must not share a blank node label by accident.
-        .rename_blank_nodes();
-    for quad in parser.for_slice(bytes).with_document_loader(context) {
+        .rename_blank_nodes()
+        .for_slice(bytes)
+        .with_document_loader(context);
+    for quad in parser.by_ref() {
         let quad = quad.map_err(|e| Error::msg(format!("{base}: {e}")))?;
         graph.insert(&Triple::new(quad.subject, quad.predicate, quad.object));
     }
-    Ok(())
+    Ok(parser
+        .prefixes()
+        .map(|(name, namespace)| (name.to_owned(), namespace.to_owned()))
+        .collect())
+}
+
+pub(crate) fn turtle(bytes: &[u8], iri: &str) -> Result<(Graph, Prefixes)> {
+    let mut graph = Graph::new();
+    let prefixes = parse_into(&mut graph, bytes, iri, RdfFormat::Turtle)?;
+    Ok((graph, prefixes))
 }
 
 pub fn load_adapter(resolver: &dyn Resolver) -> Result<Adapter> {
@@ -187,8 +223,8 @@ pub fn load_adapter(resolver: &dyn Resolver) -> Result<Adapter> {
     let mut envelopes = Vec::new();
     for iri in values(&graph, &root_subject, BRIDGE_ENVELOPE)? {
         let s = subject(&iri)?;
+        one(&graph, &s, SCHEMA_NAME)?;
         envelopes.push(Envelope {
-            name: one(&graph, &s, SCHEMA_NAME)?,
             doc_root_element_name: one(&graph, &s, BRIDGE_DOC_ROOT_ELEMENT_NAME)?,
             document_schema: one(&graph, &s, BRIDGE_DOCUMENT_SCHEMA)?,
             iri,
@@ -214,7 +250,6 @@ pub fn load_adapter(resolver: &dyn Resolver) -> Result<Adapter> {
         envelopes,
         manifest,
         root,
-        crate_iri,
         graph,
     })
 }

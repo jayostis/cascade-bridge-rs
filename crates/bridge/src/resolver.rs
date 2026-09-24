@@ -131,10 +131,14 @@ fn resolve(path: &Path) -> Option<PathBuf> {
     None
 }
 
-fn path_to_file_iri(path: &Path) -> String {
+pub fn path_to_file_iri(path: &Path) -> String {
     let text = path.to_string_lossy().replace('\\', "/");
-    // A Windows canonical path opens with the extended-length prefix.
-    let (server, text) = match text.strip_prefix("//?/UNC/") {
+    // A Windows canonical path opens with the extended-length prefix, which Node's leaves off.
+    let unc = text.strip_prefix("//?/UNC/").or_else(|| {
+        text.strip_prefix("//")
+            .filter(|rest| !rest.starts_with("?/"))
+    });
+    let (server, text) = match unc {
         Some(unc) => unc.split_once('/').unwrap_or((unc, "")),
         None => ("", text.strip_prefix("//?/").unwrap_or(&text)),
     };
@@ -160,13 +164,13 @@ fn push_encoded(out: &mut String, text: &str) {
 
 /// The server a file IRI names, empty for this machine; none for an IRI that
 /// is not a file IRI.
-fn authority(iri: &str) -> Option<&str> {
+pub fn authority(iri: &str) -> Option<&str> {
     let rest = iri.strip_prefix("file://")?;
     let server = &rest[..rest.find('/').unwrap_or(rest.len())];
     Some(if server == "localhost" { "" } else { server })
 }
 
-fn file_iri_to_path(iri: &str) -> Option<PathBuf> {
+pub fn file_iri_to_path(iri: &str) -> Option<PathBuf> {
     let rest = iri.strip_prefix("file://")?;
     let (server, rest) = rest.split_at(rest.find('/')?);
     let decoded = percent_decode(rest)?;
@@ -222,6 +226,23 @@ mod tests {
             path_to_file_iri(Path::new(r"\\?\UNC\server\share\adapter")),
             "file://server/share/adapter"
         );
+    }
+
+    #[test]
+    fn writes_a_drive_path_as_node_s_realpath_spells_it_under_the_empty_authority() {
+        assert_eq!(
+            path_to_file_iri(Path::new(r"C:\dev\adapter")),
+            "file:///C:/dev/adapter"
+        );
+    }
+
+    #[test]
+    fn writes_a_network_path_as_node_s_realpath_spells_it_with_its_server_as_the_authority() {
+        let iri = path_to_file_iri(Path::new(r"\\server\share\adapter"));
+        assert_eq!(iri, "file://server/share/adapter");
+        let path = file_iri_to_path(&iri).expect("a file IRI");
+        assert_eq!(path, PathBuf::from("//server/share/adapter"));
+        assert_eq!(path_to_file_iri(&path), iri);
     }
 
     #[test]

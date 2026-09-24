@@ -1,7 +1,7 @@
 // Every annotation carries a record selector of its own: selectors on one node are
 // alternatives of each other.
 use crate::error::{Error, Result};
-use crate::rdf::{
+use crate::terms::{
     BRIDGE_ADDRESS_NOT_ONE_NODE, BRIDGE_OCCURRENCES, BRIDGE_PATH_NOT_ACCOUNTED, BRIDGE_THIS_RECORD,
     OA_ANNOTATION, OA_CLASSIFYING, OA_HAS_BODY, OA_HAS_SELECTOR, OA_HAS_SOURCE, OA_HAS_TARGET,
     OA_MOTIVATED_BY, OA_REFINED_BY, OA_XPATH_SELECTOR, RDF_TYPE, RDF_VALUE, SH_FOCUS_NODE, SH_INFO,
@@ -11,12 +11,12 @@ use oxrdf::vocab::xsd;
 use oxrdf::{BlankNode, GraphName, Literal, NamedNode, NamedOrBlankNode, Quad, Term};
 use std::collections::{HashMap, HashSet};
 
-pub struct Record<'a> {
-    pub source: &'a str,
-    pub selector: &'a str,
+pub(crate) struct Record<'a> {
+    pub(crate) source: &'a str,
+    pub(crate) selector: &'a str,
 }
 
-pub fn annotations(quads: &[Quad]) -> usize {
+pub(crate) fn annotations(quads: &[Quad]) -> usize {
     quads
         .iter()
         .filter(|q| q.predicate.as_str() == RDF_TYPE)
@@ -157,13 +157,13 @@ fn finding(
     Ok(quads)
 }
 
-pub fn violation(record: &Record, body: &str, within: Option<&str>) -> Result<Vec<Quad>> {
+pub(crate) fn violation(record: &Record, body: &str, within: Option<&str>) -> Result<Vec<Quad>> {
     finding(record, body, within, SH_VIOLATION, None, 1, &[])
 }
 
 /// Addressed no more finely than the record: which node of the source stands
 /// behind a node of the graph is the mapping's to know.
-pub fn drawn(
+pub(crate) fn drawn(
     record: &Record,
     body: &str,
     path: Option<&str>,
@@ -181,7 +181,7 @@ pub fn drawn(
 }
 
 /// Addressed to the document element, the one node found without following an address.
-pub fn address(document: &Record, written: &str) -> Result<Vec<Quad>> {
+pub(crate) fn address(document: &Record, written: &str) -> Result<Vec<Quad>> {
     finding(
         document,
         BRIDGE_ADDRESS_NOT_ONE_NODE,
@@ -193,7 +193,7 @@ pub fn address(document: &Record, written: &str) -> Result<Vec<Quad>> {
     )
 }
 
-pub fn unaccounted(
+pub(crate) fn unaccounted(
     record: &Record,
     path: &str,
     within: Option<&str>,
@@ -210,7 +210,7 @@ pub fn unaccounted(
     )
 }
 
-pub fn gap(
+pub(crate) fn gap(
     record: &Record,
     gap: &str,
     path: &str,
@@ -221,7 +221,7 @@ pub fn gap(
     finding(record, gap, within, severity, Some(path), occurrences, &[])
 }
 
-pub fn lookup(
+pub(crate) fn lookup(
     record: &Record,
     gap: &str,
     value: &str,
@@ -232,7 +232,7 @@ pub fn lookup(
     finding(record, gap, within, severity, Some(value), occurrences, &[])
 }
 
-pub fn about(
+pub(crate) fn about(
     record: &Record,
     query: &str,
     constructed: Vec<Quad>,
@@ -424,10 +424,10 @@ fn keep(
 }
 
 #[derive(Default)]
-pub struct Minted(HashMap<String, BlankNode>);
+pub(crate) struct Minted(HashMap<String, BlankNode>);
 
 impl Minted {
-    pub fn apart(&mut self, quads: impl IntoIterator<Item = Quad>) -> Vec<Quad> {
+    pub(crate) fn apart(&mut self, quads: impl IntoIterator<Item = Quad>) -> Vec<Quad> {
         quads
             .into_iter()
             .map(|quad| {

@@ -1,4 +1,5 @@
-use cascade_bridge::{canonical_lines, lift_slice};
+use super::lift_slice;
+use crate::rdf::canonical_lines;
 use oxrdf::{Quad, Term};
 use std::collections::BTreeSet;
 

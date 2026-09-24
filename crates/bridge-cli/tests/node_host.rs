@@ -2,11 +2,11 @@
 // names each aggregate at random per parse, so two runs already differ in their bytes.
 mod common;
 
+use cascade_bridge::oxrdf::{NamedOrBlankNode, Quad, Term};
+use cascade_bridge::oxrdfio::{RdfFormat, RdfParser};
 use common::{
     canonical, copied_to, names, read_at_its_own_iri, scratch, tiny, vocabularies, BASE, MAX_LENGTH,
 };
-use oxrdf::{NamedOrBlankNode, Quad, Term};
-use oxrdfio::{RdfFormat, RdfParser};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};

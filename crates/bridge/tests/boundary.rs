@@ -4,10 +4,19 @@ use cascade_bridge::{Prepared, Resolver};
 use common::{tiny, tiny_with_vocabularies, with_accounting, ACCOUNTING, CRATE};
 use std::path::PathBuf;
 
-const ALLOWED: &str = "resolver.rs";
+const ALLOWED: [&str; 2] = ["resolver.rs", "fixtures.rs"];
 
 fn source_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src")
+}
+
+#[test]
+fn compiles_the_fixture_reader_into_the_crate_s_tests_alone() {
+    let lib = std::fs::read_to_string(source_dir().join("lib.rs")).expect("read lib.rs");
+    assert!(
+        lib.contains("#[cfg(test)]\nmod fixtures;"),
+        "lib.rs declares fixtures under #[cfg(test)]"
+    );
 }
 
 #[test]
@@ -24,7 +33,10 @@ fn lets_only_the_resolver_name_the_filesystem() {
             if path.extension().is_none_or(|e| e != "rs") {
                 continue;
             }
-            if path.file_name().is_some_and(|n| n == ALLOWED) {
+            if path
+                .file_name()
+                .is_some_and(|n| ALLOWED.iter().any(|allowed| n == *allowed))
+            {
                 continue;
             }
             let text = std::fs::read_to_string(&path).expect("read module");

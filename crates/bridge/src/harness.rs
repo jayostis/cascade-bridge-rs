@@ -2,13 +2,14 @@ use crate::annotation;
 use crate::decode::decode;
 use crate::error::{Error, Result};
 use crate::load::{as_subject, list, objects, one, subject, term_value, values, Adapter};
-use crate::rdf::{
-    canonical_lines, canonical_parts, BRIDGE_DATASET, BRIDGE_ENVELOPE, BRIDGE_EXPECTED_FINDINGS,
-    BRIDGE_EXPECTED_GRAPH, BRIDGE_INPUT, BRIDGE_INPUT_ONLY, BRIDGE_ISOMORPHIC, BRIDGE_SPARQL_1_1,
-    BRIDGE_STAMP_PREDICATE, MF_ACTION, MF_ENTRIES, MF_NAME, MF_RESULT, RDF_TYPE,
-};
+use crate::rdf::{canonical_lines, canonical_parts};
 use crate::resolver::Resolver;
 use crate::run::{convert, prepare, Prepared, Source};
+use crate::terms::{
+    BRIDGE_DATASET, BRIDGE_ENVELOPE, BRIDGE_EXPECTED_FINDINGS, BRIDGE_EXPECTED_GRAPH, BRIDGE_INPUT,
+    BRIDGE_INPUT_ONLY, BRIDGE_ISOMORPHIC, BRIDGE_SPARQL_1_1, BRIDGE_STAMP_PREDICATE, MF_ACTION,
+    MF_ENTRIES, MF_NAME, MF_RESULT, RDF_TYPE,
+};
 use crate::xpath;
 use oxigraph::model::{NamedOrBlankNode, Quad, Term};
 use oxrdfio::{RdfFormat, RdfParser};

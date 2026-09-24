@@ -1,35 +1,26 @@
 // tests/lift/ is a copy of fixtures/lift/ in jayostis/cascade-bridge-spec, the authority.
-use cascade_bridge::{canonical_lines, lift_slice};
+use super::lift_slice;
+use crate::fixtures::{fixture, fixture_names};
+use crate::rdf::canonical_lines;
 use oxigraph::store::Store;
 use oxrdf::Quad;
 use oxrdfio::{RdfFormat, RdfParser};
 use std::collections::BTreeSet;
-use std::path::PathBuf;
 
 /// Every other vector in the directory is run as a lift vector.
 const SKELETON_VECTORS: [(&str, &str); 2] =
     [("skeleton", "Unit"), ("skeleton-record-root", "Unit")];
 
-fn vectors_directory() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/lift")
-}
+const VECTORS: &str = "tests/lift";
 
 fn vector(name: &str, extension: &str) -> Vec<u8> {
-    let path = vectors_directory().join(format!("{name}.{extension}"));
-    std::fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+    fixture(&format!("{VECTORS}/{name}.{extension}"))
 }
 
 fn vector_names() -> Vec<String> {
-    let mut names: Vec<String> = std::fs::read_dir(vectors_directory())
-        .expect("the vectors")
-        .map(|entry| entry.expect("an entry").path())
-        .filter(|path| path.extension().is_some_and(|e| e == "xml"))
-        .map(|path| {
-            path.file_stem()
-                .expect("a name")
-                .to_string_lossy()
-                .into_owned()
-        })
+    let mut names: Vec<String> = fixture_names(VECTORS)
+        .into_iter()
+        .filter_map(|name| name.strip_suffix(".xml").map(str::to_owned))
         .collect();
     names.sort();
     names

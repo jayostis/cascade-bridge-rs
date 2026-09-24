@@ -178,8 +178,6 @@ name = "cascade-bridge-cli"
 version = "0.1.0"
 dependencies = [
  "cascade-bridge",
- "oxrdf",
- "oxrdfio",
  "tempfile",
 ]
 
