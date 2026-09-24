@@ -104,7 +104,7 @@ fn declared(documents: &[Document]) -> HashSet<String> {
     declared
 }
 
-pub fn require_vocabularies(adapter: &Adapter, resolver: &dyn Resolver) -> Result<()> {
+pub(crate) fn require_vocabularies(adapter: &Adapter, resolver: &dyn Resolver) -> Result<()> {
     if adapter.vocabulary_files.is_empty() || resolver.vocabularies().is_some() {
         return Ok(());
     }
@@ -115,7 +115,7 @@ pub fn require_vocabularies(adapter: &Adapter, resolver: &dyn Resolver) -> Resul
     )))
 }
 
-pub fn unvalidated_output(adapter: &Adapter, resolver: &dyn Resolver) -> Option<String> {
+pub(crate) fn unvalidated_output(adapter: &Adapter, resolver: &dyn Resolver) -> Option<String> {
     require_vocabularies(adapter, resolver)
         .err()
         .map(|refusal| format!("{refusal}, so the graph is not validated against them"))

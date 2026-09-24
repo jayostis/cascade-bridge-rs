@@ -1,6 +1,6 @@
-mod common;
+use super::common;
 
-use cascade_bridge::Resolver;
+use crate::Resolver;
 use common::{
     accounting, address, annotations, concept, conversion, count, entry, findings, gap_scheme,
     node, one, says, step, tiny, with_accounting, Variant, ACCOUNTING, ACCOUNTING_PREAMBLE, BRIDGE,

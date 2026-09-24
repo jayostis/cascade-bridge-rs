@@ -1,6 +1,7 @@
-mod common;
+use super::common;
 
-use cascade_bridge::{Prepared, Resolver};
+use crate::run::Prepared;
+use crate::Resolver;
 use common::{tiny, tiny_with_vocabularies, with_accounting, ACCOUNTING, CRATE};
 use std::path::PathBuf;
 
@@ -50,7 +51,7 @@ fn lets_only_the_resolver_name_the_filesystem() {
     assert_eq!(offenders, Vec::<String>::new());
 }
 
-fn refusal(read: cascade_bridge::Result<Vec<u8>>) -> String {
+fn refusal(read: crate::Result<Vec<u8>>) -> String {
     read.err()
         .map(|error| error.to_string())
         .unwrap_or_default()

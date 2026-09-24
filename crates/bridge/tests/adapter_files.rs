@@ -1,6 +1,9 @@
-mod common;
+use super::common;
 
-use cascade_bridge::{load_adapter, prepare, run_manifest, Resolver, RunOptions};
+use crate::harness::{run_manifest, RunOptions};
+use crate::load::load_adapter;
+use crate::run::prepare;
+use crate::Resolver;
 use common::{accounting, entry, tiny, with_accounting, Variant, ACCOUNTING, CRATE, GAP_SCHEME};
 
 const MANIFEST: &str = "fixtures/manifest.ttl";

@@ -1,6 +1,8 @@
-mod common;
+use super::common;
 
-use cascade_bridge::{load_adapter, prepare, DirectoryResolver, Error, Resolver, Result};
+use crate::load::load_adapter;
+use crate::run::prepare;
+use crate::{DirectoryResolver, Error, Resolver, Result};
 use common::{address, annotations, converted, says, tiny, Variant, OA, SH};
 use oxrdf::{NamedOrBlankNode, Quad};
 

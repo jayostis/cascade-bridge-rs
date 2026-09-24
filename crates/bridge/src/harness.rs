@@ -18,10 +18,10 @@ use std::time::Duration;
 // std's clock panics on wasm32-unknown-unknown, where this one asks the host.
 use web_time::Instant;
 
-pub const OFFERED_PROFILES: [&str; 1] = [BRIDGE_SPARQL_1_1];
+pub(crate) const OFFERED_PROFILES: [&str; 1] = [BRIDGE_SPARQL_1_1];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Outcome {
+pub(crate) enum Outcome {
     Passed,
     Failed,
     CantTell,
@@ -30,7 +30,7 @@ pub enum Outcome {
 }
 
 impl Outcome {
-    pub fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::Passed => "passed",
             Self::Failed => "failed",
@@ -41,18 +41,19 @@ impl Outcome {
     }
 }
 
-pub struct EntryResult {
-    pub entry: Term,
-    pub name: String,
-    pub type_iri: String,
-    pub outcome: Outcome,
-    pub description: String,
-    pub elapsed: Duration,
+pub(crate) struct EntryResult {
+    pub(crate) entry: Term,
+    pub(crate) name: String,
+    #[allow(dead_code)]
+    pub(crate) type_iri: String,
+    pub(crate) outcome: Outcome,
+    pub(crate) description: String,
+    pub(crate) elapsed: Duration,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
-pub struct RunOptions {
-    pub datasets: bool,
+pub(crate) struct RunOptions {
+    pub(crate) datasets: bool,
 }
 
 /// The widths a description cuts a graph's line and a finding at.
@@ -255,7 +256,7 @@ impl Entry<'_> {
     }
 }
 
-pub fn run_manifest(
+pub(crate) fn run_manifest(
     adapter: &Adapter,
     resolver: &dyn Resolver,
     options: RunOptions,

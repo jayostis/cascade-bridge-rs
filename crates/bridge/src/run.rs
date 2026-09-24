@@ -24,15 +24,15 @@ struct Envelope {
     document_schema: Option<Schema>,
 }
 
-pub struct Prepared {
+pub(crate) struct Prepared {
     unit: String,
     mappings: Vec<Query>,
     findings_queries: Vec<Query>,
     detect: Option<Query>,
     tables: Vec<Quad>,
     /// Every name the mappings give a namespace, the first binding of a name winning.
-    pub prefixes: Vec<(String, String)>,
-    pub findings_prefixes: Vec<(String, String)>,
+    pub(crate) prefixes: Vec<(String, String)>,
+    pub(crate) findings_prefixes: Vec<(String, String)>,
     envelopes: Vec<Envelope>,
     source_schema: Option<Schema>,
     vocabulary: Option<Vocabulary>,
@@ -57,28 +57,28 @@ impl Prepared {
     }
 }
 
-pub struct Conversion {
-    pub quads: Vec<Quad>,
-    pub findings: Vec<Quad>,
-    pub units: usize,
-    pub detected: Option<bool>,
+pub(crate) struct Conversion {
+    pub(crate) quads: Vec<Quad>,
+    pub(crate) findings: Vec<Quad>,
+    pub(crate) units: usize,
+    pub(crate) detected: Option<bool>,
 }
 
 impl Conversion {
-    pub fn annotations(&self) -> usize {
+    pub(crate) fn annotations(&self) -> usize {
         annotation::annotations(&self.findings)
     }
 
     /// `quads` holds a triple constructed for every record once per record, the graph once.
-    pub fn triples(&self) -> usize {
+    pub(crate) fn triples(&self) -> usize {
         self.quads.iter().collect::<HashSet<&Quad>>().len()
     }
 }
 
-pub struct Source<'a> {
-    pub iri: &'a str,
-    pub envelope: Option<&'a str>,
-    pub xml: &'a [u8],
+pub(crate) struct Source<'a> {
+    pub(crate) iri: &'a str,
+    pub(crate) envelope: Option<&'a str>,
+    pub(crate) xml: &'a [u8],
 }
 
 fn document_selector(document: Option<String>, described: Option<&str>) -> String {
@@ -98,7 +98,7 @@ fn stamps(adapter: &Adapter) -> Result<HashSet<String>> {
     .collect())
 }
 
-pub fn prepare(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prepared> {
+pub(crate) fn prepare(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prepared> {
     if adapter.mappings.is_empty() {
         return Err(Error::msg("the adapter names no bridge:mapping"));
     }
@@ -224,7 +224,7 @@ fn findings_prefixes(gap_prefixes: Vec<(String, String)>) -> Vec<(String, String
     findings_prefixes
 }
 
-pub fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
+pub(crate) fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
     let named = source
         .envelope
         .map(|iri| prepared.named_envelope(iri))
@@ -367,7 +367,67 @@ fn detected<R: BufRead>(detect: &Query, lift: Lift<R>) -> Result<bool> {
 
 #[cfg(test)]
 mod tests {
-    use super::document_selector;
+    use super::{document_selector, prepare};
+    use crate::load::load_adapter;
+    use crate::suite::common::tiny;
+    use crate::{DirectoryResolver, Resolver, Result};
+    use std::cell::RefCell;
+    use std::collections::BTreeMap;
+
+    struct Counting {
+        directory: DirectoryResolver,
+        reads: RefCell<BTreeMap<String, usize>>,
+    }
+
+    impl Counting {
+        fn count(&self, iri: &str) {
+            *self.reads.borrow_mut().entry(iri.to_owned()).or_default() += 1;
+        }
+    }
+
+    impl Resolver for Counting {
+        fn root(&self) -> &str {
+            self.directory.root()
+        }
+
+        fn vocabularies(&self) -> Option<&str> {
+            self.directory.vocabularies()
+        }
+
+        fn read(&self, iri: &str) -> Result<Vec<u8>> {
+            self.count(iri);
+            self.directory.read(iri)
+        }
+
+        fn read_vocabulary(&self, iri: &str) -> Result<Vec<u8>> {
+            self.count(iri);
+            self.directory.read_vocabulary(iri)
+        }
+    }
+
+    #[test]
+    fn reads_each_query_of_the_adapter_once_per_prepare() {
+        let adapter = load_adapter(&tiny()).expect("adapter");
+        let counting = Counting {
+            directory: tiny(),
+            reads: RefCell::default(),
+        };
+        prepare(&adapter, &counting).expect("prepared");
+        let reads = counting.reads.into_inner();
+        let queries: Vec<&String> = adapter
+            .mappings
+            .iter()
+            .chain(&adapter.findings_queries)
+            .chain(&adapter.detect_query)
+            .collect();
+        assert!(!adapter.findings_queries.is_empty() && adapter.detect_query.is_some());
+        let misread: Vec<(&String, usize)> = queries
+            .into_iter()
+            .map(|query| (query, reads.get(query).copied().unwrap_or_default()))
+            .filter(|(_, times)| *times != 1)
+            .collect();
+        assert_eq!(misread, Vec::<(&String, usize)>::new());
+    }
 
     #[test]
     fn selects_the_element_the_envelope_describes_where_the_document_has_none() {

@@ -1,4 +1,4 @@
-mod common;
+use super::common;
 
 use common::{converted, tiny, written, Variant, CATALOG, RDF_VALUE};
 use oxrdf::Quad;

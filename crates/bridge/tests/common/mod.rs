@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
-use cascade_bridge::{
-    convert, load_adapter, prepare, Conversion, DirectoryResolver, Resolver, Result, Source,
-};
+use crate::load::load_adapter;
+use crate::run::{convert, prepare, Conversion, Source};
+use crate::{DirectoryResolver, Resolver, Result};
 use oxrdf::{Quad, Term};
 use std::path::PathBuf;
 

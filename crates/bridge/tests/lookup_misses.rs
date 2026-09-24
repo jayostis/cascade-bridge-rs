@@ -1,4 +1,4 @@
-mod common;
+use super::common;
 
 use common::{
     accounting, address, annotations, concept, conversion, count, entry, findings, gap_scheme,

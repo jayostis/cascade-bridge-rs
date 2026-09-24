@@ -1,6 +1,8 @@
-mod common;
+use super::common;
 
-use cascade_bridge::{load_adapter, prepare, Conversion, Resolver};
+use crate::load::load_adapter;
+use crate::run::{prepare, Conversion};
+use crate::Resolver;
 use common::{
     address, annotations, converted, node, says, tiny, tiny_with_vocabularies, Variant, CRATE, OA,
     SH,

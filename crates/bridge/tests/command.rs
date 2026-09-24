@@ -1,7 +1,7 @@
-mod common;
+use super::common;
 
-use cascade_bridge::command::{self, Host};
-use cascade_bridge::{path_to_file_iri, Error, Resolver, Result};
+use crate::command::{self, Host};
+use crate::{path_to_file_iri, Error, Resolver, Result};
 use common::{tiny, tiny_with_vocabularies, Variant, CRATE};
 use oxrdf::Term;
 use oxrdfio::{RdfFormat, RdfParser};

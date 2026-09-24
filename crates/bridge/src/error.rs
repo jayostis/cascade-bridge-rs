@@ -22,7 +22,7 @@ impl Error {
         }
     }
 
-    pub fn is_missing(&self) -> bool {
+    pub(crate) fn is_missing(&self) -> bool {
         self.missing
     }
 }

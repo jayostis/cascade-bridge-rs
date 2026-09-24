@@ -15,7 +15,7 @@ pub(crate) const FINDINGS_PREFIXES: [(&str, &str); 4] = [
     ("bridge", "https://ns.cascadeprotocol.org/bridge/v1-draft#"),
 ];
 
-pub fn canonical_lines(quads: impl IntoIterator<Item = Quad>) -> Result<BTreeSet<String>> {
+pub(crate) fn canonical_lines(quads: impl IntoIterator<Item = Quad>) -> Result<BTreeSet<String>> {
     let mut dataset = Dataset::new();
     for quad in quads {
         dataset.insert(&quad);
@@ -94,13 +94,13 @@ pub(crate) fn canonical_parts(quads: impl IntoIterator<Item = Quad>) -> Result<V
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GraphFormat {
+pub(crate) enum GraphFormat {
     Turtle,
     NTriples,
 }
 
 impl GraphFormat {
-    pub fn named(name: &str) -> Option<Self> {
+    pub(crate) fn named(name: &str) -> Option<Self> {
         match name {
             "turtle" => Some(Self::Turtle),
             "ntriples" => Some(Self::NTriples),
@@ -142,7 +142,7 @@ fn namespaces(quads: &[Quad]) -> HashSet<&str> {
     namespaces
 }
 
-pub fn serialise(
+pub(crate) fn serialise(
     quads: &[Quad],
     format: GraphFormat,
     prefixes: &[(String, String)],
@@ -217,7 +217,7 @@ fn relative(quads: &[Quad], base: &Iri<&str>) -> Vec<Quad> {
 }
 
 /// Every IRI the file standing at `at` can name relative to itself is named that way.
-pub fn serialise_at(
+pub(crate) fn serialise_at(
     quads: &[Quad],
     format: GraphFormat,
     prefixes: &[(String, String)],

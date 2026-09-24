@@ -1,6 +1,7 @@
-mod common;
+use super::common;
 
-use cascade_bridge::{load_adapter, prepare};
+use crate::load::load_adapter;
+use crate::run::prepare;
 use common::{tiny_with_vocabularies, Variant};
 
 const ENDPOINT: &str = "<https://example.invalid/sparql>";

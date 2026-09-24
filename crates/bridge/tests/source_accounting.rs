@@ -1,6 +1,6 @@
-mod common;
+use super::common;
 
-use cascade_bridge::Resolver;
+use crate::Resolver;
 use common::{
     address, annotations, conversion, count, findings, node, says, step, tiny, unaccounted,
     with_accounting, Variant, ACCOUNTING, BRIDGE, CRATE, OA, PATH_NOT_ACCOUNTED, RDF_TYPE, SH,

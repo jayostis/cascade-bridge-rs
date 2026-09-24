@@ -39,21 +39,21 @@ pub(crate) struct Envelope {
     pub(crate) document_schema: Option<String>,
 }
 
-pub struct Adapter {
+pub(crate) struct Adapter {
     /// The crate's root entity, the adapter.
     pub(crate) root: String,
     pub(crate) graph: Graph,
     pub(crate) identifier: Option<String>,
-    pub element_name_of_each_record: Option<String>,
+    pub(crate) element_name_of_each_record: Option<String>,
     pub(crate) source_schema: Option<String>,
     /// Paths in the checkout the engine command is given, not files of the crate.
     pub(crate) vocabulary_files: Vec<String>,
-    pub source_accounting: Option<String>,
-    pub gap_scheme: Option<String>,
-    pub required_profiles: Vec<String>,
-    pub mappings: Vec<String>,
-    pub findings_queries: Vec<String>,
-    pub detect_query: Option<String>,
+    pub(crate) source_accounting: Option<String>,
+    pub(crate) gap_scheme: Option<String>,
+    pub(crate) required_profiles: Vec<String>,
+    pub(crate) mappings: Vec<String>,
+    pub(crate) findings_queries: Vec<String>,
+    pub(crate) detect_query: Option<String>,
     pub(crate) tables: Vec<String>,
     pub(crate) envelopes: Vec<Envelope>,
     pub(crate) manifest: String,
@@ -185,7 +185,7 @@ pub(crate) fn turtle(bytes: &[u8], iri: &str) -> Result<(Graph, Prefixes)> {
     Ok((graph, prefixes))
 }
 
-pub fn load_adapter(resolver: &dyn Resolver) -> Result<Adapter> {
+pub(crate) fn load_adapter(resolver: &dyn Resolver) -> Result<Adapter> {
     let crate_iri = format!("{}ro-crate-metadata.json", resolver.root());
     let mut graph = Graph::new();
     parse_into(

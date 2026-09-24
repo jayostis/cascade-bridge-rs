@@ -1,8 +1,10 @@
-mod common;
+use super::common;
 
-use cascade_bridge::{
-    canonical_lines, load_adapter, run_manifest, Conversion, Resolver, RunOptions,
-};
+use crate::harness::{run_manifest, RunOptions};
+use crate::load::load_adapter;
+use crate::rdf::canonical_lines;
+use crate::run::Conversion;
+use crate::Resolver;
 use common::{address, annotations, committed, converted, says, tiny, Variant, OA, SH};
 use oxrdf::{Quad, Term};
 

@@ -1,4 +1,4 @@
-mod common;
+use super::common;
 
 use common::{
     annotations, converted, one, says, step, tiny, tiny_directory, violations, Variant, OA, SH,

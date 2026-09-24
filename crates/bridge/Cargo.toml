@@ -5,6 +5,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+autotests = false
 
 [dependencies]
 encoding_rs = "=0.8.35"
@@ -24,3 +25,7 @@ spargebra = { version = "=0.4.7", features = ["sep-0002", "sep-0006"] }
 web-time = "=1.1.0"
 xpath-eval = "=0.2.2"
 xsd-schema = "=0.2.0"
+
+[[test]]
+name = "rules"
+path = "tests/rules.rs"

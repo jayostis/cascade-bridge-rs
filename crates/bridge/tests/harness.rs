@@ -1,8 +1,9 @@
-mod common;
+use super::common;
 
-use cascade_bridge::{
-    earl_report_at, load_adapter, run_manifest, EntryResult, ReportSubject, Resolver, RunOptions,
-};
+use crate::earl::{earl_report_at, ReportSubject};
+use crate::harness::{run_manifest, EntryResult, RunOptions};
+use crate::load::load_adapter;
+use crate::Resolver;
 use common::{tiny, Variant, BRIDGE, RDF_TYPE};
 use oxrdf::{Graph, NamedNode, NamedOrBlankNodeRef, TermRef, Triple};
 use oxrdfio::{RdfFormat, RdfParser};
@@ -13,7 +14,7 @@ use std::time::Duration;
 
 const EARL: &str = "http://www.w3.org/ns/earl#";
 
-fn run() -> Vec<cascade_bridge::EntryResult> {
+fn run() -> Vec<crate::harness::EntryResult> {
     let resolver = tiny();
     let adapter = load_adapter(&resolver).expect("adapter");
     run_manifest(&adapter, &resolver, RunOptions::default()).expect("manifest")
@@ -62,7 +63,7 @@ fn names_each_entry_s_type_and_time_and_the_profiles_this_bridge_offers() {
     );
     assert!(results.iter().any(|r| r.elapsed > Duration::ZERO));
     assert_eq!(
-        cascade_bridge::OFFERED_PROFILES,
+        crate::harness::OFFERED_PROFILES,
         [format!("{BRIDGE}sparql-1.1").as_str()]
     );
 }

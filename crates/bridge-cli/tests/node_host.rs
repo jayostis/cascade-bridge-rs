@@ -5,7 +5,8 @@ mod common;
 use cascade_bridge::oxrdf::{NamedOrBlankNode, Quad, Term};
 use cascade_bridge::oxrdfio::{RdfFormat, RdfParser};
 use common::{
-    canonical, copied_to, names, read_at_its_own_iri, scratch, tiny, vocabularies, BASE, MAX_LENGTH,
+    canonical, canonical_lines, copied_to, names, read_at_its_own_iri, scratch, tiny, vocabularies,
+    BASE, MAX_LENGTH,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -101,8 +102,8 @@ fn converts_as_the_native_command_does(
     assert!(!native_graph.is_empty(), "the native command wrote a graph");
     assert_eq!(node_graph, native_graph, "the graph --out names");
     assert_eq!(
-        cascade_bridge::canonical_lines(node_findings.clone()).expect("one canonical graph"),
-        cascade_bridge::canonical_lines(native_findings.clone()).expect("one canonical graph"),
+        canonical_lines(node_findings.clone()),
+        canonical_lines(native_findings.clone()),
         "the findings --findings names"
     );
     node_findings.clone()
