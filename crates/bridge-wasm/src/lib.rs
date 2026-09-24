@@ -15,7 +15,7 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen]
 extern "C" {
     /// The host's files. Each method throws a string saying why a file could
-    /// not be read, worded as the native resolver words it.
+    /// not be read.
     pub type Files;
 
     #[wasm_bindgen(method, catch)]

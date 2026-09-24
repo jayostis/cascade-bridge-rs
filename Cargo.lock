@@ -159,7 +159,6 @@ name = "cascade-bridge"
 version = "0.1.0"
 dependencies = [
  "encoding_rs",
- "libc",
  "oxigraph",
  "oxiri 0.2.11",
  "oxrdf",

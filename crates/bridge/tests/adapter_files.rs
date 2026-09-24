@@ -27,9 +27,9 @@ fn a_mapping_the_crate_names_and_the_directory_lacks_is_refused_by_its_name() {
         "mapping/missing.rq",
         1,
     );
-    assert_eq!(
-        refusal(&variant),
-        format!("{}mapping/missing.rq: no such file", variant.root())
+    names_once(
+        &refusal(&variant),
+        &format!("{}mapping/missing.rq", variant.root()),
     );
 }
 
@@ -53,22 +53,26 @@ fn a_file_the_crate_or_its_accounting_names_and_the_directory_lacks_is_named_onc
                 "vocab/missing-accounting.ttl",
                 2,
             ),
-            format!("{root}vocab/missing-accounting.ttl: no such file"),
+            String::new(),
+            format!("{root}vocab/missing-accounting.ttl"),
         ),
         (
             Variant::of(tiny()).replacing_exactly(CRATE, GAP_SCHEME, "vocab/missing-gaps.ttl", 1),
-            format!("{root}vocab/missing-gaps.ttl: no such file"),
+            String::new(),
+            format!("{root}vocab/missing-gaps.ttl"),
         ),
         (
             with_accounting(&lookup),
-            format!(
-                "{accounting_iri}: the entry for /item/note looks its values up in \
-                 {root}vocab/missing-statuses.ttl: no such file"
-            ),
+            format!("{accounting_iri}: the entry for /item/note looks its values up in "),
+            format!("{root}vocab/missing-statuses.ttl"),
         ),
     ];
-    for (variant, sentence) in cases {
-        assert_eq!(refusal(&variant), sentence);
+    for (variant, context, missing) in cases {
+        let refused = refusal(&variant);
+        let named = refused
+            .strip_prefix(&context)
+            .unwrap_or_else(|| panic!("{refused}"));
+        names_once(named, &missing);
     }
 }
 

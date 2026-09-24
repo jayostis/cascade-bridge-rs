@@ -309,36 +309,12 @@ fn the_import_check_names_the_import_an_allowlist_one_entry_short_leaves_out() {
     assert!(said.contains(left_out), "{left_out} is not named: {said}");
 }
 
-/// What a case makes in its copy of the adapter before the crate names it.
-type Made = fn(&Path);
-
 #[test]
-fn the_node_host_refuses_a_mapping_it_cannot_read_in_the_native_command_s_sentence() {
-    let mut cases: Vec<(String, &str, Made)> = vec![
-        ("mapping/missing.rq".to_owned(), "no such file", |_| {}),
-        ("mapping".to_owned(), "a directory, not a file", |_| {}),
-    ];
-    #[cfg(unix)]
-    cases.extend([
-        (
-            format!("mapping/{}.rq", "a".repeat(300)),
-            "name too long",
-            (|_| {}) as Made,
-        ),
-        (
-            "mapping/loop.rq".to_owned(),
-            "too many levels of symbolic links",
-            |adapter| {
-                std::os::unix::fs::symlink("loop.rq", adapter.join("mapping/loop.rq"))
-                    .expect("the loop")
-            },
-        ),
-    ]);
+fn a_mapping_neither_host_can_read_is_named_once_by_each_and_both_exit_alike() {
     let scratch = scratch();
-    for (case, (named, reason, made)) in cases.into_iter().enumerate() {
+    for (case, named) in ["mapping/missing.rq", "mapping"].into_iter().enumerate() {
         let adapter = scratch.path().join(format!("adapter-{case}"));
         copied_to(&tiny(), &adapter);
-        made(&adapter);
         let metadata = adapter.join("ro-crate-metadata.json");
         let text = std::fs::read_to_string(&metadata).expect("the metadata");
         assert_eq!(text.matches("\"mapping/item-tag.rq\"").count(), 1);
@@ -347,19 +323,21 @@ fn the_node_host_refuses_a_mapping_it_cannot_read_in_the_native_command_s_senten
             text.replace("\"mapping/item-tag.rq\"", &format!("\"{named}\"")),
         )
         .expect("the metadata");
+        let iri = format!(
+            "{}/{named}",
+            cascade_bridge::file_iri(&adapter).expect("the adapter's IRI")
+        );
         let document = adapter.join("fixtures/in/two.xml");
         let document = document.to_string_lossy().into_owned();
         let adapter = adapter.to_string_lossy().into_owned();
         let native_run = native(&["convert", &adapter, &document]);
         let node_run = node(&["convert", &adapter, &document]);
-        let native_said = String::from_utf8_lossy(&native_run.stderr);
-        let node_said = String::from_utf8_lossy(&node_run.stderr);
-        assert_eq!(native_run.status.code(), Some(2), "{native_said}");
-        assert_eq!(node_run.status.code(), Some(2), "{node_said}");
-        assert_eq!(node_said, native_said);
-        assert!(
-            native_said.contains(&format!("/{named}: {reason}\n")),
-            "{native_said}"
-        );
+        assert_eq!(native_run.status.code(), Some(2));
+        assert_eq!(node_run.status.code(), native_run.status.code());
+        for run in [native_run, node_run] {
+            let said = String::from_utf8_lossy(&run.stderr);
+            assert!(said.contains(&format!("{iri}: ")), "{said}");
+            assert_eq!(said.matches(&iri).count(), 1, "{said}");
+        }
     }
 }

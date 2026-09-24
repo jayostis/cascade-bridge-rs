@@ -6,7 +6,6 @@
 // (tests/boundary.rs holds it to that).
 use crate::error::{Error, Result};
 use std::fs;
-use std::io::ErrorKind;
 use std::path::{Component, Path, PathBuf};
 
 pub trait Resolver {
@@ -34,7 +33,7 @@ pub trait Resolver {
 /// rather than one the adapter committed.
 pub fn file_iri(path: impl AsRef<Path>) -> Result<String> {
     let resolved = fs::canonicalize(path.as_ref())
-        .map_err(|e| Error::msg(format!("{}: {}", path.as_ref().display(), reason(&e))))?;
+        .map_err(|e| Error::msg(format!("{}: {e}", path.as_ref().display())))?;
     Ok(path_to_file_iri(&resolved))
 }
 
@@ -56,7 +55,7 @@ struct Directory {
 impl Directory {
     fn at(dir: impl AsRef<Path>) -> Result<Self> {
         let path = fs::canonicalize(dir.as_ref())
-            .map_err(|e| Error::msg(format!("{}: {}", dir.as_ref().display(), reason(&e))))?;
+            .map_err(|e| Error::msg(format!("{}: {e}", dir.as_ref().display())))?;
         let mut iri = path_to_file_iri(&path);
         iri.push('/');
         Ok(Self { iri, path })
@@ -77,42 +76,14 @@ impl Directory {
         let Some(path) = inside else {
             return Err(unread(iri, &format!("not inside {what}")));
         };
-        // Windows refuses to read a directory as access denied.
-        if path.is_dir() {
-            return Err(unread(iri, A_DIRECTORY));
-        }
-        fs::read(&path).map_err(|e| unread(iri, &reason(&e)))
+        fs::read(&path).map_err(|e| unread(iri, &e.to_string()))
     }
 }
 
-/// A file a host could not supply, named by its IRI and a reason every host
-/// words alike, so the refusal reads the same wherever the library runs.
+/// A file a host could not supply, named by its IRI and followed by the
+/// host's own reason.
 pub fn unread(iri: &str, reason: &str) -> Error {
     Error::msg(format!("{iri}: {reason}"))
-}
-
-const A_DIRECTORY: &str = "a directory, not a file";
-
-fn reason(error: &std::io::Error) -> String {
-    match error.kind() {
-        ErrorKind::NotFound | ErrorKind::NotADirectory => "no such file".to_owned(),
-        ErrorKind::IsADirectory => A_DIRECTORY.to_owned(),
-        ErrorKind::PermissionDenied => "permission denied".to_owned(),
-        ErrorKind::InvalidFilename => "name too long".to_owned(),
-        _ if a_loop(error) => "too many levels of symbolic links".to_owned(),
-        _ => error.to_string(),
-    }
-}
-
-// ErrorKind::FilesystemLoop is unstable.
-#[cfg(unix)]
-fn a_loop(error: &std::io::Error) -> bool {
-    error.raw_os_error() == Some(libc::ELOOP)
-}
-
-#[cfg(not(unix))]
-fn a_loop(_: &std::io::Error) -> bool {
-    false
 }
 
 impl DirectoryResolver {

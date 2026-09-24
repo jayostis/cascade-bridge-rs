@@ -244,7 +244,8 @@ impl Variant {
                     // be missing there, and a replaced file often is, but a
                     // refusal of the path stands.
                     if let Err(refused) = on_disk() {
-                        if !refused.to_string().ends_with(": no such file") {
+                        let missing = refused.to_string();
+                        if !missing.contains("(os error 2)") && !missing.contains("(os error 3)") {
                             return Err(refused);
                         }
                     }

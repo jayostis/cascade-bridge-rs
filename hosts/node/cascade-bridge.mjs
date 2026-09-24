@@ -49,22 +49,16 @@ function pathToFileIri(path) {
   return `file://${text.startsWith("/") ? "" : "/"}${encoded(text)}`;
 }
 
-// Why a file could not be reached, worded as the native resolver words it.
-const REASONS = {
-  ENOENT: "no such file",
-  ENOTDIR: "no such file",
-  EISDIR: "a directory, not a file",
-  EACCES: "permission denied",
-  EPERM: "permission denied",
-  ENAMETOOLONG: "name too long",
-  ELOOP: "too many levels of symbolic links",
-};
+// A message would name again the file its IRI already names.
+function reason(e, path) {
+  return e.code ?? String(e.message ?? e).replaceAll(path, "");
+}
 
 function canonical(path) {
   try {
     return realpathSync.native(path);
   } catch (e) {
-    throw new Error(`${path}: ${REASONS[e.code] ?? e.code}`);
+    throw new Error(`${path}: ${reason(e, path)}`);
   }
 }
 
@@ -129,7 +123,7 @@ class Directory {
     try {
       return readFileSync(at);
     } catch (e) {
-      throw REASONS[e.code] ?? e.code;
+      throw reason(e, at);
     }
   }
 }
