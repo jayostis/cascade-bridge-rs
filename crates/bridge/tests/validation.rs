@@ -222,6 +222,17 @@ fn reports_nothing_about_a_record_whose_schema_imports_xlink_from_a_remote_addre
     ));
 }
 
+#[test]
+fn reports_nothing_about_a_record_whose_schema_imports_the_xml_namespace_from_a_file_the_adapter_lacks(
+) {
+    assert_no_violation(&importing_the_xml_namespace(" schemaLocation=\"xml.xsd\""));
+}
+
+#[test]
+fn reports_nothing_about_a_record_whose_schema_imports_xlink_from_a_file_the_adapter_lacks() {
+    assert_no_violation(&importing_xlink(" schemaLocation=\"xlink.xsd\""));
+}
+
 fn shipping_xml_xsd(lang: &str) -> String {
     format!(
         "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" targetNamespace=\"{XML_NAMESPACE}\">\n  {lang}\n</xs:schema>\n"
