@@ -26,10 +26,14 @@ use xsd_schema::validation::{
     drive_quick_xml_with, ElementStartView, EndElementInfo, SchemaValidator, ValidationError,
     ValidationEventHandler, ValidationFlags, ValidationSink, ValidationWarning,
 };
-use xsd_schema::{SchemaCatalog, SchemaLoader, SchemaSet, SchemaSetBuilder};
+use xsd_schema::{EmbeddedLoader, SchemaCatalog, SchemaLoader, SchemaSet, SchemaSetBuilder};
 
 const XSD: &str = "http://www.w3.org/2001/XMLSchema";
 const DIRECTIVES: [&[u8]; 4] = [b"include", b"import", b"redefine", b"override"];
+const SUPPLIED_BY_THE_BRIDGE: [&str; 2] = [
+    "http://www.w3.org/XML/1998/namespace",
+    "http://www.w3.org/1999/xlink",
+];
 
 const XMLSCHEMA_1: &str = "https://www.w3.org/TR/xmlschema-1/#";
 const XMLSCHEMA_2: &str = "https://www.w3.org/TR/xmlschema-2/#";
@@ -215,7 +219,6 @@ impl Schema {
 /// Read a schema and everything it names, then compile it.
 pub(crate) fn compile(iri: &str, resolver: &dyn Resolver) -> Result<Schema> {
     let mut read: HashMap<String, String> = HashMap::new();
-    let mut unlocated: Vec<(String, String)> = Vec::new();
     let mut pending = vec![iri.to_owned()];
     while let Some(location) = pending.pop() {
         let key = key(&location);
@@ -226,19 +229,12 @@ pub(crate) fn compile(iri: &str, resolver: &dyn Resolver) -> Result<Schema> {
             .map_err(|e| Error::msg(format!("{location}: {e}")))?;
         let base =
             Iri::parse(location.clone()).map_err(|e| Error::msg(format!("{location}: {e}")))?;
-        let named = directives(&text).map_err(|e| Error::msg(format!("{location}: {e}")))?;
-        for named in named.locations {
+        for named in directives(&text).map_err(|e| Error::msg(format!("{location}: {e}")))? {
             let joined = base
                 .resolve(&named)
                 .map_err(|e| Error::msg(format!("{location} names {named}: {e}")))?;
             pending.push(joined.into_inner());
         }
-        unlocated.extend(
-            named
-                .unlocated_imports
-                .into_iter()
-                .map(|namespace| (location.clone(), namespace)),
-        );
         read.insert(key, text);
     }
 
@@ -246,29 +242,24 @@ pub(crate) fn compile(iri: &str, resolver: &dyn Resolver) -> Result<Schema> {
         .get(&key(iri))
         .ok_or_else(|| Error::msg(format!("{iri} was not read")))?
         .clone();
+    let mut catalog = SchemaCatalog::new();
+    catalog.add_xml_catalog();
     let unanswered = Arc::new(Mutex::new(Vec::new()));
     let loader = Preloaded {
         documents: read,
+        supplied_by_the_bridge: SUPPLIED_BY_THE_BRIDGE
+            .iter()
+            .filter_map(|namespace| catalog.lookup(namespace))
+            .map(str::to_owned)
+            .collect(),
         unanswered: Arc::clone(&unanswered),
     };
     let compiled = SchemaSetBuilder::with_loader(Box::new(loader))
         .add_bytes(primary.as_bytes(), iri)
-        .and_then(|builder| builder.compile());
+        .and_then(|builder| builder.compile())
+        .map_err(|e| Error::msg(format!("{iri}: {e}")))?;
 
     let unanswered = unanswered.lock().expect("no other thread holds the loader");
-    let mut catalog = SchemaCatalog::new();
-    catalog.add_xml_catalog();
-    let catalogued = unlocated.iter().find(|(_, namespace)| {
-        catalog
-            .lookup(namespace)
-            .is_some_and(|location| unanswered.iter().any(|asked| asked == location))
-    });
-    if let Some((schema, namespace)) = catalogued {
-        return Err(Error::msg(format!(
-            "{schema} imports {namespace} with no schemaLocation, and a Bridge reads a schema only from the adapter: the adapter must ship a schema for {namespace} and name it by schemaLocation"
-        )));
-    }
-    let compiled = compiled.map_err(|e| Error::msg(format!("{iri}: {e}")))?;
     if !unanswered.is_empty() {
         return Err(Error::msg(format!(
             "{iri} names a schema this Bridge did not read: {}",
@@ -280,18 +271,12 @@ pub(crate) fn compile(iri: &str, resolver: &dyn Resolver) -> Result<Schema> {
     })
 }
 
-/// What a schema's xs:include, xs:import, xs:redefine and xs:override name, as
-/// the schema writes it.
-#[derive(Default)]
-struct Named {
-    locations: Vec<String>,
-    unlocated_imports: Vec<String>,
-}
-
-fn directives(text: &str) -> Result<Named> {
+/// Every schemaLocation an xs:include, xs:import, xs:redefine or xs:override
+/// names, as the schema writes it.
+fn directives(text: &str) -> Result<Vec<String>> {
     let mut reader = quick_xml::NsReader::from_str(text);
     reader.config_mut().expand_empty_elements = true;
-    let mut named = Named::default();
+    let mut named = Vec::new();
     loop {
         let (namespace, event) = reader.read_resolved_event()?;
         match event {
@@ -303,24 +288,11 @@ fn directives(text: &str) -> Result<Named> {
                 if !DIRECTIVES.contains(&start.local_name().as_ref()) {
                     continue;
                 }
-                let mut location = None;
-                let mut namespace = None;
                 for attribute in start.attributes() {
                     let attribute = attribute?;
-                    match attribute.key.as_ref() {
-                        b"schemaLocation" => {
-                            location = Some(attribute.unescape_value()?.into_owned())
-                        }
-                        b"namespace" => namespace = Some(attribute.unescape_value()?.into_owned()),
-                        _ => {}
+                    if attribute.key.as_ref() == b"schemaLocation" {
+                        named.push(attribute.unescape_value()?.into_owned());
                     }
-                }
-                match (location, namespace) {
-                    (Some(location), _) => named.locations.push(location),
-                    (None, Some(namespace)) if start.local_name().as_ref() == b"import" => {
-                        named.unlocated_imports.push(namespace)
-                    }
-                    _ => {}
                 }
             }
             Event::Eof => return Ok(named),
@@ -387,11 +359,13 @@ fn utf8_declaration(xml: &str) -> String {
     format!("{UTF_8_DECLARATION}{body}")
 }
 
-/// The schemas the host supplied, and the record of anything asked for that it
-/// did not: a location this answers nothing for loads nothing, and
-/// `xsd-schema` treats that as non-fatal, so it is caught here instead.
+/// The schemas the host supplied and those the Bridge supplies itself, and the
+/// record of anything asked for that neither did: a location this answers
+/// nothing for loads nothing, and `xsd-schema` treats that as non-fatal, so it
+/// is caught here instead.
 struct Preloaded {
     documents: HashMap<String, String>,
+    supplied_by_the_bridge: Vec<String>,
     unanswered: Arc<Mutex<Vec<String>>>,
 }
 
@@ -403,6 +377,13 @@ impl std::fmt::Debug for Preloaded {
 
 impl SchemaLoader for Preloaded {
     fn load(&self, location: &str) -> SchemaResult<String> {
+        if self
+            .supplied_by_the_bridge
+            .iter()
+            .any(|supplied| supplied == location)
+        {
+            return EmbeddedLoader.load(location);
+        }
         match self.documents.get(&key(location)) {
             Some(text) => Ok(text.clone()),
             None => {
