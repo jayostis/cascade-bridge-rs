@@ -149,53 +149,128 @@ fn applies_an_included_schema_under_a_root_that_is_not_a_file() {
 }
 
 const XML_NAMESPACE: &str = "http://www.w3.org/XML/1998/namespace";
+const XLINK: &str = "http://www.w3.org/1999/xlink";
 
-/// The tiny adapter with its item schema importing the XML namespace, located
-/// where `location` says, and its first item carrying `xml:lang`.
-fn importing_the_xml_namespace(location: &str) -> Variant {
+/// The tiny adapter with its item schema importing `namespace`, located where
+/// `location` says, and declaring `declared` on an item, and its first item
+/// carrying `carried`.
+fn importing(namespace: &str, location: &str, declared: &str, carried: &str) -> Variant {
     Variant::of(tiny())
         .replacing(
             "schema/item.xsd",
             "<xs:element name=\"item\"",
-            format!("<xs:import namespace=\"{XML_NAMESPACE}\"{location}/>\n  <xs:element name=\"item\""),
+            format!(
+                "<xs:import namespace=\"{namespace}\"{location}/>\n  <xs:element name=\"item\""
+            ),
         )
         .replacing(
             "schema/item.xsd",
             "<xs:attribute name=\"internal\" type=\"xs:string\"/>",
-            "<xs:attribute name=\"internal\" type=\"xs:string\"/>\n    <xs:attribute ref=\"xml:lang\"/>",
+            format!("<xs:attribute name=\"internal\" type=\"xs:string\"/>\n    {declared}"),
         )
         .replacing(
             "fixtures/in/two.xml",
             "<item id=\"1\">",
-            "<item id=\"1\" xml:lang=\"en\">",
+            format!("<item id=\"1\"{carried}>"),
         )
+}
+
+fn importing_the_xml_namespace(location: &str) -> Variant {
+    importing(
+        XML_NAMESPACE,
+        location,
+        "<xs:attribute ref=\"xml:lang\"/>",
+        " xml:lang=\"en\"",
+    )
+}
+
+fn importing_xlink(location: &str) -> Variant {
+    importing(
+        XLINK,
+        location,
+        &format!("<xs:attribute xmlns:xlink=\"{XLINK}\" ref=\"xlink:href\"/>"),
+        &format!(" xmlns:xlink=\"{XLINK}\" xlink:href=\"https://example.org/one\""),
+    )
+}
+
+fn assert_no_violation(adapter: &Variant) {
+    let conversion = converted(adapter, "two.xml");
+    assert_eq!(
+        violations(&conversion.findings),
+        Vec::<(String, String)>::new(),
+        "{:?}",
+        rows(&conversion.findings)
+    );
 }
 
 #[test]
 fn reports_nothing_about_a_record_whose_schema_imports_the_xml_namespace_with_no_schema_location() {
-    let conversion = converted(&importing_the_xml_namespace(""), "two.xml");
-    assert_eq!(
-        violations(&conversion.findings),
-        Vec::<(String, String)>::new(),
-        "{:?}",
-        rows(&conversion.findings)
-    );
+    assert_no_violation(&importing_the_xml_namespace(""));
+}
+
+#[test]
+fn reports_nothing_about_a_record_whose_schema_imports_the_xml_namespace_from_w3c() {
+    assert_no_violation(&importing_the_xml_namespace(
+        " schemaLocation=\"http://www.w3.org/2009/01/xml.xsd\"",
+    ));
+}
+
+#[test]
+fn reports_nothing_about_a_record_whose_schema_imports_xlink_from_a_remote_address() {
+    assert_no_violation(&importing_xlink(
+        " schemaLocation=\"https://www.w3.org/1999/xlink.xsd\"",
+    ));
+}
+
+fn shipping_xml_xsd(lang: &str) -> String {
+    format!(
+        "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" targetNamespace=\"{XML_NAMESPACE}\">\n  {lang}\n</xs:schema>\n"
+    )
 }
 
 #[test]
 fn reports_nothing_about_a_record_whose_schema_imports_the_xml_namespace_from_the_adapter() {
-    let shipped = importing_the_xml_namespace(" schemaLocation=\"xml.xsd\"").with(
-        "schema/xml.xsd",
-        format!(
-            "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" targetNamespace=\"{XML_NAMESPACE}\">\n  <xs:attribute name=\"lang\" type=\"xs:language\"/>\n</xs:schema>\n"
+    assert_no_violation(
+        &importing_the_xml_namespace(" schemaLocation=\"xml.xsd\"").with(
+            "schema/xml.xsd",
+            shipping_xml_xsd("<xs:attribute name=\"lang\" type=\"xs:language\"/>"),
         ),
     );
-    let conversion = converted(&shipped, "two.xml");
-    assert_eq!(
-        violations(&conversion.findings),
-        Vec::<(String, String)>::new(),
-        "{:?}",
-        rows(&conversion.findings)
+}
+
+#[test]
+fn applies_the_adapter_s_own_schema_of_the_xml_namespace_over_the_bridge_s() {
+    let french_only = importing_the_xml_namespace(" schemaLocation=\"xml.xsd\"").with(
+        "schema/xml.xsd",
+        shipping_xml_xsd(
+            "<xs:attribute name=\"lang\">\n    <xs:simpleType>\n      <xs:restriction base=\"xs:language\">\n        <xs:enumeration value=\"fr\"/>\n      </xs:restriction>\n    </xs:simpleType>\n  </xs:attribute>",
+        ),
+    );
+    let records: Vec<String> = violations(&converted(&french_only, "two.xml").findings)
+        .into_iter()
+        .map(|(record, _)| record)
+        .collect();
+    assert!(
+        records.contains(&"/catalog/item[1]".to_owned()),
+        "the item whose xml:lang the adapter's schema does not allow: {records:?}"
+    );
+}
+
+#[test]
+fn refuses_a_schema_that_imports_another_namespace_from_a_remote_address() {
+    let remote = importing(
+        "urn:example:elsewhere",
+        " schemaLocation=\"http://www.w3.org/2009/01/xml.xsd\"",
+        "",
+        "",
+    );
+    let adapter = load_adapter(&remote).expect("adapter");
+    let Err(error) = prepare(&adapter, &remote) else {
+        panic!("a schema at a remote address was read");
+    };
+    assert!(
+        error.to_string().contains("not inside the adapter"),
+        "{error}"
     );
 }
 
