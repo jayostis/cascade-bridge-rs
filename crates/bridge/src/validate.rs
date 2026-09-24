@@ -218,35 +218,48 @@ impl Schema {
 
 /// Read a schema and everything it names, then compile it.
 pub(crate) fn compile(iri: &str, resolver: &dyn Resolver) -> Result<Schema> {
+    let mut catalog = SchemaCatalog::new();
+    catalog.add_xml_catalog();
     let mut read: HashMap<String, String> = HashMap::new();
+    let mut answered_by_the_bridge: HashMap<String, String> = HashMap::new();
     let mut pending = vec![iri.to_owned()];
     while let Some(location) = pending.pop() {
-        let key = key(&location);
-        if read.contains_key(&key) {
+        let read_as = key(&location);
+        if read.contains_key(&read_as) {
             continue;
         }
         let text = String::from_utf8(resolver.read(&location)?)
             .map_err(|e| Error::msg(format!("{location}: {e}")))?;
         let base =
             Iri::parse(location.clone()).map_err(|e| Error::msg(format!("{location}: {e}")))?;
-        for named in directives(&text).map_err(|e| Error::msg(format!("{location}: {e}")))? {
+        for Directive { imported, named } in
+            directives(&text).map_err(|e| Error::msg(format!("{location}: {e}")))?
+        {
             let joined = base
                 .resolve(&named)
-                .map_err(|e| Error::msg(format!("{location} names {named}: {e}")))?;
-            pending.push(joined.into_inner());
+                .map_err(|e| Error::msg(format!("{location} names {named}: {e}")))?
+                .into_inner();
+            let copy = imported
+                .filter(|namespace| SUPPLIED_BY_THE_BRIDGE.contains(&namespace.as_str()))
+                .and_then(|namespace| catalog.lookup(&namespace));
+            match copy {
+                Some(copy) if !joined.starts_with(resolver.root()) => {
+                    answered_by_the_bridge.insert(key(&joined), copy.to_owned());
+                }
+                _ => pending.push(joined),
+            }
         }
-        read.insert(key, text);
+        read.insert(read_as, text);
     }
 
     let primary = read
         .get(&key(iri))
         .ok_or_else(|| Error::msg(format!("{iri} was not read")))?
         .clone();
-    let mut catalog = SchemaCatalog::new();
-    catalog.add_xml_catalog();
     let unanswered = Arc::new(Mutex::new(Vec::new()));
     let loader = Preloaded {
         documents: read,
+        answered_by_the_bridge,
         supplied_by_the_bridge: SUPPLIED_BY_THE_BRIDGE
             .iter()
             .filter_map(|namespace| catalog.lookup(namespace))
@@ -271,9 +284,16 @@ pub(crate) fn compile(iri: &str, resolver: &dyn Resolver) -> Result<Schema> {
     })
 }
 
+/// A schemaLocation as the schema writes it, and the namespace it is for where
+/// it is an xs:import's.
+struct Directive {
+    imported: Option<String>,
+    named: String,
+}
+
 /// Every schemaLocation an xs:include, xs:import, xs:redefine or xs:override
-/// names, as the schema writes it.
-fn directives(text: &str) -> Result<Vec<String>> {
+/// names.
+fn directives(text: &str) -> Result<Vec<Directive>> {
     let mut reader = quick_xml::NsReader::from_str(text);
     reader.config_mut().expand_empty_elements = true;
     let mut named = Vec::new();
@@ -288,11 +308,25 @@ fn directives(text: &str) -> Result<Vec<String>> {
                 if !DIRECTIVES.contains(&start.local_name().as_ref()) {
                     continue;
                 }
+                let mut imported = None;
+                let mut location = None;
                 for attribute in start.attributes() {
                     let attribute = attribute?;
-                    if attribute.key.as_ref() == b"schemaLocation" {
-                        named.push(attribute.unescape_value()?.into_owned());
+                    match attribute.key.as_ref() {
+                        b"namespace" if start.local_name().as_ref() == b"import" => {
+                            imported = Some(attribute.unescape_value()?.into_owned());
+                        }
+                        b"schemaLocation" => {
+                            location = Some(attribute.unescape_value()?.into_owned());
+                        }
+                        _ => {}
                     }
+                }
+                if let Some(location) = location {
+                    named.push(Directive {
+                        imported,
+                        named: location,
+                    });
                 }
             }
             Event::Eof => return Ok(named),
@@ -365,6 +399,7 @@ fn utf8_declaration(xml: &str) -> String {
 /// is caught here instead.
 struct Preloaded {
     documents: HashMap<String, String>,
+    answered_by_the_bridge: HashMap<String, String>,
     supplied_by_the_bridge: Vec<String>,
     unanswered: Arc<Mutex<Vec<String>>>,
 }
@@ -383,6 +418,9 @@ impl SchemaLoader for Preloaded {
             .any(|supplied| supplied == location)
         {
             return EmbeddedLoader.load(location);
+        }
+        if let Some(copy) = self.answered_by_the_bridge.get(&key(location)) {
+            return EmbeddedLoader.load(copy);
         }
         match self.documents.get(&key(location)) {
             Some(text) => Ok(text.clone()),
