@@ -3,7 +3,6 @@ name = "cascade-bridge-wasm"
 description = "The library for a host that hands it bytes by IRI: test and convert, built for wasm32-unknown-unknown."
 version.workspace = true
 edition.workspace = true
-rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 

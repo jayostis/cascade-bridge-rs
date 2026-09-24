@@ -3,7 +3,6 @@ name = "cascade-bridge"
 description = "Cascade Bridge for Rust: runs Cascade Bridge Adapters under the sparql-1.1 profile."
 version.workspace = true
 edition.workspace = true
-rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
