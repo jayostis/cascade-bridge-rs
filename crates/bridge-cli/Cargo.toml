@@ -18,3 +18,4 @@ cascade-bridge = { path = "../bridge", version = "=0.1.0" }
 # The tests read the graph the command wrote back, rather than matching its text.
 oxrdf = "=0.3.4"
 oxrdfio = "=0.2.6"
+tempfile = "=3.27.0"

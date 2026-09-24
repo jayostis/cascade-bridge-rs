@@ -35,22 +35,34 @@ fn reproduces_every_finding_the_specification_s_synthetic_adapter_expects() {
         .output()
         .expect("run the command");
     let stdout = String::from_utf8_lossy(&run.stdout).into_owned();
-    let outcomes: Vec<(&str, &str)> = stdout
+    // An entry's line: its outcome, its name, its time, and what the run said.
+    let entries: Vec<(&str, &str, &str)> = stdout
         .lines()
+        .filter(|line| line.starts_with("  "))
         .filter_map(|line| {
             let mut fields = line.split_whitespace();
-            Some((fields.next()?, fields.next()?))
+            let outcome = fields.next()?;
+            let name = fields.next()?;
+            let (_, said) = line.split_once(" s  ")?;
+            Some((outcome, name, said))
         })
         .collect();
     // Which entries the specification's manifest names is the specification's to
-    // change, so they are read rather than listed: every one it judges holds, and
-    // the run judged something.
+    // change, so they are read rather than listed. Every one this Bridge can
+    // judge passes; an entry it cannot judge is let through only for the reason
+    // its kind gives, so a judged entry going quiet fails here.
+    assert!(!entries.is_empty(), "{stdout}");
+    for (outcome, name, said) in &entries {
+        let excused = match *outcome {
+            "passed" => true,
+            "cantTell" => said.contains("bridge:InputOnlyTest"),
+            "untested" => said.contains("datasets are not fetched"),
+            _ => false,
+        };
+        assert!(excused, "{name} is {outcome}: {said}\n{stdout}");
+    }
     assert!(
-        !outcomes.iter().any(|(outcome, _)| *outcome == "failed"),
-        "{stdout}"
-    );
-    assert!(
-        outcomes.iter().any(|(outcome, _)| *outcome == "passed"),
+        entries.iter().any(|(outcome, ..)| *outcome == "passed"),
         "{stdout}"
     );
     assert_eq!(run.status.code(), Some(0), "{stdout}");

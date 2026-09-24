@@ -2,27 +2,25 @@
 // thing in different encodings are the same document, and must lift to the
 // same graph; decoding as UTF-8 whatever the bytes say turns one of them into
 // mojibake, or into nothing at all.
-use cascade_bridge::lift_slice;
-use oxrdf::dataset::{CanonicalizationAlgorithm, CanonicalizationHashAlgorithm};
-use oxrdf::Dataset;
+use cascade_bridge::{canonical_lines, lift_slice};
+use oxrdf::{Quad, Term};
 use std::collections::BTreeSet;
 
 const DOCUMENT: &str =
     r#"<?xml version="1.0" encoding="UTF-16"?><note lang="en">café — three children</note>"#;
 
-fn lift(bytes: &[u8]) -> BTreeSet<String> {
-    let store = lift_slice(bytes, None)
+fn skeleton(bytes: &[u8]) -> Vec<Quad> {
+    lift_slice(bytes, None)
         .expect("lift")
         .into_skeleton()
-        .expect("skeleton");
-    let mut dataset = Dataset::new();
-    for quad in store.iter() {
-        dataset.insert(&quad.expect("quad"));
-    }
-    dataset.canonicalize(CanonicalizationAlgorithm::Rdfc10 {
-        hash_algorithm: CanonicalizationHashAlgorithm::Sha256,
-    });
-    dataset.iter().map(|q| q.to_string()).collect()
+        .expect("skeleton")
+        .iter()
+        .map(|quad| quad.expect("quad"))
+        .collect()
+}
+
+fn lift(bytes: &[u8]) -> BTreeSet<String> {
+    canonical_lines(skeleton(bytes)).expect("canonical")
 }
 
 fn utf16le_with_bom(text: &str) -> Vec<u8> {
@@ -45,9 +43,17 @@ fn utf16be_with_bom(text: &str) -> Vec<u8> {
 fn a_utf16_document_lifts_to_the_graph_of_its_utf8_twin() {
     let utf8 = DOCUMENT.replace("UTF-16", "UTF-8");
     let expected = lift(utf8.as_bytes());
-    assert!(expected
-        .iter()
-        .any(|line| line.contains("caf\\u00E9") || line.contains("café")));
+    let text: Vec<String> = skeleton(utf8.as_bytes())
+        .into_iter()
+        .filter_map(|quad| match quad.object {
+            Term::Literal(literal) => Some(literal.value().to_owned()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        text.iter().any(|value| value == "café — three children"),
+        "{text:?}"
+    );
 
     assert_eq!(lift(&utf16le_with_bom(DOCUMENT)), expected);
     assert_eq!(lift(&utf16be_with_bom(DOCUMENT)), expected);

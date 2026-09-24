@@ -8,16 +8,14 @@
 // them is spelled. Comparison is stricter than conversion: an address on
 // either side that reaches other than one node fails the entry, and is said to
 // have failed it by the address and what it selected.
-use cascade_bridge::{
-    canonical_lines, convert, load_adapter, prepare, run_manifest, Conversion, DirectoryResolver,
-    Resolver, RunOptions, Source,
-};
-use oxrdf::{Quad, Term};
-use std::path::PathBuf;
+mod common;
 
-const OA: &str = "http://www.w3.org/ns/oa#";
-const SH_VALUE: &str = "http://www.w3.org/ns/shacl#value";
-const RDF_VALUE: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#value";
+use cascade_bridge::{
+    canonical_lines, load_adapter, run_manifest, Conversion, Resolver, RunOptions,
+};
+use common::{address, annotations, committed, converted, says, tiny, Variant, OA, SH};
+use oxrdf::{Quad, Term};
+
 const ADDRESS_NOT_ONE_NODE: &str =
     "https://ns.cascadeprotocol.org/bridge/v1-draft#addressNotOneNode";
 
@@ -26,92 +24,9 @@ const ADDRESS_NOT_ONE_NODE: &str =
 const NOTE_QUERY: &str = "mapping/item-note-findings.rq";
 const NOTE: &str = "rdf:value ?at";
 
-/// The tiny adapter with some of its files rewritten as they are read, so a
-/// variant of a committed input, query or oracle is run without committing one.
-struct Variant {
-    directory: DirectoryResolver,
-    edits: Vec<(&'static str, &'static str, String)>,
-}
-
-impl Resolver for Variant {
-    fn root(&self) -> &str {
-        self.directory.root()
-    }
-
-    fn read(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
-        let bytes = self.directory.read(iri)?;
-        let mut text = String::from_utf8(bytes).expect("utf-8");
-        for (file, from, to) in &self.edits {
-            if !iri.ends_with(file) {
-                continue;
-            }
-            assert!(text.contains(from), "{file} does not carry {from}");
-            text = text.replace(from, to);
-        }
-        Ok(text.into_bytes())
-    }
-}
-
-fn directory() -> DirectoryResolver {
-    DirectoryResolver::new(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/tiny-adapter"))
-        .expect("resolver")
-}
-
-fn tiny() -> Variant {
-    Variant {
-        directory: directory(),
-        edits: Vec::new(),
-    }
-}
-
 /// The tiny adapter with one string of one of its files replaced.
-fn variant(file: &'static str, from: &'static str, to: &str) -> Variant {
-    variants(vec![(file, from, to.to_owned())])
-}
-
-fn variants(edits: Vec<(&'static str, &'static str, String)>) -> Variant {
-    Variant {
-        directory: directory(),
-        edits,
-    }
-}
-
-fn run(resolver: &dyn Resolver, input: &str) -> Conversion {
-    let adapter = load_adapter(resolver).expect("adapter");
-    let prepared = prepare(&adapter, resolver).expect("prepared");
-    let iri = format!("{}fixtures/in/{input}", resolver.root());
-    let xml = resolver.read(&iri).expect("input");
-    convert(
-        &prepared,
-        Source {
-            iri: &iri,
-            envelope: None,
-            xml: &xml,
-        },
-    )
-    .expect("conversion")
-}
-
-fn text(term: &Term) -> String {
-    match term {
-        Term::Literal(literal) => literal.value().to_owned(),
-        other => other.to_string(),
-    }
-}
-
-fn objects(findings: &[Quad], subject: &str, predicate: &str) -> Vec<Term> {
-    findings
-        .iter()
-        .filter(|quad| quad.subject.to_string() == subject && quad.predicate.as_str() == predicate)
-        .map(|quad| quad.object.clone())
-        .collect()
-}
-
-fn reached(findings: &[Quad], subject: &str, predicate: &str) -> String {
-    objects(findings, subject, predicate)
-        .first()
-        .map(|term| term.to_string())
-        .unwrap_or_default()
+fn variant(file: &str, from: &str, to: &str) -> Variant {
+    Variant::of(tiny()).replacing(file, from, to)
 }
 
 /// Every address this Bridge could not follow, as the node the report selects
@@ -125,14 +40,8 @@ fn reports(findings: &[Quad]) -> Vec<(String, String)> {
         )
         .map(|quad| {
             let annotation = quad.subject.to_string();
-            let target = reached(findings, &annotation, &format!("{OA}hasTarget"));
-            let selector = reached(findings, &target, &format!("{OA}hasSelector"));
-            let selects = objects(findings, &selector, RDF_VALUE);
-            let written = objects(findings, &annotation, SH_VALUE);
-            (
-                selects.first().map(text).unwrap_or_default(),
-                written.first().map(text).unwrap_or_default(),
-            )
+            let (selects, _) = address(findings, &annotation);
+            (selects, says(findings, &annotation, &format!("{SH}value")))
         })
         .collect();
     reported.sort();
@@ -148,8 +57,8 @@ fn graph(conversion: &Conversion) -> Vec<String> {
 
 #[test]
 fn reports_an_address_that_selects_no_node_and_produces_the_graph_all_the_same() {
-    let plain = run(&tiny(), "two.xml");
-    let strayed = run(
+    let plain = converted(&tiny(), "two.xml");
+    let strayed = converted(
         &variant(NOTE_QUERY, NOTE, "rdf:value \"nowhere\""),
         "two.xml",
     );
@@ -163,7 +72,7 @@ fn reports_an_address_that_selects_no_node_and_produces_the_graph_all_the_same()
 
 #[test]
 fn reports_an_address_that_selects_more_than_one_node() {
-    let several = run(&variant(NOTE_QUERY, NOTE, "rdf:value \"*\""), "two.xml");
+    let several = converted(&variant(NOTE_QUERY, NOTE, "rdf:value \"*\""), "two.xml");
     assert_eq!(
         reports(&several.findings),
         [("/catalog".to_owned(), "*".to_owned())],
@@ -173,7 +82,7 @@ fn reports_an_address_that_selects_more_than_one_node() {
 
 #[test]
 fn reports_an_address_that_is_no_xpath_at_all() {
-    let nonsense = run(&variant(NOTE_QUERY, NOTE, "rdf:value \"(((\""), "two.xml");
+    let nonsense = converted(&variant(NOTE_QUERY, NOTE, "rdf:value \"(((\""), "two.xml");
     assert_eq!(
         reports(&nonsense.findings),
         [("/catalog".to_owned(), "(((".to_owned())]
@@ -182,7 +91,7 @@ fn reports_an_address_that_is_no_xpath_at_all() {
 
 #[test]
 fn reports_an_address_two_findings_of_one_record_share_once() {
-    let shared = run(
+    let shared = converted(
         &variant(NOTE_QUERY, NOTE, "rdf:value \"nowhere\""),
         "order.xml",
     );
@@ -204,15 +113,14 @@ fn reports_an_address_two_findings_of_one_record_share_once() {
 #[test]
 fn follows_an_address_through_what_the_graph_leaves_out() {
     for address in ["comment()[1]", "processing-instruction()[1]", "node()[2]"] {
-        let counted = run(
-            &variants(vec![
-                (
+        let counted = converted(
+            &Variant::of(tiny())
+                .replacing(
                     "fixtures/in/two.xml",
                     "<item id=\"1\">",
-                    "<item id=\"1\"><!-- said of the first --><?say it again?>".to_owned(),
-                ),
-                (NOTE_QUERY, NOTE, format!("rdf:value \"{address}\"")),
-            ]),
+                    "<item id=\"1\"><!-- said of the first --><?say it again?>",
+                )
+                .replacing(NOTE_QUERY, NOTE, format!("rdf:value \"{address}\"")),
             "two.xml",
         );
         assert_eq!(
@@ -236,7 +144,7 @@ fn reports_an_address_that_leaves_the_record() {
         "following-sibling::item[1]",
         "/catalog/item[1]/note[1]",
     ] {
-        let outward = run(
+        let outward = converted(
             &variant(NOTE_QUERY, NOTE, &format!("rdf:value \"{address}\"")),
             "two.xml",
         );
@@ -248,43 +156,35 @@ fn reports_an_address_that_leaves_the_record() {
     }
 }
 
-/// Every input the adapter committed, which its oracles are written against.
-fn committed() -> Vec<String> {
-    let inputs = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/tiny-adapter/fixtures/in");
-    let mut named: Vec<String> = std::fs::read_dir(inputs)
-        .expect("the committed inputs")
-        .map(|entry| {
-            entry
-                .expect("entry")
-                .file_name()
-                .to_string_lossy()
-                .into_owned()
-        })
-        .collect();
-    named.sort();
-    named
-}
-
 /// The guard that verification is not noisy: every address the adapter on disk
-/// writes, for every input it committed, selects the one node it names.
+/// writes, for every input it committed, selects the one node it names. It
+/// guards nothing unless some of those findings are addressed below their
+/// record, so it counts them rather than how many inputs there are.
 #[test]
 fn reports_nothing_for_any_input_the_adapter_committed() {
     let resolver = tiny();
-    let inputs = committed();
-    assert!(inputs.len() > 20, "{inputs:?}");
-    for input in inputs {
-        let conversion = run(&resolver, &input);
+    let mut followed = 0;
+    for input in committed() {
+        let conversion = converted(&resolver, &input);
         assert_eq!(
             reports(&conversion.findings),
             Vec::<(String, String)>::new(),
             "{input}"
         );
+        followed += annotations(&conversion.findings)
+            .iter()
+            .filter(|annotation| !address(&conversion.findings, annotation).1.is_empty())
+            .count();
     }
+    assert!(
+        followed > 0,
+        "no committed input draws a finding addressed below its record"
+    );
 }
 
 #[test]
 fn produces_the_graph_for_a_document_no_tree_can_be_built_from() {
-    let two_rooted = run(
+    let two_rooted = converted(
         &variant(
             "fixtures/in/two.xml",
             "</catalog>",
@@ -292,7 +192,7 @@ fn produces_the_graph_for_a_document_no_tree_can_be_built_from() {
         ),
         "two.xml",
     );
-    assert_eq!(graph(&two_rooted), graph(&run(&tiny(), "two.xml")));
+    assert_eq!(graph(&two_rooted), graph(&converted(&tiny(), "two.xml")));
     assert_eq!(
         reports(&two_rooted.findings),
         Vec::<(String, String)>::new(),
@@ -366,10 +266,9 @@ fn fails_an_address_that_selects_another_node_of_the_same_document() {
 /// The adapter's own address and the oracle's, each of them the one node the
 /// finding is about, spelled two correct ways.
 fn spelled(adapter: &str, oracle: &str) -> Variant {
-    variants(vec![
-        (NOTE_QUERY, NOTE, format!("rdf:value \"{adapter}\"")),
-        (ORACLE, QUERY_FINDING, query_finding(oracle)),
-    ])
+    Variant::of(tiny())
+        .replacing(NOTE_QUERY, NOTE, format!("rdf:value \"{adapter}\""))
+        .replacing(ORACLE, QUERY_FINDING, query_finding(oracle))
 }
 
 /// A text node is a node a finding is about as an element is.
@@ -425,15 +324,10 @@ const REPORTED: &str = "@prefix ex:  <urn:example:catalog#> .
 #[test]
 fn fails_an_entry_whose_address_selects_no_node() {
     let (outcome, said) = judged(
-        &variants(vec![
-            (NOTE_QUERY, NOTE, "rdf:value \"nowhere\"".to_owned()),
-            (ORACLE, QUERY_FINDING, query_finding("nowhere")),
-            (
-                ORACLE,
-                "@prefix ex:  <urn:example:catalog#> .",
-                REPORTED.to_owned(),
-            ),
-        ]),
+        &Variant::of(tiny())
+            .replacing(NOTE_QUERY, NOTE, "rdf:value \"nowhere\"")
+            .replacing(ORACLE, QUERY_FINDING, query_finding("nowhere"))
+            .replacing(ORACLE, "@prefix ex:  <urn:example:catalog#> .", REPORTED),
         "pass",
     );
     assert_eq!(outcome, "failed", "{said}");

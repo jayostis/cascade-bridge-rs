@@ -14,7 +14,10 @@
 // that converts. An auto trait is granted by every field at once and withdrawn
 // by any one of them, with no line to read it off and no caller in this
 // repository to miss it.
-use cascade_bridge::{DirectoryResolver, Prepared, Resolver};
+mod common;
+
+use cascade_bridge::{Prepared, Resolver};
+use common::{tiny, tiny_with_vocabularies, with_accounting, ACCOUNTING};
 use std::path::PathBuf;
 
 const ALLOWED: &str = "resolver.rs";
@@ -51,46 +54,38 @@ fn lets_only_the_resolver_name_the_filesystem() {
     assert_eq!(offenders, Vec::<String>::new());
 }
 
-fn tiny() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/tiny-adapter")
+/// What refusing this read said, where it was refused.
+fn refusal(read: cascade_bridge::Result<Vec<u8>>) -> String {
+    read.err()
+        .map(|error| error.to_string())
+        .unwrap_or_default()
 }
 
 #[test]
 fn refuses_a_path_that_leaves_the_adapter_however_it_is_spelled() {
-    let resolver = DirectoryResolver::new(tiny()).expect("resolver");
+    let resolver = tiny();
     let root = resolver.root().to_owned();
 
     // Inside: the crate itself is readable.
-    assert!(resolver
+    resolver
         .read(&format!("{root}ro-crate-metadata.json"))
-        .is_ok());
+        .expect("the crate, inside the adapter");
 
     // Outside, spelled plainly and spelled in percent-encoded dot segments.
     // The second is what a prefix test on the IRI string lets through.
     for escape in ["../harness.rs", "%2e%2e/harness.rs", "%2E%2E/boundary.rs"] {
         let iri = format!("{root}{escape}");
-        let refused = resolver.read(&iri);
+        let refused = refusal(resolver.read(&iri));
         assert!(
-            refused.is_err(),
-            "{iri} was readable from outside the adapter"
+            refused.contains("not inside the adapter"),
+            "{iri} was readable from outside the adapter: {refused:?}"
         );
-        assert!(refused
-            .unwrap_err()
-            .to_string()
-            .contains("not inside the adapter"));
     }
 
     // Another server is outside however its path is spelled.
     let elsewhere = "file://elsewhere/share/adapter/ro-crate-metadata.json";
-    assert!(resolver
-        .read(elsewhere)
-        .unwrap_err()
-        .to_string()
-        .contains("not inside the adapter"));
-}
-
-fn checkout() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/tiny-vocabularies")
+    let refused = refusal(resolver.read(elsewhere));
+    assert!(refused.contains("not inside the adapter"), "{refused:?}");
 }
 
 /// The checkout of `the-cascade-protocol/spec` the engine command was given is
@@ -101,10 +96,7 @@ fn checkout() -> PathBuf {
 /// the checkout is no file of the crate.
 #[test]
 fn reads_each_directory_for_what_it_holds_and_refuses_what_is_in_neither() {
-    let resolver = DirectoryResolver::new(tiny())
-        .expect("resolver")
-        .with_vocabularies(checkout())
-        .expect("the vocabularies directory");
+    let resolver = tiny_with_vocabularies();
     let vocabularies = resolver
         .vocabularies()
         .expect("the checkout the command named")
@@ -112,40 +104,42 @@ fn reads_each_directory_for_what_it_holds_and_refuses_what_is_in_neither() {
     let shapes = format!("{vocabularies}ontologies/catalog/v1/catalog.shapes.ttl");
     let crate_iri = format!("{}ro-crate-metadata.json", resolver.root());
 
-    assert!(resolver.read(&crate_iri).is_ok());
-    assert!(resolver.read_vocabulary(&shapes).is_ok());
+    resolver
+        .read(&crate_iri)
+        .expect("the crate, inside the adapter");
+    resolver
+        .read_vocabulary(&shapes)
+        .expect("the shapes, inside the vocabularies");
+    let refused = refusal(resolver.read(&shapes));
     assert!(
-        resolver.read(&shapes).is_err(),
-        "{shapes} was read as a file of the crate"
+        refused.contains("not inside the adapter"),
+        "{shapes} was read as a file of the crate: {refused:?}"
     );
+    let refused = refusal(resolver.read_vocabulary(&crate_iri));
     assert!(
-        resolver.read_vocabulary(&crate_iri).is_err(),
-        "{crate_iri} was read as a file of the vocabulary"
+        refused.contains("not inside the vocabularies"),
+        "{crate_iri} was read as a file of the vocabulary: {refused:?}"
     );
 
     for escape in ["../boundary.rs", "%2e%2e/boundary.rs"] {
         let iri = format!("{vocabularies}{escape}");
-        let refused = resolver.read_vocabulary(&iri);
+        let refused = refusal(resolver.read_vocabulary(&iri));
         assert!(
-            refused.is_err(),
-            "{iri} was readable from outside the vocabularies directory"
+            refused.contains("not inside the vocabularies"),
+            "{iri} was readable from outside the vocabularies directory: {refused:?}"
         );
     }
-    assert!(resolver
-        .read(&format!("{}../harness.rs", resolver.root()))
-        .is_err());
+    let refused = refusal(resolver.read(&format!("{}../harness.rs", resolver.root())));
+    assert!(refused.contains("not inside the adapter"), "{refused:?}");
 }
 
 /// A run given no checkout reads no vocabulary, and says so rather than
 /// reaching for a file of the adapter.
 #[test]
 fn reads_no_vocabulary_where_the_command_named_no_checkout() {
-    let resolver = DirectoryResolver::new(tiny()).expect("resolver");
-    let refused = resolver
-        .read_vocabulary(&format!("{}ro-crate-metadata.json", resolver.root()))
-        .err()
-        .map(|error| error.to_string())
-        .unwrap_or_default();
+    let resolver = tiny();
+    let refused =
+        refusal(resolver.read_vocabulary(&format!("{}ro-crate-metadata.json", resolver.root())));
     assert!(refused.contains("no vocabularies"), "{refused:?}");
 }
 
@@ -156,4 +150,29 @@ fn reads_no_vocabulary_where_the_command_named_no_checkout() {
 fn moves_a_prepared_adapter_to_the_thread_that_converts_with_it() {
     fn sendable<T: Send>() {}
     sendable::<Prepared>();
+}
+
+/// A test's replaced file stands where the adapter's file would, and nowhere
+/// else: a double serving it at any path ending in its name would let a test
+/// pass while the Bridge read that file from outside the adapter.
+#[test]
+fn serves_a_replaced_file_only_where_the_adapter_would_read_it() {
+    let replaced = with_accounting("# replaced\n");
+    let inside = format!("{}{ACCOUNTING}", replaced.root());
+    assert_eq!(replaced.read(&inside).expect("inside"), b"# replaced\n");
+
+    let outside = format!("{}../{ACCOUNTING}", replaced.root());
+    let refused = replaced.read(&outside).expect_err("outside the adapter");
+    assert!(
+        refused.to_string().contains("not inside the adapter"),
+        "{refused}"
+    );
+
+    let refused = replaced
+        .read_vocabulary(&inside)
+        .expect_err("no vocabularies were named");
+    assert!(
+        refused.to_string().contains("named no vocabularies"),
+        "{refused}"
+    );
 }

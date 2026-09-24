@@ -10,91 +10,19 @@
 // true of.
 //
 // A crate naming no accounting is untouched by all of it, as it was in wave 1.
-use cascade_bridge::{
-    convert, load_adapter, prepare, Conversion, DirectoryResolver, Resolver, Source,
+mod common;
+
+use cascade_bridge::Resolver;
+use common::{
+    accounting, address, annotations, concept, conversion, count, entry, findings, gap_scheme,
+    node, one, says, step, tiny, with_accounting, Variant, ACCOUNTING, ACCOUNTING_PREAMBLE, BRIDGE,
+    CRATE, GAPS_PREAMBLE, GAP_SCHEME, NOTE_GAP, OA, PATH_NOT_ACCOUNTED, SH, XSD_INTEGER,
 };
 use oxrdf::{Quad, Term};
-use std::path::PathBuf;
+use oxrdfio::{RdfFormat, RdfParser};
 
-const OA: &str = "http://www.w3.org/ns/oa#";
-const SH: &str = "http://www.w3.org/ns/shacl#";
-const XSD_INTEGER: &str = "http://www.w3.org/2001/XMLSchema#integer";
-const RDF_TYPE: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
-const RDF_VALUE: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#value";
-const BRIDGE: &str = "https://ns.cascadeprotocol.org/bridge/v1-draft#";
-
-/// The census body, which is the one finding carrying a path that no entry
-/// reported.
-const PATH_NOT_ACCOUNTED: &str = "https://ns.cascadeprotocol.org/bridge/v1-draft#pathNotAccounted";
-
-/// The gaps the tiny adapter's committed gap scheme declares, and the crate
-/// terms that name the two files a gap is read from.
-const NOTE_GAP: &str = "urn:example:catalog#noteHasNoTerm";
 const SUMMARY_GAP: &str = "urn:example:catalog#summaryLosesItsMarkup";
-const ACCOUNTING: &str = "vocab/catalog-accounting.ttl";
-const GAP_SCHEME: &str = "vocab/catalog-gaps.ttl";
-const SOURCE_ACCOUNTING: &str = "bridge:sourceAccounting";
-
-/// The namespace the namespaced fixture is written in.
-const CATALOG: &str = "urn:example:catalog";
-
-fn tiny() -> DirectoryResolver {
-    DirectoryResolver::new(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/tiny-adapter"))
-        .expect("resolver")
-}
-
-/// The whole run, from the crate to the findings, as a result: a gap scheme
-/// may be refused at any stage of it, and which stage is not this crate's to
-/// say.
-fn conversion(resolver: &dyn Resolver, input: &str) -> cascade_bridge::Result<Conversion> {
-    let adapter = load_adapter(resolver)?;
-    let prepared = prepare(&adapter, resolver)?;
-    let iri = format!("{}fixtures/in/{input}", resolver.root());
-    let xml = resolver.read(&iri)?;
-    convert(
-        &prepared,
-        Source {
-            iri: &iri,
-            envelope: None,
-            xml: &xml,
-        },
-    )
-}
-
-fn findings(resolver: &dyn Resolver, input: &str) -> Vec<Quad> {
-    conversion(resolver, input).expect("conversion").findings
-}
-
-/// The one object this subject carries for this predicate, where it carries
-/// exactly one.
-fn one(quads: &[Quad], subject: &str, predicate: &str) -> Option<Term> {
-    let mut objects = quads
-        .iter()
-        .filter(|q| q.subject.to_string() == subject && q.predicate.as_str() == predicate)
-        .map(|q| q.object.clone());
-    let first = objects.next()?;
-    match objects.next() {
-        None => Some(first),
-        Some(_) => None,
-    }
-}
-
-fn node(quads: &[Quad], subject: &str, predicate: &str) -> String {
-    one(quads, subject, predicate)
-        .map(|term| term.to_string())
-        .unwrap_or_default()
-}
-
-/// A term as an address or a body is read: an IRI or a literal by what it
-/// says, anything else by how N-Triples writes it.
-fn says(quads: &[Quad], subject: &str, predicate: &str) -> String {
-    match one(quads, subject, predicate) {
-        Some(Term::NamedNode(named)) => named.as_str().to_owned(),
-        Some(Term::Literal(literal)) => literal.value().to_owned(),
-        Some(other) => other.to_string(),
-        None => String::new(),
-    }
-}
+const SKOS_BROADER: &str = "http://www.w3.org/2004/02/skos/core#broader";
 
 /// Every annotation an entry reported, by the node it is: a finding about a
 /// path, bodied at the gap the entry names rather than at the census's own
@@ -117,14 +45,12 @@ fn reported(findings: &[Quad]) -> Vec<(String, String, String, String)> {
     let mut rows: Vec<(String, String, String, String)> = reporters(findings)
         .iter()
         .map(|annotation| {
-            let target = node(findings, annotation, &format!("{OA}hasTarget"));
-            let selector = node(findings, &target, &format!("{OA}hasSelector"));
-            let refinement = node(findings, &selector, &format!("{OA}refinedBy"));
+            let (record, within) = address(findings, annotation);
             (
                 says(findings, annotation, &format!("{OA}hasBody")),
                 says(findings, annotation, &format!("{SH}value")),
-                says(findings, &selector, RDF_VALUE),
-                says(findings, &refinement, RDF_VALUE),
+                record,
+                within,
             )
         })
         .collect();
@@ -142,26 +68,11 @@ fn row(gap: &str, path: &str, record: &str, within: &str) -> (String, String, St
     )
 }
 
-/// How many nodes of the record this finding stands for, where it says.
-fn count(findings: &[Quad], annotation: &str) -> Option<String> {
-    match one(findings, annotation, &format!("{BRIDGE}occurrences"))? {
-        Term::Literal(literal) => Some(literal.value().to_owned()),
-        other => Some(other.to_string()),
-    }
-}
-
 /// Each reported gap as the record it is about and the count it carries.
 fn counted(findings: &[Quad]) -> Vec<(String, Option<String>)> {
     let mut rows: Vec<(String, Option<String>)> = reporters(findings)
         .iter()
-        .map(|annotation| {
-            let target = node(findings, annotation, &format!("{OA}hasTarget"));
-            let selector = node(findings, &target, &format!("{OA}hasSelector"));
-            (
-                says(findings, &selector, RDF_VALUE),
-                count(findings, annotation),
-            )
-        })
+        .map(|annotation| (address(findings, annotation).0, count(findings, annotation)))
         .collect();
     rows.sort();
     rows
@@ -178,151 +89,21 @@ fn about(findings: &[Quad], path: &str) -> String {
     first.expect("checked above")
 }
 
-/// Every annotation a run produced, by the node it is.
-fn annotations(findings: &[Quad]) -> Vec<String> {
-    findings
-        .iter()
-        .filter(|q| q.predicate.as_str() == RDF_TYPE)
-        .filter(
-            |q| matches!(&q.object, Term::NamedNode(n) if n.as_str() == format!("{OA}Annotation")),
-        )
-        .map(|q| q.subject.to_string())
-        .collect()
+/// The tiny adapter with its gap scheme replaced, so a kind and a severity can
+/// be varied without being committed.
+fn with_gaps(body: &str) -> Variant {
+    Variant::of(tiny()).with(GAP_SCHEME, body)
 }
 
-/// The tiny adapter with its accounting, its gap scheme, or both replaced, so
-/// a verdict, a kind and a severity can each be varied without any of them
-/// being committed.
-struct Adapted {
-    directory: DirectoryResolver,
-    accounting: Option<String>,
-    gaps: Option<String>,
-}
-
-impl Adapted {
-    fn accounting(body: &str) -> Self {
-        Self {
-            directory: tiny(),
-            accounting: Some(body.to_owned()),
-            gaps: None,
-        }
+/// One entry naming the gap a case turns on, or none.
+fn stated(path: &str, verdict: &str, gap: Option<&str>) -> String {
+    match gap {
+        Some(gap) => entry(path, verdict, &[&format!("bridge:namesGap {gap}")]),
+        None => entry(path, verdict, &[]),
     }
-
-    fn gaps(body: &str) -> Self {
-        Self {
-            directory: tiny(),
-            accounting: None,
-            gaps: Some(body.to_owned()),
-        }
-    }
-}
-
-impl Resolver for Adapted {
-    fn root(&self) -> &str {
-        self.directory.root()
-    }
-
-    fn read(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
-        if let (true, Some(body)) = (iri.ends_with(ACCOUNTING), &self.accounting) {
-            return Ok(body.as_bytes().to_vec());
-        }
-        if let (true, Some(body)) = (iri.ends_with(GAP_SCHEME), &self.gaps) {
-            return Ok(body.as_bytes().to_vec());
-        }
-        self.directory.read(iri)
-    }
-}
-
-/// The tiny adapter with the accounting struck out of its crate, which is
-/// every adapter that exists.
-struct Unaccounted {
-    directory: DirectoryResolver,
-}
-
-impl Resolver for Unaccounted {
-    fn root(&self) -> &str {
-        self.directory.root()
-    }
-
-    fn read(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
-        let bytes = self.directory.read(iri)?;
-        if !iri.ends_with("ro-crate-metadata.json") {
-            return Ok(bytes);
-        }
-        let text = String::from_utf8(bytes).expect("utf-8");
-        let kept: Vec<&str> = text
-            .lines()
-            .filter(|line| !line.contains(SOURCE_ACCOUNTING))
-            .collect();
-        assert_eq!(
-            text.lines().count() - kept.len(),
-            2,
-            "the crate names an accounting, in its context and on its root entity"
-        );
-        Ok(kept.join("\n").into_bytes())
-    }
-}
-
-/// The tiny adapter naming a gap scheme no file answers to, which is a crate
-/// that says what it does not carry and cannot show it.
-struct MissingGapScheme {
-    directory: DirectoryResolver,
 }
 
 const UNWRITTEN: &str = "vocab/gaps-nobody-wrote.ttl";
-
-impl Resolver for MissingGapScheme {
-    fn root(&self) -> &str {
-        self.directory.root()
-    }
-
-    fn read(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
-        let bytes = self.directory.read(iri)?;
-        if !iri.ends_with("ro-crate-metadata.json") {
-            return Ok(bytes);
-        }
-        let text = String::from_utf8(bytes).expect("utf-8");
-        assert_eq!(
-            text.matches(GAP_SCHEME).count(),
-            1,
-            "the crate names a gap scheme"
-        );
-        Ok(text.replace(GAP_SCHEME, UNWRITTEN).into_bytes())
-    }
-}
-
-const ACCOUNTING_PREAMBLE: &str = "@prefix bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#> .\n@prefix ex:     <urn:example:catalog#> .\n";
-
-const GAPS_PREAMBLE: &str = "@prefix skos:   <http://www.w3.org/2004/02/skos/core#> .\n@prefix sh:     <http://www.w3.org/ns/shacl#> .\n@prefix bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#> .\n@prefix ex:     <urn:example:catalog#> .\n";
-
-/// One entry, spelled as an accounting spells it.
-fn entry(path: &str, verdict: &str, gap: Option<&str>) -> String {
-    let names = match gap {
-        Some(gap) => format!(" ;\n   bridge:namesGap {gap}"),
-        None => String::new(),
-    };
-    format!("\n[] a bridge:PathEntry ;\n   bridge:sourcePath \"{path}\" ;\n   bridge:verdict bridge:{verdict}{names} .\n")
-}
-
-fn accounting(entries: &[String]) -> String {
-    format!("{ACCOUNTING_PREAMBLE}{}", entries.concat())
-}
-
-/// One gap concept, under the kind and at the severity a case turns on.
-fn concept(name: &str, kind: &str, severity: Option<&str>) -> String {
-    let declared = match severity {
-        Some(severity) => format!(" ;\n  sh:resultSeverity sh:{severity}"),
-        None => String::new(),
-    };
-    format!("\nex:{name} a skos:Concept ;\n  skos:inScheme ex:gaps ;\n  skos:broader bridge:{kind}{declared} .\n")
-}
-
-fn gap_scheme(concepts: &[String]) -> String {
-    format!(
-        "{GAPS_PREAMBLE}\nex:gaps a skos:ConceptScheme .\n{}",
-        concepts.concat()
-    )
-}
 
 #[test]
 fn reports_a_path_a_record_carries_three_times_once_at_the_first_counting_three() {
@@ -389,12 +170,12 @@ fn writes_the_count_as_an_xsd_integer() {
 
 /// The paths of `unaccounted-attribute.xml`'s record, the two attributes of it
 /// named as gaps: one on a child element, one on the record element itself.
-fn attribute_gaps() -> Adapted {
-    Adapted::accounting(&accounting(&[
-        entry("/item/@id", "noHome", Some("ex:noteHasNoTerm")),
-        entry("/item/title", "carried", None),
-        entry("/item/label", "carried", None),
-        entry("/item/label/@colour", "noHome", Some("ex:noteHasNoTerm")),
+fn attribute_gaps() -> Variant {
+    with_accounting(&accounting(&[
+        stated("/item/@id", "noHome", Some("ex:noteHasNoTerm")),
+        stated("/item/title", "carried", None),
+        stated("/item/label", "carried", None),
+        stated("/item/label/@colour", "noHome", Some("ex:noteHasNoTerm")),
     ]))
 }
 
@@ -432,22 +213,16 @@ fn refines_an_attribute_of_the_record_element_no_further() {
     );
 }
 
-/// A step of a path in the namespaced fixture's namespace, as the lift writes
-/// one where no prefix can be bound.
-fn step(local: &str) -> String {
-    format!("*[local-name()='{local}' and namespace-uri()='{CATALOG}']")
-}
-
 #[test]
 fn writes_a_namespaced_path_as_the_census_writes_it_for_the_same_node() {
     let item = step("item");
     let bogus = step("bogus");
     let path = format!("/{item}/{bogus}");
-    let namespaced = Adapted::accounting(&accounting(&[
-        entry(&format!("/{item}/@id"), "carried", None),
-        entry(&path, "noHome", Some("ex:noteHasNoTerm")),
-        entry(&format!("{path}/@colour"), "carried", None),
-        entry(&format!("{path}/@{}", step("colour")), "carried", None),
+    let namespaced = with_accounting(&accounting(&[
+        stated(&format!("/{item}/@id"), "carried", None),
+        stated(&path, "noHome", Some("ex:noteHasNoTerm")),
+        stated(&format!("{path}/@colour"), "carried", None),
+        stated(&format!("{path}/@{}", step("colour")), "carried", None),
     ]));
     assert_eq!(
         reported(&findings(&namespaced, "namespaced.xml")),
@@ -463,7 +238,7 @@ fn writes_a_namespaced_path_as_the_census_writes_it_for_the_same_node() {
 
 #[test]
 fn takes_the_severity_the_gap_declares_and_sh_info_where_it_declares_none() {
-    let declared = Adapted::gaps(&gap_scheme(&[
+    let declared = with_gaps(&gap_scheme(&[
         concept("noteHasNoTerm", "noPredicate", Some("Warning")),
         concept("summaryLosesItsMarkup", "sourceLacksRequired", None),
     ]));
@@ -526,7 +301,7 @@ fn bodies_a_reported_gap_at_the_gap_the_entry_names_and_motivates_it_by_classify
 #[test]
 fn reports_a_gap_of_every_kind_that_is_true_of_the_path() {
     for kind in ["noPredicate", "sourceLacksRequired"] {
-        let declared = Adapted::gaps(&gap_scheme(&[
+        let declared = with_gaps(&gap_scheme(&[
             concept("noteHasNoTerm", kind, None),
             concept("summaryLosesItsMarkup", "carriedWithLoss", None),
         ]));
@@ -542,7 +317,7 @@ fn reports_a_gap_of_every_kind_that_is_true_of_the_path() {
 #[test]
 fn emits_nothing_for_a_gap_of_a_kind_true_of_what_the_record_holds_at_the_path() {
     for kind in ["carriedWithLoss", "valueNotMapped", "schemaRuleUnnamed"] {
-        let declared = Adapted::gaps(&gap_scheme(&[
+        let declared = with_gaps(&gap_scheme(&[
             concept("noteHasNoTerm", kind, None),
             concept("summaryLosesItsMarkup", kind, None),
         ]));
@@ -563,15 +338,17 @@ fn emits_nothing_for_a_gap_of_a_kind_true_of_what_the_record_holds_at_the_path()
 #[test]
 fn bodies_no_finding_at_a_gap_the_committed_adapter_declares_under_a_kind_that_does_not_report() {
     let resolver = tiny();
-    let declared = String::from_utf8(
-        resolver
-            .read(&format!("{}{GAP_SCHEME}", resolver.root()))
-            .expect("the committed gap scheme"),
-    )
-    .expect("utf-8");
-    assert!(
-        declared.contains("ex:summaryLosesItsMarkup")
-            && declared.contains("skos:broader bridge:carriedWithLoss"),
+    let iri = format!("{}{GAP_SCHEME}", resolver.root());
+    let scheme = resolver.read(&iri).expect("the committed gap scheme");
+    let declared: Vec<Quad> = RdfParser::from_format(RdfFormat::Turtle)
+        .with_base_iri(&iri)
+        .expect("the scheme's IRI")
+        .for_slice(&scheme)
+        .collect::<Result<_, _>>()
+        .expect("the committed gap scheme is Turtle");
+    assert_eq!(
+        says(&declared, &format!("<{SUMMARY_GAP}>"), SKOS_BROADER),
+        format!("{BRIDGE}carriedWithLoss"),
         "the committed scheme declares the summary's gap under a kind that does not report"
     );
 
@@ -585,7 +362,7 @@ fn bodies_no_finding_at_a_gap_the_committed_adapter_declares_under_a_kind_that_d
         "no finding a run produced bodies a loss the entry recorded: {bodies:?}"
     );
 
-    let reporting = Adapted::gaps(&gap_scheme(&[
+    let reporting = with_gaps(&gap_scheme(&[
         concept("noteHasNoTerm", "noPredicate", None),
         concept("summaryLosesItsMarkup", "noPredicate", None),
     ]));
@@ -606,18 +383,18 @@ fn bodies_no_finding_at_a_gap_the_committed_adapter_declares_under_a_kind_that_d
 
 #[test]
 fn emits_nothing_for_a_verdict_that_names_no_gap() {
-    let no_gap = Adapted::accounting(&accounting(&[
-        entry("/item/@id", "carried", Some("ex:noteHasNoTerm")),
-        entry("/item/@internal", "ignored", Some("ex:noteHasNoTerm")),
-        entry("/item/title", "carried", Some("ex:noteHasNoTerm")),
-        entry(
+    let no_gap = with_accounting(&accounting(&[
+        stated("/item/@id", "carried", Some("ex:noteHasNoTerm")),
+        stated("/item/@internal", "ignored", Some("ex:noteHasNoTerm")),
+        stated("/item/title", "carried", Some("ex:noteHasNoTerm")),
+        stated(
             "/item/supersededTitle",
             "redundantWith",
             Some("ex:noteHasNoTerm"),
         ),
-        entry("/item/summary", "consumed", Some("ex:noteHasNoTerm")),
-        entry("/item/checked", "consumed", Some("ex:noteHasNoTerm")),
-        entry("/item/note", "carried", Some("ex:noteHasNoTerm")),
+        stated("/item/summary", "consumed", Some("ex:noteHasNoTerm")),
+        stated("/item/checked", "consumed", Some("ex:noteHasNoTerm")),
+        stated("/item/note", "carried", Some("ex:noteHasNoTerm")),
     ]));
     assert_eq!(
         reported(&findings(&no_gap, "every-verdict.xml")),
@@ -627,28 +404,11 @@ fn emits_nothing_for_a_verdict_that_names_no_gap() {
 }
 
 #[test]
-fn leaves_a_crate_that_names_no_accounting_every_finding_it_has_today() {
-    let unaccounted = Unaccounted { directory: tiny() };
-    for input in ["two.xml", "every-verdict.xml", "gap-three-times.xml"] {
-        assert_eq!(
-            reported(&findings(&unaccounted, input)),
-            Vec::new(),
-            "{input} through a crate naming no accounting"
-        );
-    }
-    assert_eq!(
-        annotations(&findings(&unaccounted, "every-verdict.xml")).len(),
-        1,
-        "the record's one note draws the one finding the adapter's queries construct"
-    );
-}
-
-#[test]
 fn leaves_a_crate_whose_entries_name_no_gaps_the_findings_it_has_today() {
-    let silent = Adapted::accounting(&accounting(&[
-        entry("/item/@id", "carried", None),
-        entry("/item/title", "carried", None),
-        entry("/item/note", "carried", None),
+    let silent = with_accounting(&accounting(&[
+        stated("/item/@id", "carried", None),
+        stated("/item/title", "carried", None),
+        stated("/item/note", "carried", None),
     ]));
     let found = findings(&silent, "two.xml");
     assert_eq!(reported(&found), Vec::new());
@@ -688,7 +448,7 @@ const UNPARSEABLE: &str = "@prefix skos: <http://www.w3.org/2004/02/skos/core#\n
 
 #[test]
 fn refuses_an_unparseable_gap_scheme() {
-    let Err(refusal) = conversion(&Adapted::gaps(UNPARSEABLE), "two.xml") else {
+    let Err(refusal) = conversion(&with_gaps(UNPARSEABLE), "two.xml") else {
         panic!("a gap scheme that is not Turtle is read as a scheme declaring nothing");
     };
     let refusal = refusal.to_string();
@@ -697,10 +457,12 @@ fn refuses_an_unparseable_gap_scheme() {
 
 #[test]
 fn refuses_a_gap_scheme_the_crate_names_and_nothing_answers_to() {
-    let missing = MissingGapScheme { directory: tiny() };
-    if conversion(&missing, "two.xml").is_ok() {
+    let missing = Variant::of(tiny()).replacing_exactly(CRATE, GAP_SCHEME, UNWRITTEN, 1);
+    let Err(refusal) = conversion(&missing, "two.xml") else {
         panic!("a crate that says what it does not carry and cannot show it is read in silence");
-    }
+    };
+    let refusal = refusal.to_string();
+    assert!(refusal.contains(UNWRITTEN), "{refusal}");
 }
 
 /// The scheme with everything the committed accounting names declared as it
@@ -720,7 +482,7 @@ fn scheme_but_for(concept_under_test: &str) -> String {
 /// <#SourceFinding> shape would then refuse is no better.
 #[test]
 fn refuses_a_gap_declaring_a_severity_the_specification_does_not_name() {
-    let catastrophic = Adapted::gaps(&scheme_but_for(
+    let catastrophic = with_gaps(&scheme_but_for(
         "ex:noteHasNoTerm a skos:Concept ;\n  skos:inScheme ex:gaps ;\n  skos:broader bridge:noPredicate ;\n  sh:resultSeverity ex:Catastrophic .\n",
     ));
     let Err(refusal) = conversion(&catastrophic, "two.xml") else {
@@ -732,7 +494,7 @@ fn refuses_a_gap_declaring_a_severity_the_specification_does_not_name() {
 
 #[test]
 fn refuses_a_gap_declaring_two_severities() {
-    let both = Adapted::gaps(&scheme_but_for(
+    let both = with_gaps(&scheme_but_for(
         "ex:noteHasNoTerm a skos:Concept ;\n  skos:inScheme ex:gaps ;\n  skos:broader bridge:noPredicate ;\n  sh:resultSeverity sh:Warning, sh:Violation .\n",
     ));
     let Err(refusal) = conversion(&both, "two.xml") else {
@@ -744,7 +506,7 @@ fn refuses_a_gap_declaring_two_severities() {
 
 #[test]
 fn refuses_a_gap_declaring_a_severity_that_is_no_iri() {
-    let quoted = Adapted::gaps(&scheme_but_for(
+    let quoted = with_gaps(&scheme_but_for(
         "ex:noteHasNoTerm a skos:Concept ;\n  skos:inScheme ex:gaps ;\n  skos:broader bridge:noPredicate ;\n  sh:resultSeverity \"sh:Warning\" .\n",
     ));
     let Err(refusal) = conversion(&quoted, "two.xml") else {
@@ -756,7 +518,7 @@ fn refuses_a_gap_declaring_a_severity_that_is_no_iri() {
 
 #[test]
 fn refuses_a_gap_the_scheme_declares_with_no_kind() {
-    let kindless = Adapted::gaps(&scheme_but_for(
+    let kindless = with_gaps(&scheme_but_for(
         "ex:noteHasNoTerm a skos:Concept ;\n  skos:inScheme ex:gaps ;\n  sh:resultSeverity sh:Warning .\n",
     ));
     let Err(refusal) = conversion(&kindless, "two.xml") else {
@@ -768,10 +530,10 @@ fn refuses_a_gap_the_scheme_declares_with_no_kind() {
 
 #[test]
 fn refuses_an_entry_naming_a_gap_the_scheme_does_not_declare() {
-    let unwritten = Adapted::accounting(&accounting(&[
-        entry("/item/@id", "carried", None),
-        entry("/item/title", "carried", None),
-        entry("/item/note", "noHome", Some("ex:noGapAnyoneDeclared")),
+    let unwritten = with_accounting(&accounting(&[
+        stated("/item/@id", "carried", None),
+        stated("/item/title", "carried", None),
+        stated("/item/note", "noHome", Some("ex:noGapAnyoneDeclared")),
     ]));
     let Err(refusal) = conversion(&unwritten, "two.xml") else {
         panic!("a gap nothing declares is read as a gap of a kind that does not report");
@@ -784,7 +546,7 @@ fn refuses_an_entry_naming_a_gap_the_scheme_does_not_declare() {
 /// bridge:sourcePath is a literal, and the same parse refuses all three.
 #[test]
 fn refuses_a_verdict_that_is_no_iri() {
-    let quoted = Adapted::accounting(&format!(
+    let quoted = with_accounting(&format!(
         "{ACCOUNTING_PREAMBLE}\n[] a bridge:PathEntry ;\n   bridge:sourcePath \"/item/note\" ;\n   bridge:verdict \"noHome\" .\n"
     ));
     let Err(refusal) = conversion(&quoted, "two.xml") else {
@@ -796,7 +558,7 @@ fn refuses_a_verdict_that_is_no_iri() {
 
 #[test]
 fn refuses_a_named_gap_that_is_no_iri() {
-    let quoted = Adapted::accounting(&format!(
+    let quoted = with_accounting(&format!(
         "{ACCOUNTING_PREAMBLE}\n[] a bridge:PathEntry ;\n   bridge:sourcePath \"/item/note\" ;\n   bridge:verdict bridge:noHome ;\n   bridge:namesGap \"ex:noteHasNoTerm\" .\n"
     ));
     let Err(refusal) = conversion(&quoted, "two.xml") else {
@@ -808,7 +570,7 @@ fn refuses_a_named_gap_that_is_no_iri() {
 
 #[test]
 fn refuses_a_gap_declaring_two_kinds() {
-    let both = Adapted::gaps(&scheme_but_for(
+    let both = with_gaps(&scheme_but_for(
         "ex:noteHasNoTerm a skos:Concept ;\n  skos:inScheme ex:gaps ;\n  skos:broader bridge:noPredicate, bridge:carriedWithLoss .\n",
     ));
     let Err(refusal) = conversion(&both, "two.xml") else {
@@ -823,7 +585,7 @@ fn refuses_a_gap_declaring_two_kinds() {
 /// it reports, which is the reason a second severity is refused one file over.
 #[test]
 fn refuses_an_entry_declaring_two_verdicts() {
-    let both = Adapted::accounting(&format!(
+    let both = with_accounting(&format!(
         "{ACCOUNTING_PREAMBLE}\n[] a bridge:PathEntry ;\n   bridge:sourcePath \"/item/note\" ;\n   bridge:verdict bridge:carried, bridge:noHome ;\n   bridge:namesGap ex:noteHasNoTerm .\n"
     ));
     let Err(refusal) = conversion(&both, "two.xml") else {
@@ -835,7 +597,7 @@ fn refuses_an_entry_declaring_two_verdicts() {
 
 #[test]
 fn refuses_an_entry_naming_two_gaps() {
-    let both = Adapted::accounting(&format!(
+    let both = with_accounting(&format!(
         "{ACCOUNTING_PREAMBLE}\n[] a bridge:PathEntry ;\n   bridge:sourcePath \"/item/note\" ;\n   bridge:verdict bridge:noHome ;\n   bridge:namesGap ex:noteHasNoTerm, ex:itemHasNoTitle .\n"
     ));
     let Err(refusal) = conversion(&both, "two.xml") else {
@@ -852,12 +614,12 @@ fn refuses_an_entry_naming_two_gaps() {
 /// a wrong finding rather than an absent one.
 #[test]
 fn reads_no_verdict_and_no_gap_from_a_subject_that_is_no_path_entry() {
-    let alongside = Adapted::accounting(&format!(
+    let alongside = with_accounting(&format!(
         "{}\nex:notAnEntry bridge:verdict \"free text\" ;\n   bridge:namesGap \"ex:noteHasNoTerm\" ;\n   bridge:verdict \"twice over\" .\n",
         accounting(&[
-            entry("/item/@id", "carried", None),
-            entry("/item/title", "carried", None),
-            entry("/item/note", "noHome", Some("ex:noteHasNoTerm")),
+            stated("/item/@id", "carried", None),
+            stated("/item/title", "carried", None),
+            stated("/item/note", "noHome", Some("ex:noteHasNoTerm")),
         ])
     ));
     assert_eq!(
@@ -869,7 +631,7 @@ fn reads_no_verdict_and_no_gap_from_a_subject_that_is_no_path_entry() {
 
 #[test]
 fn refuses_a_source_path_that_is_no_literal_wherever_it_stands() {
-    let addressed = Adapted::accounting(&format!(
+    let addressed = with_accounting(&format!(
         "{ACCOUNTING_PREAMBLE}\nex:notAnEntry bridge:sourcePath <urn:example:catalog#note> .\n"
     ));
     let Err(refusal) = conversion(&addressed, "two.xml") else {
@@ -887,7 +649,7 @@ fn refuses_a_source_path_that_is_no_literal_wherever_it_stands() {
 #[test]
 fn reports_from_a_verdict_that_names_a_gap_and_from_no_other_whatever_kind_it_names() {
     for verdict in ["noHome", "carriedInPart"] {
-        let stated = Adapted::accounting(&accounting(&[entry(
+        let stated = with_accounting(&accounting(&[stated(
             "/item/note",
             verdict,
             Some("ex:noteHasNoTerm"),
@@ -899,7 +661,7 @@ fn reports_from_a_verdict_that_names_a_gap_and_from_no_other_whatever_kind_it_na
         );
     }
     for verdict in ["carried", "ignored", "consumed", "redundantWith"] {
-        let stated = Adapted::accounting(&accounting(&[entry(
+        let stated = with_accounting(&accounting(&[stated(
             "/item/note",
             verdict,
             Some("ex:noteHasNoTerm"),
@@ -918,10 +680,10 @@ fn reports_from_a_verdict_that_names_a_gap_and_from_no_other_whatever_kind_it_na
 /// entry the Bridge never consults happens to say.
 #[test]
 fn asks_nothing_of_the_scheme_about_a_gap_named_by_a_verdict_that_names_none() {
-    let undeclared = Adapted::accounting(&accounting(&[
-        entry("/item/@id", "carried", None),
-        entry("/item/title", "carried", None),
-        entry("/item/note", "carried", Some("ex:noGapAnyoneDeclared")),
+    let undeclared = with_accounting(&accounting(&[
+        stated("/item/@id", "carried", None),
+        stated("/item/title", "carried", None),
+        stated("/item/note", "carried", Some("ex:noGapAnyoneDeclared")),
     ]));
     assert_eq!(reported(&findings(&undeclared, "two.xml")), Vec::new());
 }

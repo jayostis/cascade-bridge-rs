@@ -4,97 +4,145 @@
 // The files in tests/lift/ are copies of fixtures/lift/ in
 // jayostis/cascade-bridge-spec, which is the authority: a disagreement is this
 // Bridge's to fix, and a change there is copied here rather than argued with.
-use cascade_bridge::lift_slice;
-use oxrdf::dataset::{CanonicalizationAlgorithm, CanonicalizationHashAlgorithm};
-use oxrdf::{Dataset, Quad};
+use cascade_bridge::{canonical_lines, lift_slice};
+use oxigraph::store::Store;
+use oxrdf::Quad;
 use oxrdfio::{RdfFormat, RdfParser};
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-const VECTORS: [&str; 8] = [
-    "attributes",
-    "mixed-content",
-    "whitespace",
-    "cdata",
-    "dropped",
-    "namespaces",
-    "no-break-space",
-    "non-ascii",
-];
-
 /// Each skeleton vector with the bridge:elementNameOfEachRecord its manifest
-/// entry names.
+/// entry names. Every other vector in the directory is a lift vector, so one
+/// copied in is run whatever it is, and a skeleton vector missing here fails as
+/// a lift vector rather than going unrun.
 const SKELETON_VECTORS: [(&str, &str); 2] =
     [("skeleton", "Unit"), ("skeleton-record-root", "Unit")];
 
+fn vectors_directory() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/lift")
+}
+
 fn vector(name: &str, extension: &str) -> Vec<u8> {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/lift")
-        .join(format!("{name}.{extension}"));
+    let path = vectors_directory().join(format!("{name}.{extension}"));
     std::fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
 }
 
-fn canonical(quads: Vec<Quad>) -> BTreeSet<String> {
-    let mut dataset = Dataset::new();
-    for quad in &quads {
-        dataset.insert(quad);
-    }
-    dataset.canonicalize(CanonicalizationAlgorithm::Rdfc10 {
-        hash_algorithm: CanonicalizationHashAlgorithm::Sha256,
-    });
-    dataset.iter().map(|q| q.to_string()).collect()
+fn vector_names() -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(vectors_directory())
+        .expect("the vectors")
+        .map(|entry| entry.expect("an entry").path())
+        .filter(|path| path.extension().is_some_and(|e| e == "xml"))
+        .map(|path| {
+            path.file_stem()
+                .expect("a name")
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    names.sort();
+    names
 }
 
-/// Without a unit the whole document is the skeleton, which is the lift of the
-/// document with its document element as the lift root.
-fn lift_whole(xml: &[u8]) -> BTreeSet<String> {
-    let store = lift_slice(xml, None)
-        .expect("lift")
-        .into_skeleton()
-        .expect("skeleton");
+fn canonical(quads: Vec<Quad>) -> BTreeSet<String> {
+    canonical_lines(quads).expect("canonical")
+}
+
+fn lines(store: &Store) -> BTreeSet<String> {
     canonical(store.iter().map(|q| q.expect("quad")).collect())
 }
 
-fn expected(name: &str) -> BTreeSet<String> {
+fn parsed(ntriples: &[u8]) -> BTreeSet<String> {
     canonical(
         RdfParser::from_format(RdfFormat::NTriples)
-            .for_slice(&vector(name, "nt"))
+            .for_slice(ntriples)
             .map(|q| q.expect("expected N-Triples"))
             .collect(),
     )
 }
 
-fn assert_vector(name: &str, produced: BTreeSet<String>) {
-    let expected = expected(name);
+/// Without a unit the whole document is the skeleton, which is the lift of the
+/// document with its document element as the lift root.
+fn lift_whole(xml: &[u8]) -> BTreeSet<String> {
+    lines(
+        &lift_slice(xml, None)
+            .expect("lift")
+            .into_skeleton()
+            .expect("skeleton"),
+    )
+}
+
+fn assert_graph(what: &str, produced: BTreeSet<String>, expected: BTreeSet<String>) {
     assert_eq!(
         produced,
         expected,
-        "the {name} vector: missing {:?}, extra {:?}",
+        "{what}: missing {:?}, extra {:?}",
         expected.difference(&produced).collect::<Vec<_>>(),
         produced.difference(&expected).collect::<Vec<_>>()
     );
 }
 
+fn assert_vector(name: &str, produced: BTreeSet<String>) {
+    assert_graph(
+        &format!("the {name} vector"),
+        produced,
+        parsed(&vector(name, "nt")),
+    );
+}
+
 #[test]
 fn reproduces_every_lift_vector_of_the_specification() {
-    for name in VECTORS {
-        assert_vector(name, lift_whole(&vector(name, "xml")));
+    let lifts: Vec<String> = vector_names()
+        .into_iter()
+        .filter(|name| {
+            !SKELETON_VECTORS
+                .iter()
+                .any(|(skeleton, _)| skeleton == name)
+        })
+        .collect();
+    assert!(lifts.len() >= 8, "{lifts:?}");
+    for name in lifts {
+        assert_vector(&name, lift_whole(&vector(&name, "xml")));
     }
 }
 
 #[test]
 fn reproduces_every_skeleton_vector_of_the_specification() {
+    let names = vector_names();
     for (name, record) in SKELETON_VECTORS {
+        assert!(names.iter().any(|n| n == name), "no {name} vector");
         let store = lift_slice(&vector(name, "xml"), Some(record))
             .expect("lift")
             .into_skeleton()
             .expect("skeleton");
-        assert_vector(
-            name,
-            canonical(store.iter().map(|q| q.expect("quad")).collect()),
-        );
+        assert_vector(name, lines(&store));
     }
 }
+
+const FIRST_UNIT: &str = r#"
+_:item <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/ns/root> .
+_:item <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/item> .
+_:item <http://sparql.xyz/facade-x/data/id> "1" .
+_:item <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> _:t .
+_:t <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/t> .
+_:t <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "x" .
+"#;
+
+const SECOND_UNIT: &str = r#"
+_:item <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/ns/root> .
+_:item <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/item> .
+_:item <http://sparql.xyz/facade-x/data/id> "2" .
+"#;
+
+/// Each unit keeps its type triple and its slot, and nothing else.
+const SKELETON: &str = r#"
+_:set <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/ns/root> .
+_:set <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/set> .
+_:set <http://sparql.xyz/facade-x/data/n> "2" .
+_:set <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> _:first .
+_:set <http://www.w3.org/1999/02/22-rdf-syntax-ns#_2> _:second .
+_:first <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/item> .
+_:second <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/item> .
+"#;
 
 #[test]
 fn lifts_each_unit_with_the_unit_as_root_and_empties_it_in_the_skeleton() {
@@ -102,36 +150,41 @@ fn lifts_each_unit_with_the_unit_as_root_and_empties_it_in_the_skeleton() {
     let mut lift = lift_slice(xml, Some("item")).expect("lift");
     let mut units = Vec::new();
     while let Some(unit) = lift.next_unit().expect("unit") {
-        units.push(unit.store);
+        units.push(lines(&unit.store));
     }
     assert_eq!(units.len(), 2);
-
-    let first = canonical(units[0].iter().map(|q| q.expect("quad")).collect());
-    assert!(first.iter().any(|line| line.contains("facade-x/ns/root")));
-    assert!(first.iter().any(|line| line.contains("facade-x/data/item")));
-    assert!(!first.iter().any(|line| line.contains("facade-x/data/set")));
-
-    let skeleton = lift.into_skeleton().expect("skeleton");
-    let lines = canonical(skeleton.iter().map(|q| q.expect("quad")).collect());
-    // Each unit keeps its type triple and its slot, and nothing else: two
-    // types, two slots, and the set's own root type, name and attribute.
-    assert_eq!(
-        lines
-            .iter()
-            .filter(|line| line.contains("facade-x/data/item"))
-            .count(),
-        2
+    assert_graph(
+        "the first unit",
+        units.remove(0),
+        parsed(FIRST_UNIT.as_bytes()),
     );
-    assert!(!lines.iter().any(|line| line.contains("facade-x/data/t")));
-    assert!(lines.iter().any(|line| line.contains("facade-x/data/n>")));
+    assert_graph(
+        "the second unit",
+        units.remove(0),
+        parsed(SECOND_UNIT.as_bytes()),
+    );
+    assert_graph(
+        "the skeleton",
+        lines(&lift.into_skeleton().expect("skeleton")),
+        parsed(SKELETON.as_bytes()),
+    );
 }
 
 #[test]
 fn treats_a_document_whose_element_is_the_unit_as_one_unit() {
     let mut lift = lift_slice(br#"<item id="9"/>"#, Some("item")).expect("lift");
     let unit = lift.next_unit().expect("unit").expect("one unit");
-    let lines = canonical(unit.store.iter().map(|q| q.expect("quad")).collect());
-    assert!(lines.iter().any(|line| line.contains("\"9\"")));
+    assert_graph(
+        "the one unit",
+        lines(&unit.store),
+        parsed(
+            br#"
+_:item <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/ns/root> .
+_:item <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/item> .
+_:item <http://sparql.xyz/facade-x/data/id> "9" .
+"#,
+        ),
+    );
     assert!(lift.next_unit().expect("end").is_none());
 }
 
@@ -188,9 +241,17 @@ fn writes_a_record_out_with_the_comments_and_instructions_it_held() {
         unit.xml,
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?><item>before<!-- inside --><?say it?>after<e></e></item>"
     );
-    let lines = canonical(unit.store.iter().map(|q| q.expect("quad")).collect());
-    assert!(
-        lines.iter().any(|line| line.contains("\"beforeafter\"")),
-        "{lines:?}"
+    assert_graph(
+        "the unit",
+        lines(&unit.store),
+        parsed(
+            br#"
+_:item <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/ns/root> .
+_:item <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/item> .
+_:item <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "beforeafter" .
+_:item <http://www.w3.org/1999/02/22-rdf-syntax-ns#_2> _:e .
+_:e <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/e> .
+"#,
+        ),
     );
 }
