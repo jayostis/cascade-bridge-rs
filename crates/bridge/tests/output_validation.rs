@@ -5,17 +5,15 @@
 // result itself rather than a sentence about it; and a predicate no ontology
 // declares is a finding of the same shape. Validation reports and never
 // refuses: the graph is produced whatever the shapes say of it.
-use cascade_bridge::{
-    convert, load_adapter, prepare, Conversion, DirectoryResolver, Resolver, Source,
-};
-use oxrdf::{Quad, Term};
-use std::collections::BTreeSet;
-use std::path::PathBuf;
+mod common;
 
-const OA: &str = "http://www.w3.org/ns/oa#";
-const SH: &str = "http://www.w3.org/ns/shacl#";
-const RDF_TYPE: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
-const RDF_VALUE: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#value";
+use cascade_bridge::{load_adapter, prepare, Conversion, Resolver};
+use common::{
+    address, annotations, converted, node, says, tiny, tiny_with_vocabularies, Variant, CRATE, OA,
+    SH,
+};
+use oxrdf::Quad;
+use std::collections::BTreeSet;
 
 /// The namespace the tiny adapter maps into, which the checkout's ontology
 /// declares and the checkout's shapes constrain.
@@ -29,78 +27,14 @@ const PREDICATE_NOT_DECLARED: &str =
 /// path no file of the adapter answers to.
 const SHAPES: &str = "ontologies/catalog/v1/catalog.shapes.ttl";
 
-fn adapter() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/tiny-adapter")
-}
-
-/// Where a checkout of `the-cascade-protocol/spec` would stand.
-fn checkout() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/tiny-vocabularies")
-}
-
-fn read_against_the_vocabulary() -> DirectoryResolver {
-    DirectoryResolver::new(adapter())
-        .expect("resolver")
-        .with_vocabularies(checkout())
-        .expect("the vocabularies directory")
-}
-
 /// The conversion and the IRI of the document it was made from.
 fn run(resolver: &dyn Resolver, input: &str) -> (Conversion, String) {
-    let adapter = load_adapter(resolver).expect("adapter");
-    let prepared = prepare(&adapter, resolver).expect("prepared");
     let iri = format!("{}fixtures/in/{input}", resolver.root());
-    let xml = resolver.read(&iri).expect("input");
-    let conversion = convert(
-        &prepared,
-        Source {
-            iri: &iri,
-            envelope: None,
-            xml: &xml,
-        },
-    )
-    .expect("conversion");
-    (conversion, iri)
+    (converted(resolver, input), iri)
 }
 
-fn converted(input: &str) -> (Conversion, String) {
-    run(&read_against_the_vocabulary(), input)
-}
-
-/// A term as an address or a body is read: an IRI or a literal by what it
-/// says, anything else by how N-Triples writes it.
-fn written(term: Term) -> String {
-    match term {
-        Term::NamedNode(node) => node.as_str().to_owned(),
-        Term::Literal(literal) => literal.value().to_owned(),
-        other => other.to_string(),
-    }
-}
-
-/// The one object this subject carries for this predicate, where it carries
-/// exactly one.
-fn one(quads: &[Quad], subject: &str, predicate: &str) -> Option<Term> {
-    let mut objects = quads
-        .iter()
-        .filter(|q| q.subject.to_string() == subject && q.predicate.as_str() == predicate)
-        .map(|q| q.object.clone());
-    let first = objects.next()?;
-    match objects.next() {
-        None => Some(first),
-        Some(_) => None,
-    }
-}
-
-fn node(quads: &[Quad], subject: &str, predicate: &str) -> String {
-    one(quads, subject, predicate)
-        .map(|term| term.to_string())
-        .unwrap_or_default()
-}
-
-fn says(quads: &[Quad], subject: &str, predicate: &str) -> String {
-    one(quads, subject, predicate)
-        .map(written)
-        .unwrap_or_default()
+fn read_against_the_vocabulary(input: &str) -> (Conversion, String) {
+    run(&tiny_with_vocabularies(), input)
 }
 
 /// Everything the specification says a finding about the produced graph
@@ -116,17 +50,6 @@ struct Finding {
     source: String,
     record: String,
     refined: String,
-}
-
-/// Every annotation of a findings graph, by the node it is.
-fn annotations(findings: &[Quad]) -> Vec<String> {
-    let annotation = format!("{OA}Annotation");
-    findings
-        .iter()
-        .filter(|q| q.predicate.as_str() == RDF_TYPE)
-        .filter(|q| matches!(&q.object, Term::NamedNode(n) if n.as_str() == annotation))
-        .map(|q| q.subject.to_string())
-        .collect()
 }
 
 /// The annotations the output validation made. A finding a schema or an
@@ -152,8 +75,7 @@ fn output_findings(findings: &[Quad]) -> Vec<Finding> {
         .into_iter()
         .map(|annotation| {
             let target = node(findings, &annotation, &format!("{OA}hasTarget"));
-            let selector = node(findings, &target, &format!("{OA}hasSelector"));
-            let refinement = node(findings, &selector, &format!("{OA}refinedBy"));
+            let (record, refined) = address(findings, &annotation);
             Finding {
                 body: says(findings, &annotation, &format!("{OA}hasBody")),
                 path: says(findings, &annotation, &format!("{SH}resultPath")),
@@ -161,8 +83,8 @@ fn output_findings(findings: &[Quad]) -> Vec<Finding> {
                 focus: says(findings, &annotation, &format!("{SH}focusNode")),
                 motivation: says(findings, &annotation, &format!("{OA}motivatedBy")),
                 source: says(findings, &target, &format!("{OA}hasSource")),
-                record: says(findings, &selector, RDF_VALUE),
-                refined: says(findings, &refinement, RDF_VALUE),
+                record,
+                refined,
             }
         })
         .collect();
@@ -170,21 +92,37 @@ fn output_findings(findings: &[Quad]) -> Vec<Finding> {
     rows
 }
 
+/// A finding the checkout's shapes draw on the first record of a document.
+fn on_the_first_record(body: &str, severity: &str, focus: &str, document: &str) -> Finding {
+    Finding {
+        body: format!("{SH}{body}"),
+        path: format!("{EX}code"),
+        severity: format!("{SH}{severity}"),
+        focus: focus.to_owned(),
+        motivation: format!("{OA}classifying"),
+        source: document.to_owned(),
+        record: "/catalog/item[1]".to_owned(),
+        refined: String::new(),
+    }
+}
+
+/// What `output-fails-a-shape.xml` draws: its item's code is longer than the
+/// shape allows.
+fn code_too_long(document: &str) -> Finding {
+    on_the_first_record(
+        "MaxLengthConstraintComponent",
+        "Warning",
+        "urn:example:item:1",
+        document,
+    )
+}
+
 #[test]
 fn makes_one_finding_of_the_result_a_record_s_graph_failed_a_shape_on() {
-    let (conversion, document) = converted("output-fails-a-shape.xml");
+    let (conversion, document) = read_against_the_vocabulary("output-fails-a-shape.xml");
     assert_eq!(
         output_findings(&conversion.findings),
-        [Finding {
-            body: format!("{SH}MaxLengthConstraintComponent"),
-            path: format!("{EX}code"),
-            severity: format!("{SH}Warning"),
-            focus: "urn:example:item:1".to_owned(),
-            motivation: format!("{OA}classifying"),
-            source: document,
-            record: "/catalog/item[1]".to_owned(),
-            refined: String::new(),
-        }]
+        [code_too_long(&document)]
     );
     assert!(
         conversion
@@ -197,7 +135,7 @@ fn makes_one_finding_of_the_result_a_record_s_graph_failed_a_shape_on() {
 
 #[test]
 fn names_a_focus_node_that_is_an_iri_and_leaves_a_blank_one_unnamed() {
-    let (conversion, _) = converted("output-fails-two-shapes.xml");
+    let (conversion, _) = read_against_the_vocabulary("output-fails-two-shapes.xml");
     let focus: Vec<(String, String)> = output_findings(&conversion.findings)
         .into_iter()
         .map(|finding| (finding.body, finding.focus))
@@ -216,15 +154,16 @@ fn names_a_focus_node_that_is_an_iri_and_leaves_a_blank_one_unnamed() {
 
 #[test]
 fn makes_a_finding_of_its_own_of_each_of_two_results_about_one_record() {
-    let (conversion, _) = converted("output-fails-two-shapes.xml");
-    let found = reported(&conversion.findings);
+    let (conversion, document) = read_against_the_vocabulary("output-fails-two-shapes.xml");
     assert_eq!(
-        found.len(),
-        2,
-        "{:?}",
-        output_findings(&conversion.findings)
+        output_findings(&conversion.findings),
+        [
+            code_too_long(&document),
+            on_the_first_record("MinCountConstraintComponent", "Violation", "", &document),
+        ],
+        "each finding carries the severity of the result it was made from"
     );
-    let selectors: BTreeSet<String> = found
+    let selectors: BTreeSet<String> = reported(&conversion.findings)
         .iter()
         .map(|annotation| selector_of(&conversion.findings, annotation))
         .collect();
@@ -233,20 +172,11 @@ fn makes_a_finding_of_its_own_of_each_of_two_results_about_one_record() {
         2,
         "two findings on one record are two alternatives of each other where they share a selector"
     );
-    let severities: Vec<String> = output_findings(&conversion.findings)
-        .into_iter()
-        .map(|finding| finding.severity)
-        .collect();
-    assert_eq!(
-        severities,
-        [format!("{SH}Warning"), format!("{SH}Violation")],
-        "each finding carries the severity of the result it was made from"
-    );
 }
 
 #[test]
 fn reports_a_predicate_no_ontology_declares_and_leaves_rdf_type_and_the_stamp_alone() {
-    let (conversion, _) = converted("a-predicate-no-ontology-declares.xml");
+    let (conversion, _) = read_against_the_vocabulary("a-predicate-no-ontology-declares.xml");
     let reported: Vec<(String, String, String)> = output_findings(&conversion.findings)
         .into_iter()
         .map(|finding| (finding.body, finding.path, finding.severity))
@@ -264,62 +194,25 @@ fn reports_a_predicate_no_ontology_declares_and_leaves_rdf_type_and_the_stamp_al
 
 #[test]
 fn reads_the_vocabulary_from_the_directory_the_command_was_given() {
-    let (without, _) = run(
-        &DirectoryResolver::new(adapter()).expect("resolver"),
-        "output-fails-a-shape.xml",
-    );
+    let (without, _) = run(&tiny(), "output-fails-a-shape.xml");
     assert_eq!(
         output_findings(&without.findings),
         [],
         "the command named no checkout, so there is nothing to read the graph against"
     );
 
-    let (with, _) = converted("output-fails-a-shape.xml");
+    let (with, document) = read_against_the_vocabulary("output-fails-a-shape.xml");
     assert_eq!(
-        output_findings(&with.findings).len(),
-        1,
+        output_findings(&with.findings),
+        [code_too_long(&document)],
         "the shapes stand in the checkout the command named and nowhere in the adapter"
     );
 }
 
-/// The tiny adapter naming a vocabulary file somewhere other than where its
-/// shapes stand in the checkout.
-struct Names {
-    directory: DirectoryResolver,
-    file: &'static str,
-}
-
-impl Resolver for Names {
-    fn root(&self) -> &str {
-        self.directory.root()
-    }
-
-    fn vocabularies(&self) -> Option<&str> {
-        self.directory.vocabularies()
-    }
-
-    fn read(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
-        let bytes = self.directory.read(iri)?;
-        if !iri.ends_with("ro-crate-metadata.json") {
-            return Ok(bytes);
-        }
-        let text = String::from_utf8(bytes).expect("utf-8");
-        assert!(text.contains(SHAPES), "the crate names its shapes file");
-        Ok(text.replace(SHAPES, self.file).into_bytes())
-    }
-
-    fn read_vocabulary(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
-        self.directory.read_vocabulary(iri)
-    }
-}
-
 /// What preparing the tiny adapter says of a crate naming this vocabulary
 /// file, which is nothing where it prepares.
-fn refusal(file: &'static str) -> String {
-    let resolver = Names {
-        directory: read_against_the_vocabulary(),
-        file,
-    };
+fn refusal(file: &str) -> String {
+    let resolver = Variant::of(tiny_with_vocabularies()).replacing(CRATE, SHAPES, file);
     let adapter = load_adapter(&resolver).expect("adapter");
     prepare(&adapter, &resolver)
         .err()
@@ -346,53 +239,15 @@ fn refuses_a_vocabulary_file_that_is_a_file_of_the_adapter() {
     );
 }
 
-/// The checkout's shapes with a severity of the vocabulary's own invention,
-/// which SHACL allows and the specification's finding shape has no room for.
-struct Critical {
-    directory: DirectoryResolver,
-}
-
-impl Critical {
-    const DECLARED: &'static str = "sh:severity sh:Warning";
-
-    fn invented(bytes: Vec<u8>) -> Vec<u8> {
-        let text = String::from_utf8(bytes).expect("utf-8");
-        assert!(
-            text.contains(Self::DECLARED),
-            "the shapes declare a severity of their own"
-        );
-        text.replace(Self::DECLARED, "sh:severity ex:Critical")
-            .into_bytes()
-    }
-}
-
-impl Resolver for Critical {
-    fn root(&self) -> &str {
-        self.directory.root()
-    }
-
-    fn vocabularies(&self) -> Option<&str> {
-        self.directory.vocabularies()
-    }
-
-    fn read(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
-        self.directory.read(iri)
-    }
-
-    fn read_vocabulary(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
-        let bytes = self.directory.read_vocabulary(iri)?;
-        match iri.ends_with("catalog.shapes.ttl") {
-            true => Ok(Self::invented(bytes)),
-            false => Ok(bytes),
-        }
-    }
-}
-
 #[test]
 fn refuses_a_shape_whose_severity_no_finding_can_carry() {
-    let resolver = Critical {
-        directory: read_against_the_vocabulary(),
-    };
+    // A severity of the vocabulary's own invention, which SHACL allows and the
+    // specification's finding shape has no room for.
+    let resolver = Variant::of(tiny_with_vocabularies()).replacing(
+        "catalog.shapes.ttl",
+        "sh:severity sh:Warning",
+        "sh:severity ex:Critical",
+    );
     let adapter = load_adapter(&resolver).expect("adapter");
     let refused = prepare(&adapter, &resolver)
         .err()
@@ -404,48 +259,17 @@ fn refuses_a_shape_whose_severity_no_finding_can_carry() {
     );
 }
 
-/// The manifest with a stamp predicate on one entry, which the specification
-/// gives that entry alone and no conversion.
-struct EntryStamp {
-    directory: DirectoryResolver,
-}
-
-impl Resolver for EntryStamp {
-    fn root(&self) -> &str {
-        self.directory.root()
-    }
-
-    fn vocabularies(&self) -> Option<&str> {
-        self.directory.vocabularies()
-    }
-
-    fn read(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
-        let bytes = self.directory.read(iri)?;
-        if !iri.ends_with("fixtures/manifest.ttl") {
-            return Ok(bytes);
-        }
-        let text = String::from_utf8(bytes).expect("utf-8");
-        let entry = "<#pass> a bridge:IsomorphicConversionTest ;";
-        assert!(text.contains(entry), "the manifest lists the entry");
-        Ok(text
-            .replace(
-                entry,
-                &format!("{entry}\n  bridge:stampPredicate <{EX}colour> ;"),
-            )
-            .into_bytes())
-    }
-
-    fn read_vocabulary(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
-        self.directory.read_vocabulary(iri)
-    }
-}
-
 #[test]
 fn reports_a_predicate_one_entry_of_the_manifest_stamps_with() {
-    let resolver = EntryStamp {
-        directory: read_against_the_vocabulary(),
-    };
-    let (conversion, _) = run(&resolver, "a-predicate-no-ontology-declares.xml");
+    // A stamp predicate on one entry of the manifest, which the specification
+    // gives that entry alone and no conversion.
+    let entry = "<#pass> a bridge:IsomorphicConversionTest ;";
+    let stamped = Variant::of(tiny_with_vocabularies()).replacing(
+        "fixtures/manifest.ttl",
+        entry,
+        format!("{entry}\n  bridge:stampPredicate <{EX}colour> ;"),
+    );
+    let (conversion, _) = run(&stamped, "a-predicate-no-ontology-declares.xml");
     let paths: Vec<String> = output_findings(&conversion.findings)
         .into_iter()
         .map(|finding| finding.path)
