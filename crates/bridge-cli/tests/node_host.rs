@@ -234,6 +234,42 @@ fn the_node_host_refuses_a_mapping_holding_a_service_pattern_as_the_native_comma
     assert_eq!(String::from_utf8_lossy(&node_run.stderr), said);
 }
 
+fn refuses_as_the_native_command_does_without_the_vocabularies(arguments: &[&str]) {
+    let native_run = native(arguments);
+    let node_run = node(arguments);
+    let said = String::from_utf8_lossy(&native_run.stderr);
+    assert_eq!(native_run.status.code(), Some(2), "{said}");
+    assert!(native_run.stdout.is_empty());
+    assert!(
+        said.contains("bridge:vocabularyFile") && said.contains("--vocabularies"),
+        "the refusal names what the crate names and the flag that reads it: {said}"
+    );
+    assert_eq!(
+        node_run.status.code(),
+        native_run.status.code(),
+        "{}",
+        String::from_utf8_lossy(&node_run.stderr)
+    );
+    assert!(node_run.stdout.is_empty());
+    assert_eq!(String::from_utf8_lossy(&node_run.stderr), said);
+}
+
+#[test]
+fn the_node_host_refuses_to_test_without_the_vocabularies_as_the_native_command_does() {
+    let adapter = tiny().to_string_lossy().into_owned();
+    refuses_as_the_native_command_does_without_the_vocabularies(&["test", &adapter]);
+}
+
+#[test]
+fn the_node_host_refuses_to_convert_without_the_vocabularies_as_the_native_command_does() {
+    let adapter = tiny().to_string_lossy().into_owned();
+    let document = tiny()
+        .join("fixtures/in/two.xml")
+        .to_string_lossy()
+        .into_owned();
+    refuses_as_the_native_command_does_without_the_vocabularies(&["convert", &adapter, &document]);
+}
+
 /// A run whose standard output is closed before the graph is written to it.
 fn convert_into_a_closed_pipe(mut command: Command) -> Output {
     let adapter = tiny().to_string_lossy().into_owned();

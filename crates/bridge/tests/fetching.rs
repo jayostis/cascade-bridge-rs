@@ -4,10 +4,11 @@ use cascade_bridge::{load_adapter, prepare};
 use common::{tiny_with_vocabularies, Variant};
 
 const ENDPOINT: &str = "<https://example.invalid/sparql>";
+const GRAPH: &str = "<https://example.invalid/g>";
 
 /// What preparing the tiny adapter says with this query rewritten, which is
 /// nothing where it prepares.
-fn refusal(query: &str, from: &str, to: String) -> String {
+fn refusal(query: &str, from: &str, to: impl Into<String>) -> String {
     let resolver = Variant::of(tiny_with_vocabularies()).replacing(query, from, to);
     let adapter = load_adapter(&resolver).expect("adapter");
     prepare(&adapter, &resolver)
@@ -16,21 +17,33 @@ fn refusal(query: &str, from: &str, to: String) -> String {
         .unwrap_or_default()
 }
 
-fn assert_names(refused: &str, query: &str, clause: &str) {
+fn assert_holds(refused: &str, query: &str, phrase: &str) {
+    let said = format!("{query} holds {phrase};");
     assert!(
-        refused.contains(query) && refused.contains(clause),
-        "{query} holding {clause} was prepared, or refused without naming both: {refused:?}"
+        refused.contains(&said),
+        "{query} was prepared, or refused without saying {said:?}: {refused:?}"
     );
+}
+
+fn service_in_the_mapping(pattern: String) -> String {
+    refusal(
+        "mapping/item.rq",
+        "WHERE {\n",
+        format!("WHERE {{\n  {pattern}\n"),
+    )
+}
+
+fn fetch() -> String {
+    format!("SERVICE {ENDPOINT} {{ ?there ?far ?away }}")
 }
 
 #[test]
 fn refuses_a_mapping_holding_a_service_pattern() {
-    let refused = refusal(
-        "mapping/item.rq",
-        "WHERE {\n",
-        format!("WHERE {{\n  SERVICE {ENDPOINT} {{ ?there ?p ?o }}\n"),
+    assert_holds(
+        &service_in_the_mapping(fetch()),
+        "item.rq",
+        "a SERVICE pattern",
     );
-    assert_names(&refused, "item.rq", "SERVICE");
 }
 
 #[test]
@@ -38,9 +51,101 @@ fn refuses_a_findings_query_holding_a_service_pattern_inside_filter_exists() {
     let refused = refusal(
         "mapping/item-findings.rq",
         "WHERE {\n",
-        format!("WHERE {{\n  FILTER EXISTS {{ SERVICE {ENDPOINT} {{ ?there ?p ?o }} }}\n"),
+        format!("WHERE {{\n  FILTER EXISTS {{ {} }}\n", fetch()),
     );
-    assert_names(&refused, "item-findings.rq", "SERVICE");
+    assert_holds(&refused, "item-findings.rq", "a SERVICE pattern");
+}
+
+#[test]
+fn refuses_a_mapping_holding_a_service_pattern_inside_a_subquery() {
+    let pattern = format!("{{ SELECT * WHERE {{ {} }} }}", fetch());
+    assert_holds(
+        &service_in_the_mapping(pattern),
+        "item.rq",
+        "a SERVICE pattern",
+    );
+}
+
+#[test]
+fn refuses_a_mapping_holding_a_service_pattern_inside_optional() {
+    let pattern = format!("OPTIONAL {{ {} }}", fetch());
+    assert_holds(
+        &service_in_the_mapping(pattern),
+        "item.rq",
+        "a SERVICE pattern",
+    );
+}
+
+#[test]
+fn refuses_a_mapping_holding_a_service_pattern_inside_union() {
+    let pattern = format!("{{ ?item ?near ?by }} UNION {{ {} }}", fetch());
+    assert_holds(
+        &service_in_the_mapping(pattern),
+        "item.rq",
+        "a SERVICE pattern",
+    );
+}
+
+#[test]
+fn refuses_a_mapping_holding_a_service_pattern_inside_minus() {
+    let pattern = format!("MINUS {{ {} }}", fetch());
+    assert_holds(
+        &service_in_the_mapping(pattern),
+        "item.rq",
+        "a SERVICE pattern",
+    );
+}
+
+#[test]
+fn refuses_a_mapping_holding_a_service_pattern_inside_graph() {
+    let pattern = format!("GRAPH ?g {{ {} }}", fetch());
+    assert_holds(
+        &service_in_the_mapping(pattern),
+        "item.rq",
+        "a SERVICE pattern",
+    );
+}
+
+#[test]
+fn refuses_a_mapping_holding_a_service_pattern_inside_a_bind_of_exists() {
+    let pattern = format!("BIND(EXISTS {{ {} }} AS ?reached)", fetch());
+    assert_holds(
+        &service_in_the_mapping(pattern),
+        "item.rq",
+        "a SERVICE pattern",
+    );
+}
+
+#[test]
+fn refuses_a_mapping_holding_a_service_pattern_inside_having() {
+    let pattern = format!(
+        "{{ SELECT ?item WHERE {{ ?item ?near ?by }} GROUP BY ?item HAVING (EXISTS {{ {} }}) }}",
+        fetch()
+    );
+    assert_holds(
+        &service_in_the_mapping(pattern),
+        "item.rq",
+        "a SERVICE pattern",
+    );
+}
+
+#[test]
+fn refuses_a_mapping_holding_a_service_pattern_inside_order_by() {
+    let pattern = format!(
+        "{{ SELECT ?item WHERE {{ ?item ?near ?by }} ORDER BY (EXISTS {{ {} }}) }}",
+        fetch()
+    );
+    assert_holds(
+        &service_in_the_mapping(pattern),
+        "item.rq",
+        "a SERVICE pattern",
+    );
+}
+
+#[test]
+fn refuses_a_detect_query_holding_a_service_pattern() {
+    let refused = refusal("mapping/detect.rq", "ASK {", format!("ASK {{ {}", fetch()));
+    assert_holds(&refused, "detect.rq", "a SERVICE pattern");
 }
 
 #[test]
@@ -48,9 +153,9 @@ fn refuses_a_mapping_holding_a_from_clause() {
     let refused = refusal(
         "mapping/item.rq",
         "WHERE {",
-        "FROM <https://example.invalid/g>\nWHERE {".to_owned(),
+        format!("FROM {GRAPH}\nWHERE {{"),
     );
-    assert_names(&refused, "item.rq", "FROM");
+    assert_holds(&refused, "item.rq", "a FROM clause");
 }
 
 #[test]
@@ -58,7 +163,33 @@ fn refuses_a_mapping_holding_a_from_named_clause() {
     let refused = refusal(
         "mapping/item.rq",
         "WHERE {",
-        "FROM NAMED <https://example.invalid/g>\nWHERE {".to_owned(),
+        format!("FROM NAMED {GRAPH}\nWHERE {{"),
     );
-    assert_names(&refused, "item.rq", "FROM NAMED");
+    assert_holds(&refused, "item.rq", "a FROM NAMED clause");
+}
+
+#[test]
+fn refuses_a_detect_query_holding_a_from_clause() {
+    let refused = refusal("mapping/detect.rq", "ASK {", format!("ASK FROM {GRAPH} {{"));
+    assert_holds(&refused, "detect.rq", "a FROM clause");
+}
+
+#[test]
+fn prepares_a_mapping_naming_service_and_from_only_in_a_comment() {
+    let refused = refusal(
+        "mapping/item.rq",
+        "WHERE {\n",
+        format!("# FROM {GRAPH}\nWHERE {{\n  # {}\n", fetch()),
+    );
+    assert_eq!(refused, "");
+}
+
+#[test]
+fn prepares_a_mapping_naming_service_and_from_only_in_a_string_literal() {
+    let refused = refusal(
+        "mapping/item.rq",
+        "WHERE {\n",
+        "WHERE {\n  BIND(\"SERVICE <https://example.invalid/sparql>\" AS ?said)\n  BIND(\"FROM\" AS ?word)\n",
+    );
+    assert_eq!(refused, "");
 }
