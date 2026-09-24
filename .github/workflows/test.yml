@@ -1,0 +1,49 @@
+name: test
+
+# An edited description and a counterpart's move change none of this
+# repository's code, so neither starts this workflow; ci.yml is what reads them.
+# Skipping the job instead is not the same: a skipped job posts its required
+# check as passed, over a failure already reported on the same commit.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# A pull request's run supersedes the one before it. Every other run is a
+# group of its own: a group holds one pending run and drops it for the next, so
+# a shared group on main would leave a merge between two others untested.
+concurrency:
+  group: test-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  # The name is a required status check on main: a renamed job leaves every
+  # merge waiting on a check that never reports.
+  test:
+    name: tests, format and lints
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # rust-toolchain.toml names the version and its components; rustup on the
+      # runner installs exactly that, so CI and a checkout compile alike.
+      - run: rustc --version
+      - uses: Swatinem/rust-cache@v2
+      # rust-cache keeps dependencies, not the tools setup.sh fetches into
+      # target/; their versions are pinned in these two files.
+      - uses: actions/cache@v6
+        with:
+          path: |
+            target/wasm-bindgen-*
+            target/binaryen-*
+          key: node-host-tools-${{ hashFiles('Cargo.lock', 'hosts/node/setup.sh') }}
+      - run: cargo fmt --all --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: sh hosts/node/setup.sh
+      - run: cargo clippy --locked -p cascade-bridge-wasm --target wasm32-unknown-unknown -- -D warnings
+      - run: cargo test --locked

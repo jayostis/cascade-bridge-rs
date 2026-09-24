@@ -3,7 +3,6 @@ name = "cascade-bridge-cli"
 description = "The cascade-bridge command: converts a document with an adapter, and runs an adapter's test manifest."
 version.workspace = true
 edition.workspace = true
-rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
