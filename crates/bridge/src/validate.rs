@@ -26,7 +26,7 @@ use xsd_schema::validation::{
     drive_quick_xml_with, ElementStartView, EndElementInfo, SchemaValidator, ValidationError,
     ValidationEventHandler, ValidationFlags, ValidationSink, ValidationWarning,
 };
-use xsd_schema::{SchemaLoader, SchemaSet, SchemaSetBuilder};
+use xsd_schema::{EmbeddedLoader, SchemaLoader, SchemaSet, SchemaSetBuilder};
 
 const XSD: &str = "http://www.w3.org/2001/XMLSchema";
 const DIRECTIVES: [&[u8]; 4] = [b"include", b"import", b"redefine", b"override"];
@@ -360,6 +360,9 @@ impl std::fmt::Debug for Preloaded {
 
 impl SchemaLoader for Preloaded {
     fn load(&self, location: &str) -> SchemaResult<String> {
+        if EmbeddedLoader.can_load(location) {
+            return EmbeddedLoader.load(location);
+        }
         match self.documents.get(&key(location)) {
             Some(text) => Ok(text.clone()),
             None => {
