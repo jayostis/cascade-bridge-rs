@@ -308,6 +308,26 @@ fn the_node_host_converts_without_the_vocabularies_and_says_so_as_the_native_com
     );
 }
 
+#[test]
+fn the_node_host_says_of_a_conversion_what_the_native_command_says() {
+    let adapter = tiny().to_string_lossy().into_owned();
+    let document = tiny()
+        .join("fixtures/in/two.xml")
+        .to_string_lossy()
+        .into_owned();
+    let arguments = ["convert", adapter.as_str(), document.as_str()];
+    let native_run = native(&arguments);
+    let node_run = node(&arguments);
+    let said = |run: &Output| String::from_utf8_lossy(&run.stderr).into_owned();
+    assert_eq!(native_run.status.code(), Some(0), "{}", said(&native_run));
+    assert!(
+        said(&native_run).contains("Document "),
+        "{}",
+        said(&native_run)
+    );
+    assert_eq!(said(&node_run), said(&native_run));
+}
+
 fn convert_into_a_closed_pipe(mut command: Command) -> Output {
     let adapter = tiny().to_string_lossy().into_owned();
     let vocabularies = vocabularies().to_string_lossy().into_owned();
