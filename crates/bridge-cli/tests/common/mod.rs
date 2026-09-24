@@ -43,8 +43,9 @@ pub fn quads(bytes: &[u8], format: RdfFormat, base: &str) -> Vec<Quad> {
         .collect()
 }
 
-/// A graph canonicalised, so two are compared as graphs and a triple written
-/// twice still counts twice.
+/// A graph canonicalised, so two are compared as graphs: a finding produced
+/// twice is two annotations and still counts twice, though a triple written
+/// twice counts once.
 pub fn canonical(bytes: &[u8], format: RdfFormat, base: &str) -> BTreeSet<String> {
     cascade_bridge::canonical_lines(quads(bytes, format, base)).expect("one canonical graph")
 }
