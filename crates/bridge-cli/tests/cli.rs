@@ -1,19 +1,17 @@
-use oxrdfio::{RdfFormat, RdfParser};
-use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
+mod common;
+
+use common::{
+    canonical, copied_to, names, quads, read_at_its_own_iri, scratch, tiny, vocabularies, BASE,
+    MAX_LENGTH,
+};
+use oxrdfio::RdfFormat;
+use std::collections::{BTreeMap, BTreeSet};
 use std::process::{Command, Stdio};
 
 /// The stamp the tiny adapter's expected graph carries and no stage of this
 /// Bridge writes yet: the harness drops it from both sides, and a converted
 /// graph has to be read the same way until the stamp stage exists.
 const STAMP: &str = "http://www.w3.org/ns/prov#generatedAtTime";
-
-/// Every IRI in both graphs is absolute, so the base only has to be one.
-const BASE: &str = "urn:example:base";
-
-fn tiny() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../bridge/tests/tiny-adapter")
-}
 
 fn cascade_bridge(arguments: &[&str]) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_cascade-bridge"))
@@ -22,13 +20,19 @@ fn cascade_bridge(arguments: &[&str]) -> std::process::Output {
         .expect("run the command")
 }
 
+fn succeeded(run: &std::process::Output) {
+    assert_eq!(
+        run.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+}
+
 /// The graph a text holds, one line per triple, the stamp left out.
 fn triples(bytes: &[u8], format: RdfFormat, base: &str) -> BTreeSet<String> {
-    RdfParser::from_format(format)
-        .with_base_iri(base)
-        .expect("base")
-        .for_slice(bytes)
-        .map(|quad| quad.expect("a parsed graph"))
+    quads(bytes, format, base)
+        .into_iter()
         .filter(|quad| quad.predicate.as_str() != STAMP)
         .map(|quad| quad.to_string())
         .collect()
@@ -43,36 +47,57 @@ fn expected() -> BTreeSet<String> {
     )
 }
 
+/// Each entry's outcome, by its name, as `test` prints them.
+fn entry_lines(stdout: &str) -> BTreeMap<String, String> {
+    stdout
+        .lines()
+        .filter(|line| line.starts_with("  "))
+        .filter_map(|line| {
+            let mut fields = line.split_whitespace();
+            Some((
+                fields.nth(1)?.to_owned(),
+                line.split_whitespace().next()?.to_owned(),
+            ))
+        })
+        .collect()
+}
+
+fn outcomes(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+    pairs
+        .iter()
+        .map(|(name, outcome)| ((*name).to_owned(), (*outcome).to_owned()))
+        .collect()
+}
+
 #[test]
 fn prints_a_line_per_entry_and_exits_non_zero_when_an_entry_fails() {
     let run = cascade_bridge(&["test", &tiny().to_string_lossy()]);
     let stdout = String::from_utf8(run.stdout).expect("utf-8");
     assert_eq!(run.status.code(), Some(1), "{stdout}");
-    let outcomes: Vec<(&str, &str)> = stdout
-        .lines()
-        .filter_map(|line| {
-            let mut fields = line.split_whitespace();
-            Some((fields.next()?, fields.next()?))
-        })
-        .collect();
-    assert!(outcomes.contains(&("passed", "pass")), "{stdout}");
-    assert!(outcomes.contains(&("failed", "graph-fail")), "{stdout}");
+    assert!(stdout.starts_with("Adapter  catalog"), "{stdout}");
+    assert_eq!(
+        entry_lines(&stdout),
+        outcomes(&[
+            ("pass", "passed"),
+            ("graph-fail", "failed"),
+            ("findings-fail", "failed"),
+            ("findings-repeated", "passed"),
+            ("census", "passed"),
+            // No checkout was named, so the vocabulary that draws this entry's
+            // one expected finding is not read.
+            ("shapes", "failed"),
+            ("input-only", "cantTell"),
+            ("dataset", "untested"),
+        ]),
+        "{stdout}"
+    );
     assert!(
-        stdout.contains("3 passed, 3 failed, 1 cantTell, 1 untested"),
+        stdout
+            .lines()
+            .any(|line| line == "3 passed, 3 failed, 1 cantTell, 1 untested"),
         "{stdout}"
     );
 }
-
-/// Where the engine command's `--vocabularies` argument points: the picked
-/// checkout of `the-cascade-protocol/spec`, which the compatibility tooling
-/// appends as it appends `--earl`.
-fn vocabularies() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../bridge/tests/tiny-vocabularies")
-}
-
-/// The constraint component the checkout's shapes draw on the tiny adapter's
-/// produced graph, which nothing else in a run writes.
-const MAX_LENGTH: &str = "http://www.w3.org/ns/shacl#MaxLengthConstraintComponent";
 
 #[test]
 fn offers_the_vocabularies_directory_on_both_commands() {
@@ -109,9 +134,9 @@ fn runs_the_manifest_against_the_vocabularies_directory_it_was_given() {
 
 #[test]
 fn writes_what_the_shapes_draw_only_where_it_was_given_the_vocabularies_directory() {
+    let scratch = scratch();
     let document = tiny().join("fixtures/in/output-fails-a-shape.xml");
-    let against =
-        PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("cascade-bridge-vocabularies.ttl");
+    let against = scratch.path().join("vocabularies.ttl");
     let run = cascade_bridge(&[
         "convert",
         &tiny().to_string_lossy(),
@@ -121,34 +146,22 @@ fn writes_what_the_shapes_draw_only_where_it_was_given_the_vocabularies_director
         "--vocabularies",
         &vocabularies().to_string_lossy(),
     ]);
-    assert_eq!(
-        run.status.code(),
-        Some(0),
-        "{}",
-        String::from_utf8_lossy(&run.stderr)
-    );
-    let produced = std::fs::read(&against).expect("the written findings");
-    let lines = findings(&produced, RdfFormat::Turtle, BASE);
-    assert!(
-        lines.iter().any(|line| line.contains(MAX_LENGTH)),
-        "{lines:?}"
-    );
+    succeeded(&run);
+    let with = read_at_its_own_iri(&against, RdfFormat::Turtle);
+    assert!(names(&with, MAX_LENGTH), "{with:?}");
 
-    let bare = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("cascade-bridge-no-vocabulary.ttl");
-    cascade_bridge(&[
+    let bare = scratch.path().join("no-vocabulary.ttl");
+    let run = cascade_bridge(&[
         "convert",
         &tiny().to_string_lossy(),
         &document.to_string_lossy(),
         "--findings",
         &bare.to_string_lossy(),
     ]);
-    let without = findings(
-        &std::fs::read(&bare).expect("the written findings"),
-        RdfFormat::Turtle,
-        BASE,
-    );
+    succeeded(&run);
+    let without = read_at_its_own_iri(&bare, RdfFormat::Turtle);
     assert!(
-        !without.iter().any(|line| line.contains(MAX_LENGTH)),
+        !names(&without, MAX_LENGTH),
         "no checkout was named, so there is nothing to read the graph against: {without:?}"
     );
 }
@@ -174,6 +187,11 @@ fn refuses_a_format_it_does_not_write() {
     ]);
     assert_eq!(run.status.code(), Some(2));
     assert!(run.stdout.is_empty());
+    let stderr = String::from_utf8_lossy(&run.stderr);
+    assert!(
+        stderr.contains("--format turtle|ntriples"),
+        "the refusal names the formats it does write: {stderr}"
+    );
 }
 
 #[test]
@@ -184,8 +202,7 @@ fn converts_a_document_to_the_graph_the_adapter_expects_of_it() {
         &tiny().to_string_lossy(),
         &document.to_string_lossy(),
     ]);
-    let stderr = String::from_utf8_lossy(&run.stderr);
-    assert_eq!(run.status.code(), Some(0), "{stderr}");
+    succeeded(&run);
     assert_eq!(
         triples(&run.stdout, RdfFormat::Turtle, BASE),
         expected(),
@@ -232,8 +249,9 @@ fn reports_a_standard_output_that_has_gone_away_rather_than_panicking() {
 
 #[test]
 fn writes_the_same_graph_as_n_triples_and_to_the_file_out_names() {
+    let scratch = scratch();
     let document = tiny().join("fixtures/in/two.xml");
-    let written = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("cascade-bridge-convert-out.nt");
+    let written = scratch.path().join("out.nt");
     let run = cascade_bridge(&[
         "convert",
         &tiny().to_string_lossy(),
@@ -243,12 +261,7 @@ fn writes_the_same_graph_as_n_triples_and_to_the_file_out_names() {
         "--out",
         &written.to_string_lossy(),
     ]);
-    assert_eq!(
-        run.status.code(),
-        Some(0),
-        "{}",
-        String::from_utf8_lossy(&run.stderr)
-    );
+    succeeded(&run);
     assert!(run.stdout.is_empty());
     assert_eq!(
         triples(
@@ -260,24 +273,11 @@ fn writes_the_same_graph_as_n_triples_and_to_the_file_out_names() {
     );
 }
 
-/// The findings a text holds, canonicalised, so an oracle and a run are
-/// compared as graphs and a finding produced twice still counts twice.
-fn findings(bytes: &[u8], format: RdfFormat, base: &str) -> BTreeSet<String> {
-    cascade_bridge::canonical_lines(
-        RdfParser::from_format(format)
-            .with_base_iri(base)
-            .expect("base")
-            .for_slice(bytes)
-            .map(|quad| quad.expect("a parsed graph")),
-    )
-    .expect("the findings as one canonical graph")
-}
-
 /// The oracle the tiny adapter commits for the document, read against its own
 /// IRI so the document it names relatively is the document the entry names.
 fn expected_findings() -> BTreeSet<String> {
     let path = tiny().join("fixtures/findings/two.ttl");
-    findings(
+    canonical(
         &std::fs::read(&path).expect("the expected findings"),
         RdfFormat::Turtle,
         &cascade_bridge::file_iri(&path).expect("the fixture's IRI"),
@@ -288,8 +288,9 @@ fn expected_findings() -> BTreeSet<String> {
 /// judges.
 #[test]
 fn writes_the_findings_the_adapter_expects_of_the_document_where_findings_names() {
+    let scratch = scratch();
     let document = tiny().join("fixtures/in/two.xml");
-    let written = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("cascade-bridge-findings.ttl");
+    let written = scratch.path().join("findings.ttl");
     let run = cascade_bridge(&[
         "convert",
         &tiny().to_string_lossy(),
@@ -297,17 +298,12 @@ fn writes_the_findings_the_adapter_expects_of_the_document_where_findings_names(
         "--findings",
         &written.to_string_lossy(),
     ]);
-    assert_eq!(
-        run.status.code(),
-        Some(0),
-        "{}",
-        String::from_utf8_lossy(&run.stderr)
-    );
+    succeeded(&run);
     let produced = std::fs::read(&written).expect("the written findings");
     assert_eq!(
         // A findings file is read against its own IRI, as the harness reads a
         // committed oracle against the oracle's.
-        findings(
+        canonical(
             &produced,
             RdfFormat::Turtle,
             &cascade_bridge::file_iri(&written).expect("the written file's IRI")
@@ -318,21 +314,6 @@ fn writes_the_findings_the_adapter_expects_of_the_document_where_findings_names(
     );
 }
 
-/// The whole adapter where a different checkout would stand, so an oracle
-/// written under one path can be read back under another.
-fn copied_to(from: &Path, to: &Path) {
-    std::fs::create_dir_all(to).expect("the directory");
-    for entry in std::fs::read_dir(from).expect("the directory") {
-        let entry = entry.expect("an entry");
-        let target = to.join(entry.file_name());
-        if entry.file_type().expect("a file type").is_dir() {
-            copied_to(&entry.path(), &target);
-        } else {
-            std::fs::copy(entry.path(), &target).expect("a copied file");
-        }
-    }
-}
-
 /// The failure the flag exists to prevent. An oracle is written once and read
 /// on every checkout afterwards, from whatever path that checkout stands at,
 /// so a finding naming its document absolutely holds where it was written and
@@ -340,11 +321,8 @@ fn copied_to(from: &Path, to: &Path) {
 /// committed as it stands.
 #[test]
 fn writes_findings_the_adapter_can_commit_and_a_checkout_at_another_path_can_read() {
-    let elsewhere =
-        PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("another-checkout/tiny-adapter");
-    if elsewhere.exists() {
-        std::fs::remove_dir_all(&elsewhere).expect("a clean copy");
-    }
+    let scratch = scratch();
+    let elsewhere = scratch.path().join("another-checkout/tiny-adapter");
     copied_to(&tiny(), &elsewhere);
     let written = elsewhere.join("fixtures/findings/produced.ttl");
     let run = cascade_bridge(&[
@@ -354,16 +332,11 @@ fn writes_findings_the_adapter_can_commit_and_a_checkout_at_another_path_can_rea
         "--findings",
         &written.to_string_lossy(),
     ]);
-    assert_eq!(
-        run.status.code(),
-        Some(0),
-        "{}",
-        String::from_utf8_lossy(&run.stderr)
-    );
+    succeeded(&run);
     let produced = std::fs::read(&written).expect("the written findings");
     let oracle = tiny().join("fixtures/findings/two.ttl");
     assert_eq!(
-        findings(
+        canonical(
             &produced,
             RdfFormat::Turtle,
             &cascade_bridge::file_iri(&oracle).expect("the oracle's IRI")
@@ -376,9 +349,9 @@ fn writes_findings_the_adapter_can_commit_and_a_checkout_at_another_path_can_rea
 
 #[test]
 fn leaves_standard_output_byte_for_byte_what_it_is_without_the_flag() {
+    let scratch = scratch();
     let document = tiny().join("fixtures/in/two.xml");
-    let written =
-        PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("cascade-bridge-findings-beside.ttl");
+    let written = scratch.path().join("findings-beside.ttl");
     let bare = cascade_bridge(&[
         "convert",
         &tiny().to_string_lossy(),
@@ -391,15 +364,18 @@ fn leaves_standard_output_byte_for_byte_what_it_is_without_the_flag() {
         "--findings",
         &written.to_string_lossy(),
     ]);
+    succeeded(&bare);
+    succeeded(&beside);
+    assert!(!bare.stdout.is_empty(), "the command wrote a graph");
     assert_eq!(beside.stdout, bare.stdout);
-    assert_eq!(beside.status.code(), bare.status.code());
 }
 
 #[test]
 fn writes_both_files_as_n_triples_and_neither_to_standard_output() {
+    let scratch = scratch();
     let document = tiny().join("fixtures/in/two.xml");
-    let graph = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("cascade-bridge-both-graph.nt");
-    let found = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("cascade-bridge-both-findings.nt");
+    let graph = scratch.path().join("graph.nt");
+    let found = scratch.path().join("findings.nt");
     let run = cascade_bridge(&[
         "convert",
         &tiny().to_string_lossy(),
@@ -411,12 +387,7 @@ fn writes_both_files_as_n_triples_and_neither_to_standard_output() {
         "--format",
         "ntriples",
     ]);
-    assert_eq!(
-        run.status.code(),
-        Some(0),
-        "{}",
-        String::from_utf8_lossy(&run.stderr)
-    );
+    succeeded(&run);
     assert!(run.stdout.is_empty());
     assert_eq!(
         triples(
@@ -427,7 +398,7 @@ fn writes_both_files_as_n_triples_and_neither_to_standard_output() {
         expected()
     );
     assert_eq!(
-        findings(
+        canonical(
             &std::fs::read(&found).expect("the written findings"),
             RdfFormat::NTriples,
             BASE,
@@ -438,9 +409,9 @@ fn writes_both_files_as_n_triples_and_neither_to_standard_output() {
 
 #[test]
 fn exits_non_zero_and_writes_no_graph_when_the_findings_file_cannot_be_written() {
+    let scratch = scratch();
     let document = tiny().join("fixtures/in/two.xml");
-    let absent = PathBuf::from(env!("CARGO_TARGET_TMPDIR"))
-        .join("cascade-bridge-no-such-directory/findings.ttl");
+    let absent = scratch.path().join("no-such-directory/findings.ttl");
     let run = cascade_bridge(&[
         "convert",
         &tiny().to_string_lossy(),
@@ -468,9 +439,9 @@ const GAPS: &str = "urn:example:catalog#";
 /// what it can by a prefix rather than in full.
 #[test]
 fn writes_findings_under_the_prefixes_a_findings_graph_uses() {
+    let scratch = scratch();
     let document = tiny().join("fixtures/in/two.xml");
-    let written =
-        PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("cascade-bridge-findings-prefixed.ttl");
+    let written = scratch.path().join("findings-prefixed.ttl");
     let run = cascade_bridge(&[
         "convert",
         &tiny().to_string_lossy(),
@@ -478,15 +449,10 @@ fn writes_findings_under_the_prefixes_a_findings_graph_uses() {
         "--findings",
         &written.to_string_lossy(),
     ]);
-    assert_eq!(
-        run.status.code(),
-        Some(0),
-        "{}",
-        String::from_utf8_lossy(&run.stderr)
-    );
+    succeeded(&run);
     let text =
         String::from_utf8(std::fs::read(&written).expect("the written findings")).expect("utf-8");
-    let mut parsed = RdfParser::from_format(RdfFormat::Turtle)
+    let mut parsed = oxrdfio::RdfParser::from_format(RdfFormat::Turtle)
         .with_base_iri(cascade_bridge::file_iri(&written).expect("an IRI"))
         .expect("base")
         .for_slice(text.as_bytes());
@@ -524,60 +490,49 @@ fn writes_findings_under_the_prefixes_a_findings_graph_uses() {
     assert_eq!(declared(SH).as_deref(), Some("sh"), "{text}");
 }
 
-/// Prefixes spell a graph; they may not change a triple of it. N-Triples
-/// names every IRI in full, so it is the graph a Turtle findings file has to
-/// read back to, for every document the tiny adapter finds something in.
+/// Prefixes spell a graph; they may not change a triple of it. That every
+/// committed input's findings read back the same both ways is the library's
+/// serialiser to show; this is the command carrying `--format` through to it.
 #[test]
 fn writes_the_same_findings_graph_as_turtle_as_it_does_as_n_triples() {
-    let fixtures = tiny().join("fixtures/in");
-    let mut documents: Vec<PathBuf> = std::fs::read_dir(&fixtures)
-        .expect("the documents")
-        .map(|entry| entry.expect("an entry").path())
-        .collect();
-    documents.sort();
-    let scratch = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("cascade-bridge-findings-graphs");
-    std::fs::create_dir_all(&scratch).expect("the directory");
-    let mut compared = 0;
-    for document in &documents {
-        let stem = document.file_stem().expect("a name").to_string_lossy();
-        let written = |extension: &str, format: &str| {
-            let path = scratch.join(format!("{stem}.{extension}"));
-            let run = cascade_bridge(&[
-                "convert",
-                &tiny().to_string_lossy(),
-                &document.to_string_lossy(),
-                "--out",
-                &scratch.join(format!("{stem}.graph")).to_string_lossy(),
-                "--findings",
-                &path.to_string_lossy(),
-                "--format",
-                format,
-            ]);
-            assert_eq!(
-                run.status.code(),
-                Some(0),
-                "{} as {format}: {}",
-                document.display(),
-                String::from_utf8_lossy(&run.stderr)
-            );
-            std::fs::read(&path).expect("the findings")
-        };
-        let (turtle, ntriples) = (written("ttl", "turtle"), written("nt", "ntriples"));
-        let at = cascade_bridge::file_iri(scratch.join(format!("{stem}.ttl"))).expect("an IRI");
-        let as_ntriples = findings(&ntriples, RdfFormat::NTriples, BASE);
-        if as_ntriples.is_empty() {
-            continue;
-        }
-        assert_eq!(
-            findings(&turtle, RdfFormat::Turtle, &at),
-            as_ntriples,
-            "{}",
-            String::from_utf8_lossy(&turtle)
-        );
-        compared += 1;
-    }
-    assert!(
-        compared > 3,
-        "only {compared} documents had findings to compare"
+    let scratch = scratch();
+    let document = tiny().join("fixtures/in/two.xml");
+    let written = |name: &str, format: &str| {
+        let path = scratch.path().join(name);
+        let run = cascade_bridge(&[
+            "convert",
+            &tiny().to_string_lossy(),
+            &document.to_string_lossy(),
+            "--out",
+            &scratch
+                .path()
+                .join(format!("{name}.graph"))
+                .to_string_lossy(),
+            "--findings",
+            &path.to_string_lossy(),
+            "--format",
+            format,
+        ]);
+        succeeded(&run);
+        path
+    };
+    let turtle = written("findings.ttl", "turtle");
+    let ntriples = written("findings.nt", "ntriples");
+    let as_ntriples = canonical(
+        &std::fs::read(&ntriples).expect("the N-Triples findings"),
+        RdfFormat::NTriples,
+        BASE,
+    );
+    assert!(!as_ntriples.is_empty(), "the document draws findings");
+    let turtle_text = std::fs::read(&turtle).expect("the Turtle findings");
+    assert_eq!(
+        canonical(
+            &turtle_text,
+            RdfFormat::Turtle,
+            &cascade_bridge::file_iri(&turtle).expect("an IRI")
+        ),
+        as_ntriples,
+        "{}",
+        String::from_utf8_lossy(&turtle_text)
     );
 }
