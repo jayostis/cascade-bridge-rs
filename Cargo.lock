@@ -188,7 +188,7 @@ name = "cascade-bridge-wasm"
 version = "0.1.0"
 dependencies = [
  "cascade-bridge",
- "oxsdatatypes",
+ "oxigraph",
  "wasm-bindgen",
 ]
 
@@ -1154,6 +1154,7 @@ checksum = "7f6632dd080bd07676f06e70254ff5862c9943e9483d700fa7258df73a3f9a6a"
 dependencies = [
  "dashmap",
  "getrandom 0.3.4",
+ "js-sys",
  "libc",
  "oxhttp",
  "oxiri 0.2.11",

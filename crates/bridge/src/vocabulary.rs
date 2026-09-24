@@ -1,11 +1,9 @@
 // What a produced graph is read against: the ontology and shapes files the
 // crate's bridge:vocabularyFile names, resolved against the checkout the engine
 // command was given and read through the host from there and nowhere else.
-//
-// A run given no checkout has no vocabulary and reads nothing against nothing;
-// the graph is produced all the same.
 use crate::annotation::{self, Record};
 use crate::error::{Error, Result};
+use crate::load::Adapter;
 use crate::rdf::{
     BRIDGE_PREDICATE_NOT_DECLARED, OWL_ANNOTATION_PROPERTY, OWL_DATATYPE_PROPERTY,
     OWL_OBJECT_PROPERTY, RDF_PROPERTY, RDF_TYPE, SH_VIOLATION,
@@ -120,4 +118,21 @@ fn declared(documents: &[Document]) -> Result<HashSet<String>> {
         }
     }
     Ok(declared)
+}
+
+pub fn require_vocabularies(adapter: &Adapter, resolver: &dyn Resolver) -> Result<()> {
+    if adapter.vocabulary_files.is_empty() || resolver.vocabularies().is_some() {
+        return Ok(());
+    }
+    Err(Error::msg(format!(
+        "the crate names {} bridge:vocabularyFile, and the command was given no \
+         --vocabularies directory to read them from",
+        adapter.vocabulary_files.len()
+    )))
+}
+
+pub fn unvalidated_output(adapter: &Adapter, resolver: &dyn Resolver) -> Option<String> {
+    require_vocabularies(adapter, resolver)
+        .err()
+        .map(|refusal| format!("{refusal}, so the graph is not validated against them"))
 }

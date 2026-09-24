@@ -119,7 +119,8 @@ fn converts_as_the_native_command_does(
 
 #[test]
 fn the_node_host_converts_a_document_to_the_graph_and_findings_the_native_command_writes() {
-    converts_as_the_native_command_does(&tiny(), "two.xml", &[]);
+    let vocabularies = vocabularies().to_string_lossy().into_owned();
+    converts_as_the_native_command_does(&tiny(), "two.xml", &["--vocabularies", &vocabularies]);
 }
 
 #[test]
@@ -146,7 +147,8 @@ fn the_node_host_reads_a_directory_inside_the_adapter_whose_name_begins_with_two
     let metadata = adapter.join("ro-crate-metadata.json");
     let text = std::fs::read_to_string(&metadata).expect("the metadata");
     std::fs::write(&metadata, text.replace("\"mapping/", "\"..mapping/")).expect("the metadata");
-    converts_as_the_native_command_does(&adapter, "two.xml", &[]);
+    let vocabularies = vocabularies().to_string_lossy().into_owned();
+    converts_as_the_native_command_does(&adapter, "two.xml", &["--vocabularies", &vocabularies]);
 }
 
 fn replaced_once(adapter: &Path, path: &str, from: &str, to: &str) {
@@ -181,15 +183,153 @@ fn the_node_host_answers_an_import_of_the_xml_namespace_from_a_file_the_adapter_
         "<item id=\"1\">",
         "<item id=\"1\" xml:lang=\"en\">",
     );
-    converts_as_the_native_command_does(&adapter, "two.xml", &[]);
+    let vocabularies = vocabularies().to_string_lossy().into_owned();
+    converts_as_the_native_command_does(&adapter, "two.xml", &["--vocabularies", &vocabularies]);
+}
+
+#[test]
+fn the_node_host_refuses_a_mapping_holding_a_service_pattern_as_the_native_command_does() {
+    let scratch = scratch();
+    let adapter = scratch.path().join("service-adapter");
+    copied_to(&tiny(), &adapter);
+    let mapping = adapter.join("mapping/item.rq");
+    let text = std::fs::read_to_string(&mapping).expect("the mapping");
+    std::fs::write(
+        &mapping,
+        text.replacen(
+            "WHERE {\n",
+            "WHERE {\n  SERVICE <https://example.invalid/sparql> { ?there ?p ?o }\n",
+            1,
+        ),
+    )
+    .expect("the mapping");
+    let adapter = adapter.to_string_lossy().into_owned();
+    let document = tiny()
+        .join("fixtures/in/two.xml")
+        .to_string_lossy()
+        .into_owned();
+    let vocabularies = vocabularies().to_string_lossy().into_owned();
+    let arguments = [
+        "convert",
+        &adapter,
+        &document,
+        "--vocabularies",
+        &vocabularies,
+    ];
+    let native_run = native(&arguments);
+    let node_run = node(&arguments);
+    let said = String::from_utf8_lossy(&native_run.stderr);
+    assert_eq!(native_run.status.code(), Some(2), "{said}");
+    assert!(native_run.stdout.is_empty());
+    assert!(
+        said.contains("item.rq") && said.contains("SERVICE"),
+        "the refusal names the query and the clause: {said}"
+    );
+    assert_eq!(
+        node_run.status.code(),
+        native_run.status.code(),
+        "{}",
+        String::from_utf8_lossy(&node_run.stderr)
+    );
+    assert!(node_run.stdout.is_empty());
+    assert_eq!(String::from_utf8_lossy(&node_run.stderr), said);
+}
+
+fn refuses_as_the_native_command_does_without_the_vocabularies(arguments: &[&str]) {
+    let native_run = native(arguments);
+    let node_run = node(arguments);
+    let said = String::from_utf8_lossy(&native_run.stderr);
+    assert_eq!(native_run.status.code(), Some(2), "{said}");
+    assert!(native_run.stdout.is_empty());
+    assert!(
+        said.contains("bridge:vocabularyFile") && said.contains("--vocabularies"),
+        "the refusal names what the crate names and the flag that reads it: {said}"
+    );
+    assert_eq!(
+        node_run.status.code(),
+        native_run.status.code(),
+        "{}",
+        String::from_utf8_lossy(&node_run.stderr)
+    );
+    assert!(node_run.stdout.is_empty());
+    assert_eq!(String::from_utf8_lossy(&node_run.stderr), said);
+}
+
+#[test]
+fn the_node_host_refuses_to_test_without_the_vocabularies_as_the_native_command_does() {
+    let adapter = tiny().to_string_lossy().into_owned();
+    refuses_as_the_native_command_does_without_the_vocabularies(&["test", &adapter]);
+}
+
+#[test]
+fn the_node_host_refuses_to_write_findings_without_the_vocabularies_as_the_native_command_does() {
+    let scratch = scratch();
+    let findings = scratch.path().join("findings.ttl");
+    let adapter = tiny().to_string_lossy().into_owned();
+    let document = tiny()
+        .join("fixtures/in/two.xml")
+        .to_string_lossy()
+        .into_owned();
+    refuses_as_the_native_command_does_without_the_vocabularies(&[
+        "convert",
+        &adapter,
+        &document,
+        "--findings",
+        &findings.to_string_lossy(),
+    ]);
+    assert!(!findings.exists(), "a findings file was written");
+}
+
+#[test]
+fn the_node_host_converts_without_the_vocabularies_and_says_so_as_the_native_command_does() {
+    let adapter = tiny().to_string_lossy().into_owned();
+    let document = tiny()
+        .join("fixtures/in/two.xml")
+        .to_string_lossy()
+        .into_owned();
+    let arguments = ["convert", &adapter, &document];
+    let native_run = native(&arguments);
+    let node_run = node(&arguments);
+    let unvalidated = |run: &Output| -> Vec<String> {
+        assert_eq!(
+            run.status.code(),
+            Some(0),
+            "{}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        String::from_utf8_lossy(&run.stderr)
+            .lines()
+            .filter(|line| line.contains("bridge:vocabularyFile"))
+            .map(str::to_owned)
+            .collect()
+    };
+    let said = unvalidated(&native_run);
+    assert!(
+        matches!(said.as_slice(), [line] if line.contains("--vocabularies")),
+        "{said:?}"
+    );
+    assert_eq!(unvalidated(&node_run), said);
+    let native_graph = canonical(&native_run.stdout, RdfFormat::Turtle, BASE);
+    assert!(!native_graph.is_empty(), "the native command wrote a graph");
+    assert_eq!(
+        canonical(&node_run.stdout, RdfFormat::Turtle, BASE),
+        native_graph
+    );
 }
 
 /// A run whose standard output is closed before the graph is written to it.
 fn convert_into_a_closed_pipe(mut command: Command) -> Output {
     let adapter = tiny().to_string_lossy().into_owned();
+    let vocabularies = vocabularies().to_string_lossy().into_owned();
     let document = tiny().join("fixtures/in/two.xml");
     let mut child = command
-        .args(["convert", &adapter, &document.to_string_lossy()])
+        .args([
+            "convert",
+            &adapter,
+            &document.to_string_lossy(),
+            "--vocabularies",
+            &vocabularies,
+        ])
         .current_dir(workspace())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

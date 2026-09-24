@@ -13,28 +13,33 @@ use std::process::Command;
 
 /// The specification's checkout, beside this one or wherever
 /// `CASCADE_BRIDGE_SPEC` names it.
-fn synthetic_adapter() -> PathBuf {
-    let root = match std::env::var_os("CASCADE_BRIDGE_SPEC") {
+fn specification() -> PathBuf {
+    match std::env::var_os("CASCADE_BRIDGE_SPEC") {
         Some(named) => PathBuf::from(named),
         None => PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../cascade-bridge-spec"),
-    };
-    root.join("fixtures/synthetic-adapter")
+    }
 }
 
 #[test]
 #[ignore = "reads a checkout of jayostis/cascade-bridge-spec beside this one"]
 fn reproduces_every_finding_the_specification_s_synthetic_adapter_expects() {
-    let adapter = synthetic_adapter();
+    let specification = specification();
+    let adapter = specification.join("fixtures/synthetic-adapter");
+    let vocabularies = specification.join("fixtures/synthetic-vocabularies");
     assert!(
         adapter.is_dir(),
         "no synthetic adapter at {}",
         adapter.display()
     );
     let run = Command::new(env!("CARGO_BIN_EXE_cascade-bridge"))
-        .args(["test", &adapter.to_string_lossy()])
+        .arg("test")
+        .arg(&adapter)
+        .arg("--vocabularies")
+        .arg(&vocabularies)
         .output()
         .expect("run the command");
     let stdout = String::from_utf8_lossy(&run.stdout).into_owned();
+    let printed = format!("{stdout}{}", String::from_utf8_lossy(&run.stderr));
     // An entry's line: its outcome, its name, its time, and what the run said.
     let entries: Vec<(&str, &str, &str)> = stdout
         .lines()
@@ -51,7 +56,7 @@ fn reproduces_every_finding_the_specification_s_synthetic_adapter_expects() {
     // change, so they are read rather than listed. Every one this Bridge can
     // judge passes; an entry it cannot judge is let through only for the reason
     // its kind gives, so a judged entry going quiet fails here.
-    assert!(!entries.is_empty(), "{stdout}");
+    assert!(!entries.is_empty(), "{printed}");
     for (outcome, name, said) in &entries {
         let excused = match *outcome {
             "passed" => true,
@@ -59,11 +64,11 @@ fn reproduces_every_finding_the_specification_s_synthetic_adapter_expects() {
             "untested" => said.contains("datasets are not fetched"),
             _ => false,
         };
-        assert!(excused, "{name} is {outcome}: {said}\n{stdout}");
+        assert!(excused, "{name} is {outcome}: {said}\n{printed}");
     }
     assert!(
         entries.iter().any(|(outcome, ..)| *outcome == "passed"),
-        "{stdout}"
+        "{printed}"
     );
-    assert_eq!(run.status.code(), Some(0), "{stdout}");
+    assert_eq!(run.status.code(), Some(0), "{printed}");
 }

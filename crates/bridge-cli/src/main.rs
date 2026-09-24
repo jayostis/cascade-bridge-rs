@@ -1,9 +1,9 @@
 // cascade-bridge test <adapter-dir> [--vocabularies <directory>] [--earl <out.ttl>] [--datasets]
 // cascade-bridge convert <adapter-dir> <document.xml> [--vocabularies <directory>] [--out <file>] [--findings <file>] [--format turtle|ntriples]
 use cascade_bridge::{
-    convert, earl_report, file_iri, load_adapter, prepare, run_manifest, serialise, serialise_at,
-    DirectoryResolver, EntryResult, GraphFormat, Outcome, ReportSubject, RunOptions, Source,
-    OFFERED_PROFILES,
+    convert, earl_report, file_iri, load_adapter, prepare, require_vocabularies, run_manifest,
+    serialise, serialise_at, unvalidated_output, DirectoryResolver, EntryResult, GraphFormat,
+    Outcome, ReportSubject, RunOptions, Source, OFFERED_PROFILES,
 };
 use std::io::Write;
 use std::process::ExitCode;
@@ -125,6 +125,7 @@ fn test(arguments: Test) -> Result<ExitCode, String> {
     let subject = subject();
     let resolver = resolver(&arguments.directory, arguments.vocabularies.as_deref())?;
     let adapter = load_adapter(&resolver).map_err(|e| e.to_string())?;
+    require_vocabularies(&adapter, &resolver).map_err(|e| e.to_string())?;
     println!(
         "Adapter  {}  ({})",
         adapter.identifier.as_deref().unwrap_or(&adapter.root),
@@ -188,6 +189,13 @@ fn test(arguments: Test) -> Result<ExitCode, String> {
 fn convert_document(arguments: Convert) -> Result<ExitCode, String> {
     let resolver = resolver(&arguments.directory, arguments.vocabularies.as_deref())?;
     let adapter = load_adapter(&resolver).map_err(|e| e.to_string())?;
+    let unvalidated = match &arguments.findings {
+        Some(_) => {
+            require_vocabularies(&adapter, &resolver).map_err(|e| e.to_string())?;
+            None
+        }
+        None => unvalidated_output(&adapter, &resolver),
+    };
     let prepared = prepare(&adapter, &resolver).map_err(|e| e.to_string())?;
     let document =
         std::fs::read(&arguments.document).map_err(|e| format!("{}: {e}", arguments.document))?;
@@ -207,6 +215,9 @@ fn convert_document(arguments: Convert) -> Result<ExitCode, String> {
     let graph = serialise(&conversion.quads, arguments.format, &prepared.prefixes)
         .map_err(|e| e.to_string())?;
 
+    if let Some(unvalidated) = unvalidated {
+        eprintln!("cascade-bridge: {unvalidated}");
+    }
     eprintln!(
         "Adapter  {}  ({})",
         adapter.identifier.as_deref().unwrap_or(&adapter.root),

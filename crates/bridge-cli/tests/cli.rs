@@ -71,7 +71,12 @@ fn outcomes(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
 
 #[test]
 fn prints_a_line_per_entry_and_exits_non_zero_when_an_entry_fails() {
-    let run = cascade_bridge(&["test", &tiny().to_string_lossy()]);
+    let run = cascade_bridge(&[
+        "test",
+        &tiny().to_string_lossy(),
+        "--vocabularies",
+        &vocabularies().to_string_lossy(),
+    ]);
     let stdout = String::from_utf8(run.stdout).expect("utf-8");
     assert_eq!(run.status.code(), Some(1), "{stdout}");
     assert!(stdout.starts_with("Adapter  catalog"), "{stdout}");
@@ -83,9 +88,7 @@ fn prints_a_line_per_entry_and_exits_non_zero_when_an_entry_fails() {
             ("findings-fail", "failed"),
             ("findings-repeated", "passed"),
             ("census", "passed"),
-            // No checkout was named, so the vocabulary that draws this entry's
-            // one expected finding is not read.
-            ("shapes", "failed"),
+            ("shapes", "passed"),
             ("input-only", "cantTell"),
             ("dataset", "untested"),
         ]),
@@ -94,7 +97,7 @@ fn prints_a_line_per_entry_and_exits_non_zero_when_an_entry_fails() {
     assert!(
         stdout
             .lines()
-            .any(|line| line == "3 passed, 3 failed, 1 cantTell, 1 untested"),
+            .any(|line| line == "4 passed, 2 failed, 1 cantTell, 1 untested"),
         "{stdout}"
     );
 }
@@ -127,13 +130,53 @@ fn runs_the_manifest_against_the_vocabularies_directory_it_was_given() {
     );
     assert!(
         stdout.contains("4 passed, 2 failed, 1 cantTell, 1 untested"),
-        "the entry whose expected findings only the vocabulary draws fails wherever \
-         the checkout was not read, and the same command without this argument fails it: {stdout}"
+        "the entry whose expected findings only the vocabulary draws passes: {stdout}"
+    );
+}
+
+fn refused_for_want_of_the_vocabularies(run: &std::process::Output) {
+    let stderr = String::from_utf8_lossy(&run.stderr);
+    assert_eq!(run.status.code(), Some(2), "{stderr}");
+    assert!(
+        stderr.contains("bridge:vocabularyFile") && stderr.contains("--vocabularies"),
+        "the refusal names what the crate names and the flag that reads it: {stderr}"
     );
 }
 
 #[test]
-fn writes_what_the_shapes_draw_only_where_it_was_given_the_vocabularies_directory() {
+fn refuses_to_test_an_adapter_naming_vocabulary_files_without_the_vocabularies_directory() {
+    let run = cascade_bridge(&["test", &tiny().to_string_lossy()]);
+    refused_for_want_of_the_vocabularies(&run);
+}
+
+#[test]
+fn converts_without_the_vocabularies_directory_and_says_the_graph_went_unvalidated() {
+    let document = tiny().join("fixtures/in/two.xml");
+    let run = cascade_bridge(&[
+        "convert",
+        &tiny().to_string_lossy(),
+        &document.to_string_lossy(),
+    ]);
+    succeeded(&run);
+    assert_eq!(
+        triples(&run.stdout, RdfFormat::Turtle, BASE),
+        expected(),
+        "{}",
+        String::from_utf8_lossy(&run.stdout)
+    );
+    let stderr = String::from_utf8_lossy(&run.stderr);
+    assert!(
+        stderr
+            .lines()
+            .any(|line| line.contains("2 bridge:vocabularyFile")
+                && line.contains("--vocabularies")
+                && line.contains("not validated")),
+        "one line names the flag, the count of vocabulary files and the check not run: {stderr}"
+    );
+}
+
+#[test]
+fn writes_what_the_shapes_draw_given_the_vocabularies_directory_and_no_findings_without_it() {
     let scratch = scratch();
     let document = tiny().join("fixtures/in/output-fails-a-shape.xml");
     let against = scratch.path().join("vocabularies.ttl");
@@ -158,11 +201,15 @@ fn writes_what_the_shapes_draw_only_where_it_was_given_the_vocabularies_director
         "--findings",
         &bare.to_string_lossy(),
     ]);
-    succeeded(&run);
-    let without = read_at_its_own_iri(&bare, RdfFormat::Turtle);
+    refused_for_want_of_the_vocabularies(&run);
     assert!(
-        !names(&without, MAX_LENGTH),
-        "no checkout was named, so there is nothing to read the graph against: {without:?}"
+        run.stdout.is_empty(),
+        "{}",
+        String::from_utf8_lossy(&run.stdout)
+    );
+    assert!(
+        !bare.exists(),
+        "an oracle missing what the shapes draw was written"
     );
 }
 
@@ -201,6 +248,8 @@ fn converts_a_document_to_the_graph_the_adapter_expects_of_it() {
         "convert",
         &tiny().to_string_lossy(),
         &document.to_string_lossy(),
+        "--vocabularies",
+        &vocabularies().to_string_lossy(),
     ]);
     succeeded(&run);
     assert_eq!(
@@ -218,6 +267,8 @@ fn says_the_adapter_the_records_and_the_detect_answer_on_standard_error() {
         "convert",
         &tiny().to_string_lossy(),
         &document.to_string_lossy(),
+        "--vocabularies",
+        &vocabularies().to_string_lossy(),
     ]);
     let stderr = String::from_utf8_lossy(&run.stderr);
     assert!(stderr.contains("Adapter  catalog"), "{stderr}");
@@ -235,6 +286,8 @@ fn reports_a_standard_output_that_has_gone_away_rather_than_panicking() {
             "convert",
             &tiny().to_string_lossy(),
             &document.to_string_lossy(),
+            "--vocabularies",
+            &vocabularies().to_string_lossy(),
         ])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -256,6 +309,8 @@ fn writes_the_same_graph_as_n_triples_and_to_the_file_out_names() {
         "convert",
         &tiny().to_string_lossy(),
         &document.to_string_lossy(),
+        "--vocabularies",
+        &vocabularies().to_string_lossy(),
         "--format",
         "ntriples",
         "--out",
@@ -295,6 +350,8 @@ fn writes_the_findings_the_adapter_expects_of_the_document_where_findings_names(
         "convert",
         &tiny().to_string_lossy(),
         &document.to_string_lossy(),
+        "--vocabularies",
+        &vocabularies().to_string_lossy(),
         "--findings",
         &written.to_string_lossy(),
     ]);
@@ -329,6 +386,8 @@ fn writes_findings_the_adapter_can_commit_and_a_checkout_at_another_path_can_rea
         "convert",
         &elsewhere.to_string_lossy(),
         &elsewhere.join("fixtures/in/two.xml").to_string_lossy(),
+        "--vocabularies",
+        &vocabularies().to_string_lossy(),
         "--findings",
         &written.to_string_lossy(),
     ]);
@@ -356,11 +415,15 @@ fn leaves_standard_output_byte_for_byte_what_it_is_without_the_flag() {
         "convert",
         &tiny().to_string_lossy(),
         &document.to_string_lossy(),
+        "--vocabularies",
+        &vocabularies().to_string_lossy(),
     ]);
     let beside = cascade_bridge(&[
         "convert",
         &tiny().to_string_lossy(),
         &document.to_string_lossy(),
+        "--vocabularies",
+        &vocabularies().to_string_lossy(),
         "--findings",
         &written.to_string_lossy(),
     ]);
@@ -380,6 +443,8 @@ fn writes_both_files_as_n_triples_and_neither_to_standard_output() {
         "convert",
         &tiny().to_string_lossy(),
         &document.to_string_lossy(),
+        "--vocabularies",
+        &vocabularies().to_string_lossy(),
         "--out",
         &graph.to_string_lossy(),
         "--findings",
@@ -416,6 +481,8 @@ fn exits_non_zero_and_writes_no_graph_when_the_findings_file_cannot_be_written()
         "convert",
         &tiny().to_string_lossy(),
         &document.to_string_lossy(),
+        "--vocabularies",
+        &vocabularies().to_string_lossy(),
         "--findings",
         &absent.to_string_lossy(),
     ]);
@@ -446,6 +513,8 @@ fn writes_findings_under_the_prefixes_a_findings_graph_uses() {
         "convert",
         &tiny().to_string_lossy(),
         &document.to_string_lossy(),
+        "--vocabularies",
+        &vocabularies().to_string_lossy(),
         "--findings",
         &written.to_string_lossy(),
     ]);
@@ -503,6 +572,8 @@ fn writes_the_same_findings_graph_as_turtle_as_it_does_as_n_triples() {
             "convert",
             &tiny().to_string_lossy(),
             &document.to_string_lossy(),
+            "--vocabularies",
+            &vocabularies().to_string_lossy(),
             "--out",
             &scratch
                 .path()
