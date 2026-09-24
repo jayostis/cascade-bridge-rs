@@ -3,14 +3,11 @@
 // including the record, every step below the document element carrying its
 // place among its own siblings of that name. A finding about the document
 // rather than about a record stops at the document element's own step.
-use cascade_bridge::{
-    convert, lift_slice, load_adapter, prepare, DirectoryResolver, Resolver, Source,
-};
-use oxrdf::Quad;
-use std::path::PathBuf;
+mod common;
 
-const RDF_VALUE: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#value";
-const CATALOG: &str = "urn:example:catalog";
+use cascade_bridge::lift_slice;
+use common::{converted, tiny, written, Variant, CATALOG, RDF_VALUE};
+use oxrdf::Quad;
 
 fn selectors(xml: &[u8], record: &str) -> Vec<String> {
     lift_slice(xml, Some(record))
@@ -84,68 +81,30 @@ fn writes_a_record_that_is_the_document_element_as_one_step_with_no_index() {
 /// The tiny adapter with its input put in a namespace, which its schemas do
 /// not declare, so every element is namespaced and the document fails the
 /// document schema its envelope names.
-struct Namespaced {
-    directory: DirectoryResolver,
+fn namespaced() -> Variant {
+    Variant::of(tiny()).replacing(
+        "fixtures/in/two.xml",
+        "<catalog>",
+        format!("<catalog xmlns=\"{CATALOG}\">"),
+    )
 }
 
-impl Resolver for Namespaced {
-    fn root(&self) -> &str {
-        self.directory.root()
-    }
-
-    fn read(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
-        let bytes = self.directory.read(iri)?;
-        if !iri.ends_with("fixtures/in/two.xml") {
-            return Ok(bytes);
-        }
-        let text = String::from_utf8(bytes).expect("utf-8");
-        assert!(
-            text.contains("<catalog>"),
-            "the input has a document element"
-        );
-        Ok(text
-            .replace("<catalog>", &format!("<catalog xmlns=\"{CATALOG}\">"))
-            .into_bytes())
-    }
-}
-
-/// Every literal a finding carries, as N-Triples writes it.
 fn values(findings: &[Quad]) -> Vec<String> {
     findings
         .iter()
         .filter(|q| q.predicate.as_str() == RDF_VALUE)
-        .map(|q| q.object.to_string())
+        .map(|q| written(q.object.clone()))
         .collect()
 }
 
 #[test]
 fn names_a_namespaced_document_element_of_a_finding_about_the_document_itself() {
-    let resolver = Namespaced {
-        directory: DirectoryResolver::new(
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/tiny-adapter"),
-        )
-        .expect("resolver"),
-    };
-    let adapter = load_adapter(&resolver).expect("adapter");
-    let prepared = prepare(&adapter, &resolver).expect("prepared");
-    let iri = format!("{}fixtures/in/two.xml", resolver.root());
-    let xml = resolver.read(&iri).expect("input");
-    let conversion = convert(
-        &prepared,
-        Source {
-            iri: &iri,
-            envelope: None,
-            xml: &xml,
-        },
-    )
-    .expect("conversion");
-
-    let values = values(&conversion.findings);
-    let document = format!("\"/*[local-name()='catalog' and namespace-uri()='{CATALOG}']\"");
+    let values = values(&converted(&namespaced(), "two.xml").findings);
+    let document = format!("/*[local-name()='catalog' and namespace-uri()='{CATALOG}']");
     assert!(values.contains(&document), "{values:?}");
     let record = format!(
-        "\"/*[local-name()='catalog' and namespace-uri()='{CATALOG}']\
-         /*[local-name()='item' and namespace-uri()='{CATALOG}'][1]\""
+        "/*[local-name()='catalog' and namespace-uri()='{CATALOG}']\
+         /*[local-name()='item' and namespace-uri()='{CATALOG}'][1]"
     );
     assert!(
         values.contains(&record),
