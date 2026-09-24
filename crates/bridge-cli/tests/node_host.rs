@@ -183,7 +183,8 @@ fn the_node_host_answers_an_import_of_the_xml_namespace_from_a_file_the_adapter_
         "<item id=\"1\">",
         "<item id=\"1\" xml:lang=\"en\">",
     );
-    converts_as_the_native_command_does(&adapter, "two.xml", &[]);
+    let vocabularies = vocabularies().to_string_lossy().into_owned();
+    converts_as_the_native_command_does(&adapter, "two.xml", &["--vocabularies", &vocabularies]);
 }
 
 #[test]
