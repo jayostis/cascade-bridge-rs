@@ -19,7 +19,8 @@ pub const XSD_INTEGER: &str = "http://www.w3.org/2001/XMLSchema#integer";
 /// The namespace the namespaced fixture is written in.
 pub const CATALOG: &str = "urn:example:catalog";
 pub const NOTE_GAP: &str = "urn:example:catalog#noteHasNoTerm";
-pub const PATH_NOT_ACCOUNTED: &str = "https://ns.cascadeprotocol.org/bridge/v1-draft#pathNotAccounted";
+pub const PATH_NOT_ACCOUNTED: &str =
+    "https://ns.cascadeprotocol.org/bridge/v1-draft#pathNotAccounted";
 
 pub const CRATE: &str = "ro-crate-metadata.json";
 pub const ACCOUNTING: &str = "vocab/catalog-accounting.ttl";
@@ -225,6 +226,16 @@ impl Resolver for Variant {
     }
 
     fn read(&self, iri: &str) -> Result<Vec<u8>> {
+        self.edited(iri, || self.directory.read(iri))
+    }
+
+    fn read_vocabulary(&self, iri: &str) -> Result<Vec<u8>> {
+        self.edited(iri, || self.directory.read_vocabulary(iri))
+    }
+}
+
+impl Variant {
+    fn edited(&self, iri: &str, on_disk: impl Fn() -> Result<Vec<u8>>) -> Result<Vec<u8>> {
         let mut text: Option<String> = None;
         for edit in &self.edits {
             match edit {
@@ -239,7 +250,7 @@ impl Resolver for Variant {
                 } if iri.ends_with(file.as_str()) => {
                     let current = match text.take() {
                         Some(current) => current,
-                        None => String::from_utf8(self.directory.read(iri)?).expect("utf-8"),
+                        None => String::from_utf8(on_disk()?).expect("utf-8"),
                     };
                     let found = current.matches(from.as_str()).count();
                     match times {
@@ -253,13 +264,53 @@ impl Resolver for Variant {
         }
         match text {
             Some(text) => Ok(text.into_bytes()),
-            None => self.directory.read(iri),
+            None => on_disk(),
         }
     }
+}
 
-    fn read_vocabulary(&self, iri: &str) -> Result<Vec<u8>> {
-        self.directory.read_vocabulary(iri)
-    }
+pub fn with_accounting(body: &str) -> Variant {
+    Variant::of(tiny()).with(ACCOUNTING, body)
+}
+
+/// Every input the adapter committed, which its oracles are written against.
+pub fn committed() -> Vec<String> {
+    let mut named: Vec<String> = std::fs::read_dir(tiny_directory().join("fixtures/in"))
+        .expect("the committed inputs")
+        .map(|entry| {
+            entry
+                .expect("entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    named.sort();
+    named
+}
+
+/// Every finding at sh:Violation, as its body and where it is addressed.
+pub fn violations(findings: &[Quad]) -> Vec<(String, String, String)> {
+    let violation = format!("{SH}Violation");
+    let mut rows: Vec<(String, String, String)> = annotations(findings)
+        .into_iter()
+        .filter(|annotation| {
+            matches!(
+                one(findings, annotation, &format!("{SH}resultSeverity")),
+                Some(Term::NamedNode(n)) if n.as_str() == violation
+            )
+        })
+        .map(|annotation| {
+            let (record, within) = address(findings, &annotation);
+            (
+                says(findings, &annotation, &format!("{OA}hasBody")),
+                record,
+                within,
+            )
+        })
+        .collect();
+    rows.sort();
+    rows
 }
 
 /// The tiny adapter with the accounting struck out of its crate, which is
