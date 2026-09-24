@@ -36,9 +36,11 @@ repository is one implementation of it, never a second statement of it.
 
 ## Conventions
 
-- `cargo fmt --all`, `cargo clippy --all-targets -- -D warnings`, `cargo test`.
-  CI runs all three, and `cargo test -- --ignored` where it has checked out the
-  counterpart a vector reads; there is no other build step.
+- `cargo fmt --all`, `cargo clippy --all-targets -- -D warnings`,
+  `sh hosts/node/setup.sh`, `cargo test`. CI runs all four, and
+  `cargo test -- --ignored` where it has checked out the counterpart a vector
+  reads. setup.sh is the one build step: it builds the module the node host
+  tests load, and `cargo test` never builds or installs anything.
 - Conventional commits. Impersonal. No archaeology: what a file used to be is
   git's job.
 - Why, never what. A comment restating the line below it goes.

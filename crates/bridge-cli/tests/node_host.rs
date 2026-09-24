@@ -14,7 +14,6 @@ use oxrdfio::{RdfFormat, RdfParser};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
-use std::sync::OnceLock;
 
 const EARL: &str = "http://www.w3.org/ns/earl#";
 const DCT_TITLE: &str = "http://purl.org/dc/terms/title";
@@ -27,22 +26,15 @@ fn node_host_directory() -> PathBuf {
     workspace().join("hosts/node")
 }
 
-/// What the compatibility tooling runs before the node host's command, run
-/// once for every case in this binary.
-fn set_up() {
-    static SET_UP: OnceLock<()> = OnceLock::new();
-    SET_UP.get_or_init(|| {
-        let run = Command::new("sh")
-            .arg(node_host_directory().join("setup.sh"))
-            .current_dir(workspace())
-            .output()
-            .expect("run the node host's setup");
-        assert!(
-            run.status.success(),
-            "{}",
-            String::from_utf8_lossy(&run.stderr)
-        );
-    });
+/// The module the node host loads is built by a step of its own, as the
+/// compatibility tooling builds it, and never by `cargo test`.
+fn require_the_module() {
+    let module = node_host_directory().join("pkg/cascade_bridge_wasm.js");
+    assert!(
+        module.is_file(),
+        "no node host module at {}: run `sh hosts/node/setup.sh` first",
+        module.display()
+    );
 }
 
 fn native(arguments: &[&str]) -> Output {
@@ -54,7 +46,7 @@ fn native(arguments: &[&str]) -> Output {
 }
 
 fn node(arguments: &[&str]) -> Output {
-    set_up();
+    require_the_module();
     Command::new("node")
         .arg(node_host_directory().join("cascade-bridge.mjs"))
         .args(arguments)
@@ -174,7 +166,7 @@ fn convert_into_a_closed_pipe(mut command: Command) -> Output {
 
 #[test]
 fn the_node_host_exits_as_the_native_command_does_when_standard_output_is_closed() {
-    set_up();
+    require_the_module();
     let native_run = convert_into_a_closed_pipe(Command::new(env!("CARGO_BIN_EXE_cascade-bridge")));
     let mut node = Command::new("node");
     node.arg(node_host_directory().join("cascade-bridge.mjs"));
@@ -266,7 +258,7 @@ fn the_node_host_reports_the_outcome_the_native_command_reports_for_each_entry()
 }
 
 fn check_imports(allowlist: &Path) -> Output {
-    set_up();
+    require_the_module();
     Command::new("node")
         .arg(node_host_directory().join("check-imports.mjs"))
         .arg(allowlist)
