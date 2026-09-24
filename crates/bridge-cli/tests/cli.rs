@@ -150,7 +150,33 @@ fn refuses_to_test_an_adapter_naming_vocabulary_files_without_the_vocabularies_d
 }
 
 #[test]
-fn writes_what_the_shapes_draw_given_the_vocabularies_directory_and_nothing_without_it() {
+fn converts_without_the_vocabularies_directory_and_says_the_graph_went_unvalidated() {
+    let document = tiny().join("fixtures/in/two.xml");
+    let run = cascade_bridge(&[
+        "convert",
+        &tiny().to_string_lossy(),
+        &document.to_string_lossy(),
+    ]);
+    succeeded(&run);
+    assert_eq!(
+        triples(&run.stdout, RdfFormat::Turtle, BASE),
+        expected(),
+        "{}",
+        String::from_utf8_lossy(&run.stdout)
+    );
+    let stderr = String::from_utf8_lossy(&run.stderr);
+    assert!(
+        stderr
+            .lines()
+            .any(|line| line.contains("2 bridge:vocabularyFile")
+                && line.contains("--vocabularies")
+                && line.contains("not validated")),
+        "one line names the flag, the count of vocabulary files and the check not run: {stderr}"
+    );
+}
+
+#[test]
+fn writes_what_the_shapes_draw_given_the_vocabularies_directory_and_no_findings_without_it() {
     let scratch = scratch();
     let document = tiny().join("fixtures/in/output-fails-a-shape.xml");
     let against = scratch.path().join("vocabularies.ttl");

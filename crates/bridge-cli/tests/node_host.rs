@@ -261,13 +261,59 @@ fn the_node_host_refuses_to_test_without_the_vocabularies_as_the_native_command_
 }
 
 #[test]
-fn the_node_host_refuses_to_convert_without_the_vocabularies_as_the_native_command_does() {
+fn the_node_host_refuses_to_write_findings_without_the_vocabularies_as_the_native_command_does() {
+    let scratch = scratch();
+    let findings = scratch.path().join("findings.ttl");
     let adapter = tiny().to_string_lossy().into_owned();
     let document = tiny()
         .join("fixtures/in/two.xml")
         .to_string_lossy()
         .into_owned();
-    refuses_as_the_native_command_does_without_the_vocabularies(&["convert", &adapter, &document]);
+    refuses_as_the_native_command_does_without_the_vocabularies(&[
+        "convert",
+        &adapter,
+        &document,
+        "--findings",
+        &findings.to_string_lossy(),
+    ]);
+    assert!(!findings.exists(), "a findings file was written");
+}
+
+#[test]
+fn the_node_host_converts_without_the_vocabularies_and_says_so_as_the_native_command_does() {
+    let adapter = tiny().to_string_lossy().into_owned();
+    let document = tiny()
+        .join("fixtures/in/two.xml")
+        .to_string_lossy()
+        .into_owned();
+    let arguments = ["convert", &adapter, &document];
+    let native_run = native(&arguments);
+    let node_run = node(&arguments);
+    let unvalidated = |run: &Output| -> Vec<String> {
+        assert_eq!(
+            run.status.code(),
+            Some(0),
+            "{}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        String::from_utf8_lossy(&run.stderr)
+            .lines()
+            .filter(|line| line.contains("bridge:vocabularyFile"))
+            .map(str::to_owned)
+            .collect()
+    };
+    let said = unvalidated(&native_run);
+    assert!(
+        matches!(said.as_slice(), [line] if line.contains("--vocabularies")),
+        "{said:?}"
+    );
+    assert_eq!(unvalidated(&node_run), said);
+    let native_graph = canonical(&native_run.stdout, RdfFormat::Turtle, BASE);
+    assert!(!native_graph.is_empty(), "the native command wrote a graph");
+    assert_eq!(
+        canonical(&node_run.stdout, RdfFormat::Turtle, BASE),
+        native_graph
+    );
 }
 
 /// A run whose standard output is closed before the graph is written to it.
