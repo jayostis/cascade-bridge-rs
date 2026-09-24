@@ -184,6 +184,54 @@ fn the_node_host_answers_an_import_of_the_xml_namespace_from_a_file_the_adapter_
     converts_as_the_native_command_does(&adapter, "two.xml", &[]);
 }
 
+#[test]
+fn the_node_host_refuses_a_mapping_holding_a_service_pattern_as_the_native_command_does() {
+    let scratch = scratch();
+    let adapter = scratch.path().join("service-adapter");
+    copied_to(&tiny(), &adapter);
+    let mapping = adapter.join("mapping/item.rq");
+    let text = std::fs::read_to_string(&mapping).expect("the mapping");
+    std::fs::write(
+        &mapping,
+        text.replacen(
+            "WHERE {\n",
+            "WHERE {\n  SERVICE <https://example.invalid/sparql> { ?there ?p ?o }\n",
+            1,
+        ),
+    )
+    .expect("the mapping");
+    let adapter = adapter.to_string_lossy().into_owned();
+    let document = tiny()
+        .join("fixtures/in/two.xml")
+        .to_string_lossy()
+        .into_owned();
+    let vocabularies = vocabularies().to_string_lossy().into_owned();
+    let arguments = [
+        "convert",
+        &adapter,
+        &document,
+        "--vocabularies",
+        &vocabularies,
+    ];
+    let native_run = native(&arguments);
+    let node_run = node(&arguments);
+    let said = String::from_utf8_lossy(&native_run.stderr);
+    assert_eq!(native_run.status.code(), Some(2), "{said}");
+    assert!(native_run.stdout.is_empty());
+    assert!(
+        said.contains("item.rq") && said.contains("SERVICE"),
+        "the refusal names the query and the clause: {said}"
+    );
+    assert_eq!(
+        node_run.status.code(),
+        native_run.status.code(),
+        "{}",
+        String::from_utf8_lossy(&node_run.stderr)
+    );
+    assert!(node_run.stdout.is_empty());
+    assert_eq!(String::from_utf8_lossy(&node_run.stderr), said);
+}
+
 /// A run whose standard output is closed before the graph is written to it.
 fn convert_into_a_closed_pipe(mut command: Command) -> Output {
     let adapter = tiny().to_string_lossy().into_owned();

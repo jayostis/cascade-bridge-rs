@@ -132,8 +132,23 @@ fn runs_the_manifest_against_the_vocabularies_directory_it_was_given() {
     );
 }
 
+fn refused_for_want_of_the_vocabularies(run: &std::process::Output) {
+    let stderr = String::from_utf8_lossy(&run.stderr);
+    assert_eq!(run.status.code(), Some(2), "{stderr}");
+    assert!(
+        stderr.contains("bridge:vocabularyFile") && stderr.contains("--vocabularies"),
+        "the refusal names what the crate names and the flag that reads it: {stderr}"
+    );
+}
+
 #[test]
-fn writes_what_the_shapes_draw_only_where_it_was_given_the_vocabularies_directory() {
+fn refuses_to_test_an_adapter_naming_vocabulary_files_without_the_vocabularies_directory() {
+    let run = cascade_bridge(&["test", &tiny().to_string_lossy()]);
+    refused_for_want_of_the_vocabularies(&run);
+}
+
+#[test]
+fn writes_what_the_shapes_draw_given_the_vocabularies_directory_and_nothing_without_it() {
     let scratch = scratch();
     let document = tiny().join("fixtures/in/output-fails-a-shape.xml");
     let against = scratch.path().join("vocabularies.ttl");
@@ -158,11 +173,15 @@ fn writes_what_the_shapes_draw_only_where_it_was_given_the_vocabularies_director
         "--findings",
         &bare.to_string_lossy(),
     ]);
-    succeeded(&run);
-    let without = read_at_its_own_iri(&bare, RdfFormat::Turtle);
+    refused_for_want_of_the_vocabularies(&run);
     assert!(
-        !names(&without, MAX_LENGTH),
-        "no checkout was named, so there is nothing to read the graph against: {without:?}"
+        run.stdout.is_empty(),
+        "{}",
+        String::from_utf8_lossy(&run.stdout)
+    );
+    assert!(
+        !bare.exists(),
+        "an oracle missing what the shapes draw was written"
     );
 }
 
