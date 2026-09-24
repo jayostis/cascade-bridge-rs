@@ -39,7 +39,7 @@ jobs:
         with:
           workspaces: ${{ github.event.repository.name }}
       - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
-      - run: cargo test --locked -- --ignored
+      - run: cargo test --locked -p cascade-bridge-cli --test specification_vector -- --ignored
         working-directory: ${{ github.event.repository.name }}
 
   ready-to-merge:
