@@ -399,6 +399,16 @@ mod tests {
         assert_eq!(key("s3://b/a/x.xsd"), key("/w/crates/bridge/s3:/b/a/x.xsd"));
         assert_eq!(key("s3://b/a/x.xsd"), key("C:\\w\\s3:\\b\\a\\x.xsd"));
         assert_eq!(key("file:///C:/a/x.xsd"), key("file:/C:/a/x.xsd"));
+        assert_eq!(
+            key("x-blob+v.1://b/a/x.xsd"),
+            key("/w/x-blob+v.1:/b/a/x.xsd")
+        );
+    }
+
+    #[test]
+    fn names_two_iris_apart_that_differ_only_before_a_colon_segment_of_their_path() {
+        assert_ne!(key("file:///a/v1/ab:/t.xsd"), key("file:///a/v2/ab:/t.xsd"));
+        assert_ne!(key("s3://x/ab:/t.xsd"), key("gs://y/ab:/t.xsd"));
     }
 
     #[test]

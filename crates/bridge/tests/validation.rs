@@ -113,8 +113,6 @@ fn reports_nothing_about_a_record_carrying_a_comment_and_an_instruction() {
     );
 }
 
-/// The tiny adapter served from an object store: every IRI under its own root
-/// is read from the directory, and nothing else is.
 struct Rehomed {
     root: String,
     directory: DirectoryResolver,
@@ -150,21 +148,81 @@ fn applies_an_included_schema_under_a_root_that_is_not_a_file() {
     );
 }
 
-#[test]
-fn reports_nothing_about_a_record_whose_schema_imports_the_xml_namespace() {
-    let lang = Variant::of(tiny())
+const XML_NAMESPACE: &str = "http://www.w3.org/XML/1998/namespace";
+
+/// The tiny adapter with its item schema importing the XML namespace, located
+/// where `location` says, and its first item carrying `xml:lang`.
+fn importing_the_xml_namespace(location: &str) -> Variant {
+    Variant::of(tiny())
         .replacing(
             "schema/item.xsd",
             "<xs:element name=\"item\"",
-            "<xs:import namespace=\"http://www.w3.org/XML/1998/namespace\"/>\n\n  <xs:element name=\"item\"",
+            format!("<xs:import namespace=\"{XML_NAMESPACE}\"{location}/>\n  <xs:element name=\"item\""),
         )
         .replacing(
             "schema/item.xsd",
             "<xs:attribute name=\"internal\" type=\"xs:string\"/>",
             "<xs:attribute name=\"internal\" type=\"xs:string\"/>\n    <xs:attribute ref=\"xml:lang\"/>",
         )
-        .replacing("fixtures/in/two.xml", "<item id=\"1\">", "<item id=\"1\" xml:lang=\"en\">");
-    let conversion = converted(&lang, "two.xml");
+        .replacing(
+            "fixtures/in/two.xml",
+            "<item id=\"1\">",
+            "<item id=\"1\" xml:lang=\"en\">",
+        )
+}
+
+#[test]
+fn refuses_a_schema_importing_a_namespace_the_adapter_ships_no_schema_for() {
+    let unlocated = importing_the_xml_namespace("");
+    let adapter = load_adapter(&unlocated).expect("adapter");
+    let Err(error) = prepare(&adapter, &unlocated) else {
+        panic!("a schema the adapter does not ship was answered");
+    };
+    let refused = error.to_string();
+    assert!(refused.contains("schema/item.xsd"), "{refused}");
+    assert!(refused.contains(XML_NAMESPACE), "{refused}");
+    assert!(refused.contains("schemaLocation"), "{refused}");
+}
+
+#[test]
+fn reports_nothing_about_a_record_whose_schema_imports_the_xml_namespace_from_the_adapter() {
+    let shipped = importing_the_xml_namespace(" schemaLocation=\"xml.xsd\"").with(
+        "schema/xml.xsd",
+        format!(
+            "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" targetNamespace=\"{XML_NAMESPACE}\">\n  <xs:attribute name=\"lang\" type=\"xs:language\"/>\n</xs:schema>\n"
+        ),
+    );
+    let conversion = converted(&shipped, "two.xml");
+    assert_eq!(
+        violations(&conversion.findings),
+        Vec::<(String, String)>::new(),
+        "{:?}",
+        rows(&conversion.findings)
+    );
+}
+
+fn declaring_a_simple_type(name: &str) -> String {
+    format!(
+        "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\">\n  <xs:simpleType name=\"{name}\">\n    <xs:restriction base=\"xs:string\"/>\n  </xs:simpleType>\n</xs:schema>\n"
+    )
+}
+
+#[test]
+fn applies_two_included_schemas_whose_paths_differ_only_before_a_colon_segment() {
+    let apart = Variant::of(tiny())
+        .replacing(
+            "schema/item.xsd",
+            "<xs:element name=\"item\"",
+            "<xs:include schemaLocation=\"v1/ab:/t.xsd\"/>\n  <xs:include schemaLocation=\"v2/ab:/t.xsd\"/>\n  <xs:element name=\"item\"",
+        )
+        .replacing(
+            "schema/item.xsd",
+            "<xs:attribute name=\"internal\" type=\"xs:string\"/>",
+            "<xs:attribute name=\"internal\" type=\"second\"/>\n    <xs:attribute name=\"external\" type=\"first\"/>",
+        )
+        .with("schema/v1/ab:/t.xsd", declaring_a_simple_type("first"))
+        .with("schema/v2/ab:/t.xsd", declaring_a_simple_type("second"));
+    let conversion = converted(&apart, "two.xml");
     assert_eq!(
         violations(&conversion.findings),
         Vec::<(String, String)>::new(),
