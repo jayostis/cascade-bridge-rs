@@ -308,3 +308,29 @@ fn the_import_check_names_the_import_an_allowlist_one_entry_short_leaves_out() {
     assert!(!run.status.success(), "{said}");
     assert!(said.contains(left_out), "{left_out} is not named: {said}");
 }
+
+#[test]
+fn the_node_host_refuses_a_mapping_the_directory_lacks_in_the_native_command_s_sentence() {
+    let scratch = scratch();
+    let adapter = scratch.path().join("adapter-missing-a-mapping");
+    copied_to(&tiny(), &adapter);
+    let metadata = adapter.join("ro-crate-metadata.json");
+    let text = std::fs::read_to_string(&metadata).expect("the metadata");
+    assert_eq!(text.matches("\"mapping/item-tag.rq\"").count(), 1);
+    std::fs::write(
+        &metadata,
+        text.replace("\"mapping/item-tag.rq\"", "\"mapping/missing.rq\""),
+    )
+    .expect("the metadata");
+    let document = adapter.join("fixtures/in/two.xml");
+    let document = document.to_string_lossy().into_owned();
+    let adapter = adapter.to_string_lossy().into_owned();
+    let native_run = native(&["convert", &adapter, &document]);
+    let node_run = node(&["convert", &adapter, &document]);
+    let native_said = String::from_utf8_lossy(&native_run.stderr);
+    let node_said = String::from_utf8_lossy(&node_run.stderr);
+    assert_eq!(native_run.status.code(), Some(2), "{native_said}");
+    assert_eq!(node_run.status.code(), Some(2), "{node_said}");
+    assert_eq!(node_said, native_said);
+    assert!(native_said.contains("missing.rq"), "{native_said}");
+}
