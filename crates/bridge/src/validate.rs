@@ -222,19 +222,24 @@ pub(crate) fn compile(iri: &str, resolver: &dyn Resolver) -> Result<Schema> {
     catalog.add_xml_catalog();
     let mut read: HashMap<String, String> = HashMap::new();
     let mut answered_by_the_bridge: HashMap<String, String> = HashMap::new();
-    let mut pending = vec![iri.to_owned()];
-    while let Some(location) = pending.pop() {
+    let mut pending: Vec<(String, Option<&str>)> = vec![(iri.to_owned(), None)];
+    while let Some((location, copy)) = pending.pop() {
         let read_as = key(&location);
         if read.contains_key(&read_as) {
             continue;
         }
-        let text = String::from_utf8(resolver.read(&location)?)
-            .map_err(|e| Error::msg(format!("{location}: {e}")))?;
+        let bytes = match (resolver.read(&location), copy) {
+            (Err(error), Some(copy)) if error.is_missing() => {
+                answered_by_the_bridge.insert(read_as, copy.to_owned());
+                continue;
+            }
+            (bytes, _) => bytes?,
+        };
+        let text = String::from_utf8(bytes).map_err(|e| Error::msg(format!("{location}: {e}")))?;
         let base =
             Iri::parse(location.clone()).map_err(|e| Error::msg(format!("{location}: {e}")))?;
-        for Directive { imported, named } in
-            directives(&text).map_err(|e| Error::msg(format!("{location}: {e}")))?
-        {
+        let directed = directives(&text).map_err(|e| Error::msg(format!("{location}: {e}")))?;
+        for Directive { imported, named } in directed {
             let joined = base
                 .resolve(&named)
                 .map_err(|e| Error::msg(format!("{location} names {named}: {e}")))?
@@ -246,7 +251,7 @@ pub(crate) fn compile(iri: &str, resolver: &dyn Resolver) -> Result<Schema> {
                 Some(copy) if !joined.starts_with(resolver.root()) => {
                     answered_by_the_bridge.insert(key(&joined), copy.to_owned());
                 }
-                _ => pending.push(joined),
+                _ => pending.push((joined, copy)),
             }
         }
         read.insert(read_as, text);
