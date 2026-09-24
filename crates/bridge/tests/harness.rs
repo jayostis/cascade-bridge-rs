@@ -202,24 +202,183 @@ fn fails_every_entry_when_the_adapter_names_no_element_name_of_each_record() {
     }
 }
 
-#[test]
-fn refuses_a_crate_naming_two_element_names_of_each_record_with_a_sentence_naming_both() {
+/// A property the specification gives at most one value, written twice in the
+/// tiny adapter: `written` is the one value the adapter carries, found in
+/// `file` `times` times, and `doubled` adds a second.
+struct Second {
+    file: &'static str,
+    written: &'static str,
+    doubled: &'static str,
+    times: usize,
+    /// The property and both values, as the refusal writes them.
+    named: [&'static str; 3],
+}
+
+const SECONDS: [Second; 16] = [
+    Second {
+        file: common::CRATE,
+        written: r#""about": { "@id": "./" }"#,
+        doubled: r##""about": [{ "@id": "./" }, { "@id": "#other" }]"##,
+        times: 1,
+        named: ["schema.org/about", "tiny-adapter/>", "#other>"],
+    },
+    Second {
+        file: common::CRATE,
+        written: r#""bridge:testManifest": { "@id": "fixtures/manifest.ttl" }"#,
+        doubled: r#""bridge:testManifest": [{ "@id": "fixtures/manifest.ttl" }, { "@id": "fixtures/other.ttl" }]"#,
+        times: 1,
+        named: ["#testManifest", "/manifest.ttl>", "/other.ttl>"],
+    },
+    Second {
+        file: common::CRATE,
+        written: r#""identifier": "catalog","#,
+        doubled: r#""identifier": ["catalog", "other"],"#,
+        times: 1,
+        named: ["schema.org/identifier", r#""catalog""#, r#""other""#],
+    },
+    Second {
+        file: common::CRATE,
+        written: r#""bridge:elementNameOfEachRecord": "item""#,
+        doubled: r#""bridge:elementNameOfEachRecord": ["item", "record"]"#,
+        times: 1,
+        named: ["#elementNameOfEachRecord", r#""item""#, r#""record""#],
+    },
+    Second {
+        file: common::CRATE,
+        written: r#""bridge:sourceSchema": { "@id": "schema/item.xsd" }"#,
+        doubled: r#""bridge:sourceSchema": [{ "@id": "schema/item.xsd" }, { "@id": "schema/other.xsd" }]"#,
+        times: 1,
+        named: ["#sourceSchema", "/item.xsd>", "/other.xsd>"],
+    },
+    Second {
+        file: common::CRATE,
+        written: r#""bridge:gapScheme": { "@id": "vocab/catalog-gaps.ttl" }"#,
+        doubled: r#""bridge:gapScheme": [{ "@id": "vocab/catalog-gaps.ttl" }, { "@id": "vocab/other-gaps.ttl" }]"#,
+        times: 1,
+        named: ["#gapScheme", "/catalog-gaps.ttl>", "/other-gaps.ttl>"],
+    },
+    Second {
+        file: common::CRATE,
+        written: r#""bridge:sourceAccounting": { "@id": "vocab/catalog-accounting.ttl" }"#,
+        doubled: r#""bridge:sourceAccounting": [{ "@id": "vocab/catalog-accounting.ttl" }, { "@id": "vocab/other-accounting.ttl" }]"#,
+        times: 1,
+        named: [
+            "#sourceAccounting",
+            "/catalog-accounting.ttl>",
+            "/other-accounting.ttl>",
+        ],
+    },
+    Second {
+        file: common::CRATE,
+        written: r#""bridge:detectQuery": { "@id": "mapping/detect.rq" }"#,
+        doubled: r#""bridge:detectQuery": [{ "@id": "mapping/detect.rq" }, { "@id": "mapping/other.rq" }]"#,
+        times: 1,
+        named: ["#detectQuery", "/detect.rq>", "/other.rq>"],
+    },
+    Second {
+        file: common::CRATE,
+        written: r#""name": "catalog","#,
+        doubled: r#""name": ["catalog", "other"],"#,
+        times: 1,
+        named: ["schema.org/name", r#""catalog""#, r#""other""#],
+    },
+    Second {
+        file: common::CRATE,
+        written: r#""bridge:docRootElementName": "catalog""#,
+        doubled: r#""bridge:docRootElementName": ["catalog", "zcatalog"]"#,
+        times: 1,
+        named: ["#docRootElementName", r#""catalog""#, r#""zcatalog""#],
+    },
+    Second {
+        file: common::CRATE,
+        written: r#""bridge:documentSchema": { "@id": "schema/catalog.xsd" }"#,
+        doubled: r#""bridge:documentSchema": [{ "@id": "schema/catalog.xsd" }, { "@id": "schema/other.xsd" }]"#,
+        times: 1,
+        named: ["#documentSchema", "/catalog.xsd>", "/other.xsd>"],
+    },
+    Second {
+        file: MANIFEST,
+        written: r#"mf:name "pass" ;"#,
+        doubled: r#"mf:name "pass", "other" ;"#,
+        times: 1,
+        named: ["test-manifest#name", r#""pass""#, r#""other""#],
+    },
+    Second {
+        file: MANIFEST,
+        written: "bridge:input <in/two.xml> ;",
+        doubled: "bridge:input <in/two.xml>, <in/order.xml> ;",
+        times: 3,
+        named: ["#input", "/two.xml>", "/order.xml>"],
+    },
+    Second {
+        file: MANIFEST,
+        written: "bridge:envelope <../ro-crate-metadata.json#envelope-catalog> ]",
+        doubled: "bridge:envelope <../ro-crate-metadata.json#envelope-catalog>, <../ro-crate-metadata.json#envelope-other> ]",
+        times: 8,
+        named: ["#envelope ", "#envelope-catalog>", "#envelope-other>"],
+    },
+    Second {
+        file: MANIFEST,
+        written: "bridge:expectedGraph <expected/two.ttl> ;",
+        doubled: "bridge:expectedGraph <expected/two.ttl>, <expected/order.ttl> ;",
+        times: 1,
+        named: ["#expectedGraph", "expected/two.ttl>", "expected/order.ttl>"],
+    },
+    Second {
+        file: MANIFEST,
+        written: "bridge:expectedFindings <findings/two.ttl> ]",
+        doubled: "bridge:expectedFindings <findings/two.ttl>, <findings/order.ttl> ]",
+        times: 2,
+        named: ["#expectedFindings", "findings/two.ttl>", "findings/order.ttl>"],
+    },
+];
+
+/// What the Bridge says of the second value: a crate's is a refusal to load
+/// it, and a manifest's is the verdict on the entry `pass` that carries it.
+fn said_of(second: &Second) -> std::result::Result<String, String> {
     let resolver = Variant::of(tiny()).replacing_exactly(
-        common::CRATE,
-        r#""bridge:elementNameOfEachRecord": "item""#,
-        r#""bridge:elementNameOfEachRecord": ["item", "record"]"#,
-        1,
+        second.file,
+        second.written,
+        second.doubled,
+        second.times,
     );
-    let refusal = match load_adapter(&resolver) {
-        Ok(adapter) => panic!(
-            "loaded, running with {:?}",
-            adapter.element_name_of_each_record
-        ),
-        Err(refusal) => refusal.to_string(),
+    let adapter = match load_adapter(&resolver) {
+        Err(refusal) if second.file == common::CRATE => return Ok(refusal.to_string()),
+        Err(refusal) => return Err(format!("the crate was refused: {refusal}")),
+        Ok(_) if second.file == common::CRATE => return Err("the crate loaded".to_owned()),
+        Ok(adapter) => adapter,
     };
-    for named in ["elementNameOfEachRecord", "item", "record"] {
-        assert!(refusal.contains(named), "{named} in: {refusal}");
+    let results = run_manifest(&adapter, &resolver, RunOptions::default())
+        .map_err(|refusal| format!("the run was refused: {refusal}"))?;
+    let pass = results
+        .iter()
+        .find(|r| r.entry.to_string().ends_with("manifest.ttl#pass>"))
+        .ok_or("no entry pass was reported")?;
+    match pass.outcome.as_str() {
+        "failed" => Ok(pass.description.clone()),
+        other => Err(format!("pass was {other}: {}", pass.description)),
     }
+}
+
+#[test]
+fn refuses_a_second_value_of_each_single_valued_property_with_a_sentence_naming_both() {
+    let mut wrong = Vec::new();
+    for second in &SECONDS {
+        match said_of(second) {
+            Ok(said) => {
+                let unnamed: Vec<_> = second
+                    .named
+                    .iter()
+                    .filter(|named| !said.contains(*named))
+                    .collect();
+                if !unnamed.is_empty() {
+                    wrong.push(format!("{}: {unnamed:?} not in: {said}", second.doubled));
+                }
+            }
+            Err(said) => wrong.push(format!("{}: {said}", second.doubled)),
+        }
+    }
+    assert!(wrong.is_empty(), "\n{}", wrong.join("\n"));
 }
 
 const MANIFEST: &str = "fixtures/manifest.ttl";
