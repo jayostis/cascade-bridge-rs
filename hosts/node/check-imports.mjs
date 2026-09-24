@@ -1,4 +1,4 @@
-// A browser host loads the same module and must supply the same list.
+// A browser host loads the wasm module the node host loads, so it must supply every import on the allowlist.
 import { readFileSync } from "node:fs";
 
 // wasm-bindgen suffixes each name with a hash that moves with any dependency's version.
