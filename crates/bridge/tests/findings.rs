@@ -3,68 +3,29 @@
 // moves the query's selector under the record's own position, so an adapter
 // says what inside a record a finding is about and the Bridge says which
 // record that was.
-use cascade_bridge::{
-    convert, load_adapter, prepare, Conversion, DirectoryResolver, Resolver, Source,
-};
-use oxrdf::{Quad, Term};
+//
+// Every adapter here has its accounting struck out of its crate: a census
+// finding and the finding an entry reports are neither of them a query's, and
+// what a findings query says is what this file is about.
+mod common;
+
+use cascade_bridge::{convert, load_adapter, prepare, Conversion, Resolver, Source};
+use common::{address, annotations, one, tiny, unaccounted, Variant, OA, RDF_VALUE, SH};
+use oxrdf::{NamedNode, Quad, Term};
 use std::collections::BTreeSet;
-use std::path::PathBuf;
 
-const OA: &str = "http://www.w3.org/ns/oa#";
-const RDF_TYPE: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
-const RDF_VALUE: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#value";
+const NOTE_QUERY: &str = "mapping/item-note-findings.rq";
 
-const SOURCE_ACCOUNTING: &str = "bridge:sourceAccounting";
-
-/// The tiny adapter with its accounting struck out of its crate. A census
-/// finding and the finding an entry reports are neither of them a query's,
-/// and what a findings query says is what this file is about.
-struct Queries {
-    directory: DirectoryResolver,
-}
-
-impl Resolver for Queries {
-    fn root(&self) -> &str {
-        self.directory.root()
-    }
-
-    fn read(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
-        let bytes = self.directory.read(iri)?;
-        if !iri.ends_with("ro-crate-metadata.json") {
-            return Ok(bytes);
-        }
-        let text = String::from_utf8(bytes).expect("utf-8");
-        let kept: Vec<&str> = text
-            .lines()
-            .filter(|line| !line.contains(SOURCE_ACCOUNTING))
-            .collect();
-        assert_eq!(
-            text.lines().count() - kept.len(),
-            2,
-            "the crate names an accounting, in its context and on its root entity"
-        );
-        Ok(kept.join("\n").into_bytes())
-    }
-}
-
-fn tiny() -> Queries {
-    Queries {
-        directory: DirectoryResolver::new(
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/tiny-adapter"),
-        )
-        .expect("resolver"),
-    }
-}
-
-/// The tiny adapter's findings for one of its committed inputs.
 fn findings_for(input: &str) -> Vec<Quad> {
-    findings_through(&tiny(), input)
+    findings_through(&unaccounted(), input)
 }
 
 fn findings_through(resolver: &dyn Resolver, input: &str) -> Vec<Quad> {
     conversion(resolver, input).expect("conversion").findings
 }
 
+/// A findings query is judged on what it constructs, so the adapter must load
+/// and prepare: a refusal these tests look for is the conversion's.
 fn conversion(resolver: &dyn Resolver, input: &str) -> cascade_bridge::Result<Conversion> {
     let adapter = load_adapter(resolver).expect("adapter");
     let prepared = prepare(&adapter, resolver).expect("prepared");
@@ -80,8 +41,18 @@ fn conversion(resolver: &dyn Resolver, input: &str) -> cascade_bridge::Result<Co
     )
 }
 
-/// Every object of a predicate, written as N-Triples writes it.
-fn objects(quads: &[Quad], predicate: &str) -> Vec<String> {
+/// The tiny adapter, its accounting struck, with its note query rewritten.
+fn rewritten(replacements: &[(&str, &str)]) -> Variant {
+    replacements
+        .iter()
+        .fold(unaccounted(), |variant, (from, to)| {
+            variant.replacing(NOTE_QUERY, from, *to)
+        })
+}
+
+/// Every object of a predicate, whatever its subject, as N-Triples writes it:
+/// two blank nodes are one node exactly where they write the same.
+fn every(quads: &[Quad], predicate: &str) -> Vec<String> {
     let mut written: Vec<String> = quads
         .iter()
         .filter(|q| q.predicate.as_str() == predicate)
@@ -91,69 +62,63 @@ fn objects(quads: &[Quad], predicate: &str) -> Vec<String> {
     written
 }
 
-/// The XPath every selector node holds, sorted.
-fn selector_values(quads: &[Quad]) -> Vec<String> {
-    let selector = format!("{OA}XPathSelector");
-    let selectors: Vec<String> = quads
+/// Where each finding is addressed: the record its selector names, and the
+/// step below it the selector is refined onto. Kept as rows so which record a
+/// refinement hangs under is asserted, not only which refinements exist.
+fn addresses(findings: &[Quad]) -> Vec<(String, String)> {
+    let mut rows: Vec<(String, String)> = annotations(findings)
         .iter()
-        .filter(|q| q.predicate.as_str() == RDF_TYPE)
-        .filter(|q| matches!(&q.object, Term::NamedNode(n) if n.as_str() == selector))
-        .map(|q| q.subject.to_string())
+        .map(|annotation| address(findings, annotation))
         .collect();
-    let mut values: Vec<String> = quads
-        .iter()
-        .filter(|q| q.predicate.as_str() == RDF_VALUE)
-        .filter(|q| selectors.contains(&q.subject.to_string()))
-        .map(|q| q.object.to_string())
-        .collect();
-    values.sort();
-    values
+    rows.sort();
+    rows
 }
 
-fn annotations(quads: &[Quad]) -> usize {
-    let annotation = format!("{OA}Annotation");
-    quads
+fn row(record: &str, within: &str) -> (String, String) {
+    (record.to_owned(), within.to_owned())
+}
+
+/// The document a committed input is read from, as the IRI a finding's
+/// oa:hasSource must be.
+fn document(input: &str) -> Term {
+    NamedNode::new(format!("{}fixtures/in/{input}", tiny().root()))
+        .expect("an IRI")
+        .into()
+}
+
+fn sources(findings: &[Quad]) -> Vec<Term> {
+    findings
         .iter()
-        .filter(|q| q.predicate.as_str() == RDF_TYPE)
-        .filter(|q| matches!(&q.object, Term::NamedNode(n) if n.as_str() == annotation))
-        .count()
+        .filter(|q| q.predicate.as_str() == format!("{OA}hasSource"))
+        .map(|q| q.object.clone())
+        .collect()
 }
 
 #[test]
 fn names_the_document_the_record_was_read_from_where_the_query_named_this_record() {
     let findings = findings_for("two.xml");
-    let sources = objects(&findings, &format!("{OA}hasSource"));
-    assert_eq!(sources.len(), 2);
-    for source in sources {
-        assert!(source.ends_with("fixtures/in/two.xml>"), "{source}");
-    }
+    assert_eq!(sources(&findings), vec![document("two.xml"); 2]);
 }
 
 #[test]
 fn moves_the_query_s_selector_under_the_record_s_own_position() {
     let findings = findings_for("two.xml");
     assert_eq!(
-        objects(&findings, &format!("{OA}refinedBy")).len(),
-        1,
-        "one finding of two names a node inside its record"
-    );
-
-    assert_eq!(
-        selector_values(&findings),
+        addresses(&findings),
         [
-            "\"/catalog/item[1]\"",
-            "\"/catalog/item[2]\"",
-            "\"note[1]\""
-        ]
+            row("/catalog/item[1]", "note[1]"),
+            row("/catalog/item[2]", "")
+        ],
+        "one finding of two names a node inside its record, and it is the first record's note"
     );
 }
 
 #[test]
 fn gives_every_annotation_a_record_selector_of_its_own() {
     let findings = findings_for("order.xml");
-    let selectors = objects(&findings, &format!("{OA}hasSelector"));
-    assert_eq!(annotations(&findings), 4);
-    assert_eq!(objects(&findings, &format!("{OA}hasTarget")).len(), 4);
+    let selectors = every(&findings, &format!("{OA}hasSelector"));
+    assert_eq!(annotations(&findings).len(), 4);
+    assert_eq!(every(&findings, &format!("{OA}hasTarget")).len(), 4);
     assert_eq!(
         selectors.iter().collect::<BTreeSet<_>>().len(),
         4,
@@ -163,80 +128,46 @@ fn gives_every_annotation_a_record_selector_of_its_own() {
 
 #[test]
 fn gives_each_note_of_a_record_a_finding_at_that_note_s_own_address() {
-    let notes: Vec<String> = selector_values(&findings_for("order.xml"))
+    let notes: Vec<(String, String)> = addresses(&findings_for("order.xml"))
         .into_iter()
-        .filter(|value| value.starts_with("\"note"))
+        .filter(|(_, within)| !within.is_empty())
         .collect();
     assert_eq!(
         notes,
-        ["\"note[1]\"", "\"note[1]\"", "\"note[2]\""],
+        [
+            row("/catalog/item[1]", "note[1]"),
+            row("/catalog/item[1]", "note[2]"),
+            row("/catalog/item[2]", "note[1]")
+        ],
         "two of one record's notes and one of the other's, each at its own place"
     );
 }
 
-/// The tiny adapter with the findings query that names a node inside the
-/// record rewritten to name none.
-struct WholeRecord {
-    directory: Queries,
-}
-
 const SELECTOR: &str = " ;\n      oa:hasSelector [ a oa:XPathSelector ; rdf:value ?at ]";
 
-impl Resolver for WholeRecord {
-    fn root(&self) -> &str {
-        self.directory.root()
-    }
-
-    fn read(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
-        let bytes = self.directory.read(iri)?;
-        if !iri.ends_with("mapping/item-note-findings.rq") {
-            return Ok(bytes);
-        }
-        let text = String::from_utf8(bytes).expect("utf-8");
-        assert!(text.contains(SELECTOR), "the query names a selector");
-        Ok(text.replace(SELECTOR, "").into_bytes())
-    }
+/// The note query rewritten to name no node inside the record.
+fn whole_record() -> Variant {
+    rewritten(&[(SELECTOR, "")])
 }
 
 #[test]
 fn selects_the_record_itself_for_a_query_that_writes_no_selector() {
-    let findings = findings_through(&WholeRecord { directory: tiny() }, "two.xml");
-    assert_eq!(annotations(&findings), 2);
-    assert!(objects(&findings, &format!("{OA}refinedBy")).is_empty());
-    assert_eq!(objects(&findings, &format!("{OA}hasSelector")).len(), 2);
+    let findings = findings_through(&whole_record(), "two.xml");
+    assert_eq!(
+        addresses(&findings),
+        [row("/catalog/item[1]", ""), row("/catalog/item[2]", "")]
+    );
+    assert!(every(&findings, &format!("{OA}refinedBy")).is_empty());
 }
 
 const TARGET: &str = "[\n      oa:hasSource bridge:thisRecord ;\n      oa:hasSelector [ a oa:XPathSelector ; rdf:value ?at ]\n    ]";
 
-/// The tiny adapter with the findings query that builds a target of its own
-/// rewritten to name the record itself, which the specification forbids: one
-/// name is one node for every finding the query produces.
-struct NamedTarget {
-    directory: Queries,
-}
-
-impl Resolver for NamedTarget {
-    fn root(&self) -> &str {
-        self.directory.root()
-    }
-
-    fn read(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
-        let bytes = self.directory.read(iri)?;
-        if !iri.ends_with("mapping/item-note-findings.rq") {
-            return Ok(bytes);
-        }
-        let text = String::from_utf8(bytes).expect("utf-8");
-        assert!(
-            text.contains(TARGET),
-            "the query builds a target of its own"
-        );
-        Ok(text.replace(TARGET, "bridge:thisRecord").into_bytes())
-    }
-}
-
+/// The note query with the target it builds rewritten to name the record
+/// itself, which the specification forbids: one name is one node for every
+/// finding the query produces.
 #[test]
 fn refuses_a_findings_query_whose_target_is_a_name() {
-    let Err(refusal) = conversion(&NamedTarget { directory: tiny() }, "two.xml") else {
+    let Err(refusal) = conversion(&rewritten(&[(TARGET, "bridge:thisRecord")]), "two.xml") else {
         panic!("the named form is accepted");
     };
     let refusal = refusal.to_string();
@@ -250,17 +181,17 @@ fn refuses_a_findings_query_whose_target_is_a_name() {
 
 #[test]
 fn gives_an_annotation_targeting_the_record_itself_a_record_selector_of_its_own() {
-    let findings = findings_through(&WholeRecord { directory: tiny() }, "order.xml");
-    assert_eq!(annotations(&findings), 4);
+    let findings = findings_through(&whole_record(), "order.xml");
+    assert_eq!(annotations(&findings).len(), 4);
 
-    let targets = objects(&findings, &format!("{OA}hasTarget"));
+    let targets = every(&findings, &format!("{OA}hasTarget"));
     assert_eq!(
         targets.iter().collect::<BTreeSet<_>>().len(),
         4,
         "annotations share a target node: {targets:?}"
     );
 
-    let selectors = objects(&findings, &format!("{OA}hasSelector"));
+    let selectors = every(&findings, &format!("{OA}hasSelector"));
     assert_eq!(selectors.len(), 4);
     assert_eq!(
         selectors.iter().collect::<BTreeSet<_>>().len(),
@@ -268,60 +199,17 @@ fn gives_an_annotation_targeting_the_record_itself_a_record_selector_of_its_own(
         "annotations share a record selector: {selectors:?}"
     );
 
-    let sources = objects(&findings, &format!("{OA}hasSource"));
-    assert_eq!(sources.len(), 4);
-    for source in sources {
-        assert!(source.ends_with("fixtures/in/order.xml>"), "{source}");
-    }
+    assert_eq!(sources(&findings), vec![document("order.xml"); 4]);
 
     assert_eq!(
-        selector_values(&findings),
+        addresses(&findings),
         [
-            "\"/catalog/item[1]\"",
-            "\"/catalog/item[1]\"",
-            "\"/catalog/item[1]\"",
-            "\"/catalog/item[2]\""
+            row("/catalog/item[1]", ""),
+            row("/catalog/item[1]", ""),
+            row("/catalog/item[1]", ""),
+            row("/catalog/item[2]", "")
         ]
     );
-}
-
-/// The tiny adapter with its findings query rewritten, each replacement
-/// asserted to have something to replace so a query that moved on cannot leave
-/// a test passing on the query it no longer has.
-struct Rewritten {
-    directory: Queries,
-    replacements: Vec<(String, String)>,
-}
-
-impl Rewritten {
-    fn new(replacements: &[(&str, &str)]) -> Self {
-        Self {
-            directory: tiny(),
-            replacements: replacements
-                .iter()
-                .map(|(from, to)| ((*from).to_owned(), (*to).to_owned()))
-                .collect(),
-        }
-    }
-}
-
-impl Resolver for Rewritten {
-    fn root(&self) -> &str {
-        self.directory.root()
-    }
-
-    fn read(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
-        let bytes = self.directory.read(iri)?;
-        if !iri.ends_with("mapping/item-note-findings.rq") {
-            return Ok(bytes);
-        }
-        let mut text = String::from_utf8(bytes).expect("utf-8");
-        for (from, to) in &self.replacements {
-            assert!(text.contains(from), "the query holds {from:?}");
-            text = text.replace(from, to);
-        }
-        Ok(text.into_bytes())
-    }
 }
 
 const SOURCELESS: &str =
@@ -329,7 +217,7 @@ const SOURCELESS: &str =
 
 #[test]
 fn refuses_a_findings_query_whose_target_names_no_document() {
-    let Err(refusal) = conversion(&Rewritten::new(&[(TARGET, SOURCELESS)]), "two.xml") else {
+    let Err(refusal) = conversion(&rewritten(&[(TARGET, SOURCELESS)]), "two.xml") else {
         panic!("a finding about no document is accepted");
     };
     let refusal = refusal.to_string();
@@ -340,7 +228,7 @@ fn refuses_a_findings_query_whose_target_names_no_document() {
 #[test]
 fn refuses_a_findings_query_whose_annotation_has_no_target() {
     let targeting = format!("oa:hasTarget {TARGET} ;\n    ");
-    let Err(refusal) = conversion(&Rewritten::new(&[(&targeting, "")]), "two.xml") else {
+    let Err(refusal) = conversion(&rewritten(&[(&targeting, "")]), "two.xml") else {
         panic!("an annotation about no document is accepted");
     };
     let refusal = refusal.to_string();
@@ -360,7 +248,7 @@ const ALSO_NAMED: &str = "[
 #[test]
 fn keeps_the_description_of_a_node_in_a_target_the_query_names_from_outside_it() {
     let findings = findings_through(
-        &Rewritten::new(&[
+        &rewritten(&[
             (TARGET, ALSO_NAMED),
             (
                 "sh:resultSeverity sh:Info .\n}",
@@ -370,7 +258,7 @@ fn keeps_the_description_of_a_node_in_a_target_the_query_names_from_outside_it()
         "two.xml",
     );
 
-    let named = objects(&findings, NOTE);
+    let named = every(&findings, NOTE);
     assert_eq!(named.len(), 1);
     let described: Vec<String> = findings
         .iter()
@@ -383,12 +271,8 @@ fn keeps_the_description_of_a_node_in_a_target_the_query_names_from_outside_it()
     );
 }
 
-/// The tiny adapter with the findings query rewritten to construct two
-/// annotations about the one target node, which it mints once per solution.
-struct SharedTarget {
-    directory: Queries,
-}
-
+/// The note query rewritten to construct two annotations about the one target
+/// node, which it mints once per solution.
 const BOTH: &str = "_:note ;
     oa:hasBody ex:noteHasNoTerm ;
     oa:motivatedBy oa:classifying ;
@@ -404,42 +288,26 @@ const BOTH: &str = "_:note ;
     oa:hasSource bridge:thisRecord ;
     oa:hasSelector [ a oa:XPathSelector ; rdf:value \"note\" ] .";
 
-impl Resolver for SharedTarget {
-    fn root(&self) -> &str {
-        self.directory.root()
-    }
-
-    fn read(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
-        let bytes = self.directory.read(iri)?;
-        if !iri.ends_with("mapping/item-note-findings.rq") {
-            return Ok(bytes);
-        }
-        let text = String::from_utf8(bytes).expect("utf-8");
-        let one = format!(
-            "{TARGET} ;\n    oa:hasBody ex:noteHasNoTerm ;\n    oa:motivatedBy oa:classifying ;\n    sh:resultSeverity sh:Info ."
-        );
-        assert!(text.contains(&one), "the query constructs one annotation");
-        Ok(text.replace(&one, BOTH).into_bytes())
-    }
-}
-
 #[test]
 fn gives_two_annotations_the_query_pointed_at_one_target_a_record_selector_each() {
-    let findings = findings_through(&SharedTarget { directory: tiny() }, "two.xml");
+    let one_annotation = format!(
+        "{TARGET} ;\n    oa:hasBody ex:noteHasNoTerm ;\n    oa:motivatedBy oa:classifying ;\n    sh:resultSeverity sh:Info ."
+    );
+    let findings = findings_through(&rewritten(&[(&one_annotation, BOTH)]), "two.xml");
     assert_eq!(
-        annotations(&findings),
+        annotations(&findings).len(),
         3,
         "two about the one note, one about the record with no title"
     );
 
-    let targets = objects(&findings, &format!("{OA}hasTarget"));
+    let targets = every(&findings, &format!("{OA}hasTarget"));
     assert_eq!(
         targets.iter().collect::<BTreeSet<_>>().len(),
         3,
         "annotations share a target node: {targets:?}"
     );
 
-    let selectors = objects(&findings, &format!("{OA}hasSelector"));
+    let selectors = every(&findings, &format!("{OA}hasSelector"));
     assert_eq!(selectors.len(), 3);
     assert_eq!(
         selectors.iter().collect::<BTreeSet<_>>().len(),
@@ -447,30 +315,23 @@ fn gives_two_annotations_the_query_pointed_at_one_target_a_record_selector_each(
         "annotations share a record selector: {selectors:?}"
     );
 
-    assert_eq!(objects(&findings, &format!("{OA}refinedBy")).len(), 2);
     assert_eq!(
-        selector_values(&findings),
+        addresses(&findings),
         [
-            "\"/catalog/item[1]\"",
-            "\"/catalog/item[1]\"",
-            "\"/catalog/item[2]\"",
-            "\"note\"",
-            "\"note\""
+            row("/catalog/item[1]", "note"),
+            row("/catalog/item[1]", "note"),
+            row("/catalog/item[2]", "")
         ]
     );
 
-    let sources = objects(&findings, &format!("{OA}hasSource"));
-    assert_eq!(sources.len(), 3);
-    for source in sources {
-        assert!(source.ends_with("fixtures/in/two.xml>"), "{source}");
-    }
+    assert_eq!(sources(&findings), vec![document("two.xml"); 3]);
 }
 
 const THIS_RECORD: &str = "https://ns.cascadeprotocol.org/bridge/v1-draft#thisRecord";
 
 #[test]
 fn refuses_a_findings_query_that_names_the_annotation_it_constructs() {
-    let named = Rewritten::new(&[("[] a oa:Annotation", "bridge:thisRecord a oa:Annotation")]);
+    let named = rewritten(&[("[] a oa:Annotation", "bridge:thisRecord a oa:Annotation")]);
     let Err(refusal) = conversion(&named, "two.xml") else {
         panic!("the named form is accepted");
     };
@@ -483,100 +344,42 @@ fn refuses_a_findings_query_that_names_the_annotation_it_constructs() {
     );
 }
 
-const SH: &str = "http://www.w3.org/ns/shacl#";
-
-/// The tiny adapter with its gap scheme and its findings query rewritten
-/// together: what a concept declares and what a template writes are the two
-/// halves of a finding's severity, and a test of one sets the other.
-struct Severities {
-    directory: Queries,
-    scheme: Vec<(String, String)>,
-    query: Vec<(String, String)>,
-}
-
-impl Severities {
-    fn new(scheme: &[(&str, &str)], query: &[(&str, &str)]) -> Self {
-        let owned = |pairs: &[(&str, &str)]| {
-            pairs
-                .iter()
-                .map(|(from, to)| ((*from).to_owned(), (*to).to_owned()))
-                .collect()
-        };
-        Self {
-            directory: tiny(),
-            scheme: owned(scheme),
-            query: owned(query),
-        }
-    }
-}
-
-impl Resolver for Severities {
-    fn root(&self) -> &str {
-        self.directory.root()
-    }
-
-    fn read(&self, iri: &str) -> cascade_bridge::Result<Vec<u8>> {
-        let bytes = self.directory.read(iri)?;
-        let replacements = if iri.ends_with("vocab/catalog-gaps.ttl") {
-            &self.scheme
-        } else if iri.ends_with("mapping/item-note-findings.rq") {
-            &self.query
-        } else {
-            return Ok(bytes);
-        };
-        let mut text = String::from_utf8(bytes).expect("utf-8");
-        for (from, to) in replacements {
-            assert!(text.contains(from), "{iri} holds {from:?}");
-            text = text.replace(from, to);
-        }
-        Ok(text.into_bytes())
-    }
+/// The gap scheme and the note query rewritten together: what a concept
+/// declares and what a template writes are the two halves of a finding's
+/// severity, and a test of one sets the other.
+fn severities(scheme: &[(&str, &str)], query: &[(&str, &str)]) -> Variant {
+    scheme.iter().fold(rewritten(query), |variant, (from, to)| {
+        variant.replacing("vocab/catalog-gaps.ttl", from, *to)
+    })
 }
 
 /// The severity of the annotation whose body is this one, of the two findings
 /// two.xml draws: the note the query addresses, and the item with no title.
-fn severity_of(findings: &[Quad], body: &str) -> String {
-    let named = findings
+fn severity_of(findings: &[Quad], body: &str) -> Term {
+    let named: Vec<String> = findings
         .iter()
         .filter(|q| q.predicate.as_str() == format!("{OA}hasBody"))
         .filter(|q| matches!(&q.object, Term::NamedNode(n) if n.as_str() == body))
-        .map(|q| q.subject.clone())
-        .collect::<Vec<_>>();
-    assert_eq!(named.len(), 1, "one annotation bodies {body}");
-    let severities: Vec<String> = findings
-        .iter()
-        .filter(|q| q.subject == named[0])
-        .filter(|q| q.predicate.as_str() == format!("{SH}resultSeverity"))
-        .map(|q| q.object.to_string())
+        .map(|q| q.subject.to_string())
         .collect();
-    assert_eq!(severities.len(), 1, "the finding carries one severity");
-    severities[0].clone()
+    assert_eq!(named.len(), 1, "one annotation bodies {body}");
+    one(findings, &named[0], &format!("{SH}resultSeverity")).expect("a severity")
 }
 
 /// The severity of the one annotation the query gave no body.
-fn severity_of_the_unbodied(findings: &[Quad]) -> String {
-    let bodied: Vec<String> = findings
-        .iter()
-        .filter(|q| q.predicate.as_str() == format!("{OA}hasBody"))
-        .map(|q| q.subject.to_string())
-        .collect();
-    let annotation = format!("{OA}Annotation");
-    let unbodied: Vec<_> = findings
-        .iter()
-        .filter(|q| q.predicate.as_str() == RDF_TYPE)
-        .filter(|q| matches!(&q.object, Term::NamedNode(n) if n.as_str() == annotation))
-        .map(|q| q.subject.clone())
-        .filter(|s| !bodied.contains(&s.to_string()))
+fn severity_of_the_unbodied(findings: &[Quad]) -> Term {
+    let unbodied: Vec<String> = annotations(findings)
+        .into_iter()
+        .filter(|annotation| one(findings, annotation, &format!("{OA}hasBody")).is_none())
         .collect();
     assert_eq!(unbodied.len(), 1, "one annotation carries no body");
-    let severities: Vec<String> = findings
-        .iter()
-        .filter(|q| q.subject == unbodied[0])
-        .filter(|q| q.predicate.as_str() == format!("{SH}resultSeverity"))
-        .map(|q| q.object.to_string())
-        .collect();
-    assert_eq!(severities.len(), 1, "the finding carries one severity");
-    severities[0].clone()
+    one(findings, &unbodied[0], &format!("{SH}resultSeverity")).expect("a severity")
+}
+
+fn severity(name: &str) -> Term {
+    NamedNode::new(format!("{SH}{name}"))
+        .expect("an IRI")
+        .into()
 }
 
 const NOTE_HAS_NO_TERM: &str = "urn:example:catalog#noteHasNoTerm";
@@ -590,31 +393,25 @@ const NO_SEVERITY_IN_THE_TEMPLATE: (&str, &str) = (" ;\n    sh:resultSeverity sh
 #[test]
 fn takes_the_concept_s_severity_where_the_query_s_template_wrote_none() {
     let findings = findings_through(
-        &Severities::new(&[WARNING_ON_THE_CONCEPT], &[NO_SEVERITY_IN_THE_TEMPLATE]),
+        &severities(&[WARNING_ON_THE_CONCEPT], &[NO_SEVERITY_IN_THE_TEMPLATE]),
         "two.xml",
     );
     assert_eq!(
         severity_of(&findings, NOTE_HAS_NO_TERM),
-        format!("<{SH}Warning>")
+        severity("Warning")
     );
 }
 
 #[test]
 fn takes_sh_info_where_neither_the_query_s_template_nor_the_concept_says() {
-    let findings = findings_through(
-        &Severities::new(&[], &[NO_SEVERITY_IN_THE_TEMPLATE]),
-        "two.xml",
-    );
-    assert_eq!(
-        severity_of(&findings, NOTE_HAS_NO_TERM),
-        format!("<{SH}Info>")
-    );
+    let findings = findings_through(&severities(&[], &[NO_SEVERITY_IN_THE_TEMPLATE]), "two.xml");
+    assert_eq!(severity_of(&findings, NOTE_HAS_NO_TERM), severity("Info"));
 }
 
 #[test]
 fn takes_sh_info_for_a_body_the_gap_scheme_does_not_declare() {
     let findings = findings_through(
-        &Severities::new(
+        &severities(
             &[WARNING_ON_THE_CONCEPT],
             &[
                 NO_SEVERITY_IN_THE_TEMPLATE,
@@ -628,14 +425,14 @@ fn takes_sh_info_for_a_body_the_gap_scheme_does_not_declare() {
     );
     assert_eq!(
         severity_of(&findings, "urn:example:catalog#noteIsNotATitle"),
-        format!("<{SH}Info>")
+        severity("Info")
     );
 }
 
 #[test]
 fn takes_sh_info_for_an_annotation_the_query_gave_no_body() {
     let findings = findings_through(
-        &Severities::new(
+        &severities(
             &[WARNING_ON_THE_CONCEPT],
             &[
                 NO_SEVERITY_IN_THE_TEMPLATE,
@@ -644,16 +441,13 @@ fn takes_sh_info_for_an_annotation_the_query_gave_no_body() {
         ),
         "two.xml",
     );
-    assert_eq!(severity_of_the_unbodied(&findings), format!("<{SH}Info>"));
+    assert_eq!(severity_of_the_unbodied(&findings), severity("Info"));
 }
 
 #[test]
 fn keeps_the_severity_the_query_s_template_wrote_over_the_concept_s() {
-    let findings = findings_through(&Severities::new(&[WARNING_ON_THE_CONCEPT], &[]), "two.xml");
-    assert_eq!(
-        severity_of(&findings, NOTE_HAS_NO_TERM),
-        format!("<{SH}Info>")
-    );
+    let findings = findings_through(&severities(&[WARNING_ON_THE_CONCEPT], &[]), "two.xml");
+    assert_eq!(severity_of(&findings, NOTE_HAS_NO_TERM), severity("Info"));
 }
 
 /// Two bodies on one annotation is not conforming output, the specification's
@@ -666,7 +460,7 @@ fn takes_the_concept_s_severity_whichever_way_round_a_template_wrote_two_bodies(
         "oa:hasBody ex:noteHasNoTerm, ex:noteIsNotATitle ;",
     ] {
         let findings = findings_through(
-            &Severities::new(
+            &severities(
                 &[WARNING_ON_THE_CONCEPT],
                 &[
                     NO_SEVERITY_IN_THE_TEMPLATE,
@@ -677,7 +471,7 @@ fn takes_the_concept_s_severity_whichever_way_round_a_template_wrote_two_bodies(
         );
         assert_eq!(
             severity_of(&findings, NOTE_HAS_NO_TERM),
-            format!("<{SH}Warning>"),
+            severity("Warning"),
             "{bodies}"
         );
     }
