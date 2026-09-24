@@ -1,13 +1,3 @@
-// The vector the specification writes and this Bridge reproduces: the
-// synthetic adapter of jayostis/cascade-bridge-spec, whose findings fixtures
-// are the contract for what an accounting entry reports and what a census
-// counts.
-//
-// It reads a checkout of another repository, which a checkout of this one does
-// not carry, so it is named rather than run by default: `cargo test --
-// --ignored`. The compatibility job runs it there, after the specification's
-// start action has left that checkout beside this one at the version the run
-// picked.
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -52,10 +42,7 @@ fn reproduces_every_finding_the_specification_s_synthetic_adapter_expects() {
             Some((outcome, name, said))
         })
         .collect();
-    // Which entries the specification's manifest names is the specification's to
-    // change, so they are read rather than listed. Every one this Bridge can
-    // judge passes; an entry it cannot judge is let through only for the reason
-    // its kind gives, so a judged entry going quiet fails here.
+    // An entry this Bridge cannot judge is let through only for the reason its kind gives.
     assert!(!entries.is_empty(), "{printed}");
     for (outcome, name, said) in &entries {
         let excused = match *outcome {

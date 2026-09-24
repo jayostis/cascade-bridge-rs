@@ -1,15 +1,3 @@
-// An accounting entry whose verdict names a gap reports that gap, once per
-// distinct path per record, addressed at that path's first occurrence — the
-// address a census finding is written at, carrying the gap as its body, the
-// path as its sh:value and, where the path stands at more than one node of the
-// record, how many.
-//
-// Which kinds report is the gap concept's own skos:broader: a gap true of the
-// path reports, and one true of what the record happens to hold at the path
-// does not, because an entry cannot say which of that path's occurrences it is
-// true of.
-//
-// A crate naming no accounting is untouched by all of it, as it was in wave 1.
 mod common;
 
 use cascade_bridge::Resolver;
@@ -24,9 +12,7 @@ use oxrdfio::{RdfFormat, RdfParser};
 const SUMMARY_GAP: &str = "urn:example:catalog#summaryLosesItsMarkup";
 const SKOS_BROADER: &str = "http://www.w3.org/2004/02/skos/core#broader";
 
-/// Every annotation an entry reported, by the node it is: a finding about a
-/// path, bodied at the gap the entry names rather than at the census's own
-/// term.
+/// Annotations bodied at a gap an entry names, not at the census's own term.
 fn reporters(findings: &[Quad]) -> Vec<String> {
     findings
         .iter()
@@ -38,9 +24,8 @@ fn reporters(findings: &[Quad]) -> Vec<String> {
         .collect()
 }
 
-/// Each reported gap as what it says and where it says it: the gap it bodies,
-/// the path it names, the record it is about, and the occurrence inside that
-/// record it is addressed at.
+/// Each reported gap as its gap, its path, its record, and the occurrence it is
+/// addressed at inside that record.
 fn reported(findings: &[Quad]) -> Vec<(String, String, String, String)> {
     let mut rows: Vec<(String, String, String, String)> = reporters(findings)
         .iter()
@@ -58,7 +43,6 @@ fn reported(findings: &[Quad]) -> Vec<(String, String, String, String)> {
     rows
 }
 
-/// A row of `reported`, spelled as a test writes one.
 fn row(gap: &str, path: &str, record: &str, within: &str) -> (String, String, String, String) {
     (
         gap.to_owned(),
@@ -78,7 +62,6 @@ fn counted(findings: &[Quad]) -> Vec<(String, Option<String>)> {
     rows
 }
 
-/// The one annotation an entry reported about this path.
 fn about(findings: &[Quad], path: &str) -> String {
     let mut found = reporters(findings)
         .into_iter()
@@ -89,13 +72,10 @@ fn about(findings: &[Quad], path: &str) -> String {
     first.expect("checked above")
 }
 
-/// The tiny adapter with its gap scheme replaced, so a kind and a severity can
-/// be varied without being committed.
 fn with_gaps(body: &str) -> Variant {
     Variant::of(tiny()).with(GAP_SCHEME, body)
 }
 
-/// One entry naming the gap a case turns on, or none.
 fn stated(path: &str, verdict: &str, gap: Option<&str>) -> String {
     match gap {
         Some(gap) => entry(path, verdict, &[&format!("bridge:namesGap {gap}")]),
@@ -168,8 +148,8 @@ fn writes_the_count_as_an_xsd_integer() {
     assert_eq!(literal.datatype().as_str(), XSD_INTEGER);
 }
 
-/// The paths of `unaccounted-attribute.xml`'s record, the two attributes of it
-/// named as gaps: one on a child element, one on the record element itself.
+/// `unaccounted-attribute.xml`'s record, with an attribute of a child element and
+/// one of the record element named as gaps.
 fn attribute_gaps() -> Variant {
     with_accounting(&accounting(&[
         stated("/item/@id", "noHome", Some("ex:noteHasNoTerm")),
@@ -329,12 +309,7 @@ fn emits_nothing_for_a_gap_of_a_kind_true_of_what_the_record_holds_at_the_path()
     }
 }
 
-/// Every case above reads the reporting set forwards: it names a kind and
-/// asserts a finding. Narrowing the set passes all of them by reporting
-/// nothing at all, so the set is read backwards here — with a guard that the
-/// committed adapter really does stand an entry, a gap and a record at the
-/// path, and would report the moment the kind said the path rather than what
-/// the record holds at it.
+/// Guarded: the committed adapter does stand an entry, a gap and a record at the path.
 #[test]
 fn bodies_no_finding_at_a_gap_the_committed_adapter_declares_under_a_kind_that_does_not_report() {
     let resolver = tiny();
@@ -443,7 +418,6 @@ fn stands_a_reported_gap_beside_the_finding_a_query_constructs_at_the_same_node(
     );
 }
 
-/// Neither Turtle nor anything else: a gap scheme that cannot be read at all.
 const UNPARSEABLE: &str = "@prefix skos: <http://www.w3.org/2004/02/skos/core#\n";
 
 #[test]
@@ -465,8 +439,6 @@ fn refuses_a_gap_scheme_the_crate_names_and_nothing_answers_to() {
     assert!(refusal.contains(UNWRITTEN), "{refusal}");
 }
 
-/// The scheme with everything the committed accounting names declared as it
-/// declares it, but for the one concept a case is about.
 fn scheme_but_for(concept_under_test: &str) -> String {
     format!(
         "{GAPS_PREAMBLE}\nex:gaps a skos:ConceptScheme .\n{}\n{concept_under_test}",
@@ -474,12 +446,6 @@ fn scheme_but_for(concept_under_test: &str) -> String {
     )
 }
 
-/// One story for every way a gap scheme can fail to say what kind of gap an
-/// entry names and how severe it is: the run is refused, naming what it could
-/// not read. A Bridge that went quiet instead would drop a finding for a
-/// reason the reader of its output cannot see, which is the worse failure the
-/// contract's point 3 names — and a finding the specification's own
-/// <#SourceFinding> shape would then refuse is no better.
 #[test]
 fn refuses_a_gap_declaring_a_severity_the_specification_does_not_name() {
     let catastrophic = with_gaps(&scheme_but_for(
@@ -542,8 +508,6 @@ fn refuses_an_entry_naming_a_gap_the_scheme_does_not_declare() {
     assert!(refusal.contains("noGapAnyoneDeclared"), "{refusal}");
 }
 
-/// An accounting's verdict and the gap it names are IRIs, as its
-/// bridge:sourcePath is a literal, and the same parse refuses all three.
 #[test]
 fn refuses_a_verdict_that_is_no_iri() {
     let quoted = with_accounting(&format!(
@@ -580,9 +544,6 @@ fn refuses_a_gap_declaring_two_kinds() {
     assert!(refusal.contains("noteHasNoTerm"), "{refusal}");
 }
 
-/// What an entry says is what it says once. A second verdict leaves the parse
-/// order deciding whether the entry reports at all, and a second gap which gap
-/// it reports, which is the reason a second severity is refused one file over.
 #[test]
 fn refuses_an_entry_declaring_two_verdicts() {
     let both = with_accounting(&format!(
@@ -607,11 +568,6 @@ fn refuses_an_entry_naming_two_gaps() {
     assert!(refusal.contains("/item/note"), "{refusal}");
 }
 
-/// A bridge:verdict and a bridge:namesGap are read from a bridge:PathEntry and
-/// nowhere else, so what neither is read from cannot make a run fail. A
-/// bridge:sourcePath is the standing exception: dropping one that is no
-/// literal would leave the census reporting the path as unaccounted, which is
-/// a wrong finding rather than an absent one.
 #[test]
 fn reads_no_verdict_and_no_gap_from_a_subject_that_is_no_path_entry() {
     let alongside = with_accounting(&format!(
@@ -641,11 +597,6 @@ fn refuses_a_source_path_that_is_no_literal_wherever_it_stands() {
     assert!(refusal.contains(ACCOUNTING), "{refusal}");
 }
 
-/// Contract point 3, which no test was named for: the verdict decides whether
-/// the entry names a gap at all, and it decides that on its own. The pairing
-/// of a verdict with a kind is the adapter profile's to refuse, so
-/// bridge:carriedInPart naming a gap of kind bridge:noPredicate — a pairing
-/// the lint's table does not list — reports rather than going quiet.
 #[test]
 fn reports_from_a_verdict_that_names_a_gap_and_from_no_other_whatever_kind_it_names() {
     for verdict in ["noHome", "carriedInPart"] {
@@ -674,10 +625,6 @@ fn reports_from_a_verdict_that_names_a_gap_and_from_no_other_whatever_kind_it_na
     }
 }
 
-/// The choice, recorded: an entry whose verdict names no gap is read no
-/// further, so what it names need not be a gap the scheme declares. An
-/// accounting is refused for what makes it unreadable, and not for what an
-/// entry the Bridge never consults happens to say.
 #[test]
 fn asks_nothing_of_the_scheme_about_a_gap_named_by_a_verdict_that_names_none() {
     let undeclared = with_accounting(&accounting(&[

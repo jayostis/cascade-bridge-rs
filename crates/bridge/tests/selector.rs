@@ -1,8 +1,3 @@
-// A record's selector is the XPath from the document element to the record:
-// a step for the document element, then one for each element down to and
-// including the record, every step below the document element carrying its
-// place among its own siblings of that name. A finding about the document
-// rather than about a record stops at the document element's own step.
 mod common;
 
 use cascade_bridge::lift_slice;
@@ -78,9 +73,7 @@ fn writes_a_record_that_is_the_document_element_as_one_step_with_no_index() {
     assert_eq!(selectors(br#"<item id="9"/>"#, "item"), ["/item"]);
 }
 
-/// The tiny adapter with its input put in a namespace, which its schemas do
-/// not declare, so every element is namespaced and the document fails the
-/// document schema its envelope names.
+/// The tiny adapter with its input put in a namespace its schemas do not declare.
 fn namespaced() -> Variant {
     Variant::of(tiny()).replacing(
         "fixtures/in/two.xml",

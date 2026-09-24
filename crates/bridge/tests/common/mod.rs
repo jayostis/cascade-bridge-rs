@@ -1,6 +1,3 @@
-// What every test of the library drives the Bridge through: the tiny adapter,
-// the tiny adapter with some of its files rewritten as they are read, and the
-// walk from a finding to the node it is about.
 #![allow(dead_code)]
 
 use cascade_bridge::{
@@ -31,7 +28,6 @@ pub fn tiny_directory() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/tiny-adapter")
 }
 
-/// Where a checkout of `the-cascade-protocol/spec` would stand.
 pub fn vocabularies_directory() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/tiny-vocabularies")
 }
@@ -46,9 +42,8 @@ pub fn tiny_with_vocabularies() -> DirectoryResolver {
         .expect("the vocabularies directory")
 }
 
-/// The whole run, from the crate to the conversion, as a result: an adapter
-/// file may be refused at any stage of it, and which stage is not a test's to
-/// say.
+/// The whole run, from the crate to the conversion: which stage refuses is not a test's
+/// to say.
 pub fn conversion(resolver: &dyn Resolver, input: &str) -> Result<Conversion> {
     let adapter = load_adapter(resolver)?;
     let prepared = prepare(&adapter, resolver)?;
@@ -80,7 +75,6 @@ pub fn objects(quads: &[Quad], subject: &str, predicate: &str) -> Vec<Term> {
         .collect()
 }
 
-/// The object this subject carries for this predicate, where it carries one.
 /// A second is a defect of the run, never an absence.
 pub fn one(quads: &[Quad], subject: &str, predicate: &str) -> Option<Term> {
     let mut all = objects(quads, subject, predicate);
@@ -114,12 +108,10 @@ pub fn says(quads: &[Quad], subject: &str, predicate: &str) -> String {
         .unwrap_or_default()
 }
 
-/// How many nodes of the record a finding stands for, where it says.
 pub fn count(findings: &[Quad], annotation: &str) -> Option<String> {
     one(findings, annotation, &format!("{BRIDGE}occurrences")).map(written)
 }
 
-/// Every annotation a run produced, by the node it is.
 pub fn annotations(findings: &[Quad]) -> Vec<String> {
     let annotation = format!("{OA}Annotation");
     findings
@@ -130,9 +122,8 @@ pub fn annotations(findings: &[Quad]) -> Vec<String> {
         .collect()
 }
 
-/// Where a finding is addressed: the record its target's selector names, and
-/// the step below the record the selector is refined onto, empty where it is
-/// refined onto none.
+/// The record the target's selector names, and the step it is refined onto, empty
+/// where it is refined onto none.
 pub fn address(findings: &[Quad], annotation: &str) -> (String, String) {
     let target = node(findings, annotation, &format!("{OA}hasTarget"));
     let selector = node(findings, &target, &format!("{OA}hasSelector"));
@@ -162,9 +153,7 @@ enum Edit {
     },
 }
 
-/// An adapter with some of its files rewritten as they are read, so a variant
-/// of a committed input, query, crate or oracle is run without committing one.
-/// A file is named by the end of its IRI.
+/// An adapter with files rewritten as they are read; a file is named by the end of its IRI.
 pub struct Variant {
     directory: DirectoryResolver,
     edits: Vec<Edit>,
@@ -206,7 +195,6 @@ impl Variant {
         self
     }
 
-    /// The file read as this body, whatever is on disk.
     pub fn with(mut self, file: &str, body: impl Into<String>) -> Self {
         self.edits.push(Edit::Whole {
             file: file.to_owned(),
@@ -282,7 +270,6 @@ pub fn with_accounting(body: &str) -> Variant {
     Variant::of(tiny()).with(ACCOUNTING, body)
 }
 
-/// Every input the adapter committed, which its oracles are written against.
 pub fn committed() -> Vec<String> {
     let mut named: Vec<String> = std::fs::read_dir(tiny_directory().join("fixtures/in"))
         .expect("the committed inputs")
@@ -322,9 +309,7 @@ pub fn violations(findings: &[Quad]) -> Vec<(String, String, String)> {
     rows
 }
 
-/// The tiny adapter with the accounting struck out of its crate, which is
-/// every adapter that exists. The crate is edited once, and read back through
-/// `load_adapter` to show the edit struck the accounting and nothing else.
+/// The tiny adapter with the accounting struck out of its crate, checked by loading it.
 pub fn unaccounted() -> Variant {
     let directory = tiny();
     let iri = format!("{}{CRATE}", directory.root());
@@ -352,8 +337,6 @@ pub const ACCOUNTING_PREAMBLE: &str = "@prefix bridge: <https://ns.cascadeprotoc
 
 pub const GAPS_PREAMBLE: &str = "@prefix skos:   <http://www.w3.org/2004/02/skos/core#> .\n@prefix sh:     <http://www.w3.org/ns/shacl#> .\n@prefix bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#> .\n@prefix ex:     <urn:example:catalog#> .\n";
 
-/// One entry, spelled as an accounting spells it, carrying only the
-/// declarations a case turns on.
 pub fn entry(path: &str, verdict: &str, declarations: &[&str]) -> String {
     let said: String = declarations
         .iter()
@@ -368,7 +351,6 @@ pub fn accounting(entries: &[String]) -> String {
     format!("{ACCOUNTING_PREAMBLE}{}", entries.concat())
 }
 
-/// One gap concept, under the kind and at the severity a case turns on.
 pub fn concept(name: &str, kind: &str, severity: Option<&str>) -> String {
     let declared = match severity {
         Some(severity) => format!(" ;\n  sh:resultSeverity sh:{severity}"),

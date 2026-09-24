@@ -1,15 +1,10 @@
-// Validation reports; it never refuses. A record that fails its schema is a
-// finding with the record's own position as its selector, and its graph is
-// produced all the same.
 mod common;
 
 use cascade_bridge::{load_adapter, prepare, DirectoryResolver, Error, Resolver, Result};
 use common::{address, annotations, converted, says, tiny, Variant, OA, SH};
 use oxrdf::{NamedOrBlankNode, Quad};
 
-/// Every finding as its body, its severity and where it is addressed, joined
-/// per finding so a severity is read off the finding whose address it sits
-/// beside.
+/// Every finding as its body, its severity and its address, joined per finding.
 fn rows(findings: &[Quad]) -> Vec<(String, String, String, String)> {
     let mut rows: Vec<(String, String, String, String)> = annotations(findings)
         .iter()
@@ -27,7 +22,6 @@ fn rows(findings: &[Quad]) -> Vec<(String, String, String, String)> {
     rows
 }
 
-/// Where each violation is addressed, whatever its body.
 fn violations(findings: &[Quad]) -> Vec<(String, String)> {
     let mut addressed: Vec<(String, String)> = common::violations(findings)
         .into_iter()
@@ -90,9 +84,8 @@ fn refuses_a_schema_that_includes_a_file_outside_the_adapter() {
     );
 }
 
-/// A comment and a processing instruction are not content, and the record's
-/// own type is element-only, so a validator handed the record with both in it
-/// draws what it drew without them: nothing.
+/// The record's own type is element-only, so neither a comment nor an instruction is
+/// content.
 #[test]
 fn reports_nothing_about_a_record_carrying_a_comment_and_an_instruction() {
     let plain = converted(&tiny(), "two.xml");
