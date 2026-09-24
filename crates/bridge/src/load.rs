@@ -93,6 +93,16 @@ pub fn value(graph: &Graph, s: &NamedOrBlankNode, predicate: &str) -> Result<Opt
     Ok(values(graph, s, predicate)?.into_iter().next())
 }
 
+pub fn one(graph: &Graph, s: &NamedOrBlankNode, predicate: &str) -> Result<Option<String>> {
+    let objects = objects(graph, s, predicate)?;
+    if let [first, second, ..] = objects.as_slice() {
+        return Err(Error::msg(format!(
+            "{s} declares the {predicate} {first} and {second}; it declares at most one"
+        )));
+    }
+    Ok(objects.first().map(term_value))
+}
+
 pub fn term_value(term: &Term) -> String {
     match term {
         Term::NamedNode(n) => n.as_str().to_owned(),
@@ -163,7 +173,7 @@ pub fn load_adapter(resolver: &dyn Resolver) -> Result<Adapter> {
     )?;
 
     let descriptor = subject(&crate_iri)?;
-    let root = value(&graph, &descriptor, SCHEMA_ABOUT)?.ok_or_else(|| {
+    let root = one(&graph, &descriptor, SCHEMA_ABOUT)?.ok_or_else(|| {
         Error::msg("the crate's metadata descriptor names no root entity (about)")
     })?;
     let root_subject = subject(&root)?;
@@ -176,7 +186,7 @@ pub fn load_adapter(resolver: &dyn Resolver) -> Result<Adapter> {
         )));
     }
 
-    let manifest = value(&graph, &root_subject, BRIDGE_TEST_MANIFEST)?
+    let manifest = one(&graph, &root_subject, BRIDGE_TEST_MANIFEST)?
         .ok_or_else(|| Error::msg("the adapter names no bridge:testManifest"))?;
     parse_into(
         &mut graph,
@@ -191,26 +201,26 @@ pub fn load_adapter(resolver: &dyn Resolver) -> Result<Adapter> {
         envelopes.push(Envelope {
             name: value(&graph, &s, SCHEMA_NAME)?,
             doc_root_element_name: value(&graph, &s, BRIDGE_DOC_ROOT_ELEMENT_NAME)?,
-            document_schema: value(&graph, &s, BRIDGE_DOCUMENT_SCHEMA)?,
+            document_schema: one(&graph, &s, BRIDGE_DOCUMENT_SCHEMA)?,
             iri,
         });
     }
 
     Ok(Adapter {
         identifier: value(&graph, &root_subject, SCHEMA_IDENTIFIER)?,
-        element_name_of_each_record: value(
+        element_name_of_each_record: one(
             &graph,
             &root_subject,
             BRIDGE_ELEMENT_NAME_OF_EACH_RECORD,
         )?,
-        source_schema: value(&graph, &root_subject, BRIDGE_SOURCE_SCHEMA)?,
+        source_schema: one(&graph, &root_subject, BRIDGE_SOURCE_SCHEMA)?,
         vocabulary_files: values(&graph, &root_subject, BRIDGE_VOCABULARY_FILE)?,
-        source_accounting: value(&graph, &root_subject, BRIDGE_SOURCE_ACCOUNTING)?,
-        gap_scheme: value(&graph, &root_subject, BRIDGE_GAP_SCHEME)?,
+        source_accounting: one(&graph, &root_subject, BRIDGE_SOURCE_ACCOUNTING)?,
+        gap_scheme: one(&graph, &root_subject, BRIDGE_GAP_SCHEME)?,
         required_profiles: values(&graph, &root_subject, BRIDGE_REQUIRES_PROFILE)?,
         mappings: values(&graph, &root_subject, BRIDGE_MAPPING)?,
         findings_queries: values(&graph, &root_subject, BRIDGE_FINDINGS_QUERY)?,
-        detect_query: value(&graph, &root_subject, BRIDGE_DETECT_QUERY)?,
+        detect_query: one(&graph, &root_subject, BRIDGE_DETECT_QUERY)?,
         tables: values(&graph, &root_subject, BRIDGE_TABLE)?,
         envelopes,
         manifest,
