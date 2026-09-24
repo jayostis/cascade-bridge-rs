@@ -119,7 +119,8 @@ fn converts_as_the_native_command_does(
 
 #[test]
 fn the_node_host_converts_a_document_to_the_graph_and_findings_the_native_command_writes() {
-    converts_as_the_native_command_does(&tiny(), "two.xml", &[]);
+    let vocabularies = vocabularies().to_string_lossy().into_owned();
+    converts_as_the_native_command_does(&tiny(), "two.xml", &["--vocabularies", &vocabularies]);
 }
 
 #[test]
@@ -146,7 +147,8 @@ fn the_node_host_reads_a_directory_inside_the_adapter_whose_name_begins_with_two
     let metadata = adapter.join("ro-crate-metadata.json");
     let text = std::fs::read_to_string(&metadata).expect("the metadata");
     std::fs::write(&metadata, text.replace("\"mapping/", "\"..mapping/")).expect("the metadata");
-    converts_as_the_native_command_does(&adapter, "two.xml", &[]);
+    let vocabularies = vocabularies().to_string_lossy().into_owned();
+    converts_as_the_native_command_does(&adapter, "two.xml", &["--vocabularies", &vocabularies]);
 }
 
 fn replaced_once(adapter: &Path, path: &str, from: &str, to: &str) {
@@ -235,9 +237,16 @@ fn the_node_host_refuses_a_mapping_holding_a_service_pattern_as_the_native_comma
 /// A run whose standard output is closed before the graph is written to it.
 fn convert_into_a_closed_pipe(mut command: Command) -> Output {
     let adapter = tiny().to_string_lossy().into_owned();
+    let vocabularies = vocabularies().to_string_lossy().into_owned();
     let document = tiny().join("fixtures/in/two.xml");
     let mut child = command
-        .args(["convert", &adapter, &document.to_string_lossy()])
+        .args([
+            "convert",
+            &adapter,
+            &document.to_string_lossy(),
+            "--vocabularies",
+            &vocabularies,
+        ])
         .current_dir(workspace())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

@@ -5,9 +5,9 @@
 //! What these functions take and return is the node host's business and
 //! promises nothing to anyone else.
 use cascade_bridge::{
-    earl_report, load_adapter, prepare, run_manifest, serialise, serialise_at, unread, Conversion,
-    EntryResult, Error, GraphFormat, Outcome, ReportSubject, Resolver, RunOptions, Source,
-    OFFERED_PROFILES,
+    earl_report, load_adapter, prepare, require_vocabularies, run_manifest, serialise,
+    serialise_at, unread, Conversion, EntryResult, Error, GraphFormat, Outcome, ReportSubject,
+    Resolver, RunOptions, Source, OFFERED_PROFILES,
 };
 use std::fmt::Write;
 use wasm_bindgen::prelude::*;
@@ -119,6 +119,7 @@ pub fn test(
     let host = host(root, vocabularies, files);
     let subject = subject();
     let adapter = load_adapter(&host).map_err(thrown)?;
+    require_vocabularies(&adapter, &host).map_err(thrown)?;
     let results = run_manifest(&adapter, &host, RunOptions { datasets }).map_err(thrown)?;
     let mut summary = String::new();
     let _ = writeln!(
@@ -227,6 +228,7 @@ pub fn convert(
         GraphFormat::named(format).ok_or_else(|| JsError::new(&format!("no format {format}")))?;
     let host = host(root, vocabularies, files);
     let adapter = load_adapter(&host).map_err(thrown)?;
+    require_vocabularies(&adapter, &host).map_err(thrown)?;
     let prepared = prepare(&adapter, &host).map_err(thrown)?;
     let conversion = cascade_bridge::convert(
         &prepared,

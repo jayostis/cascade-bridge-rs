@@ -29,3 +29,4 @@ pub use load::{load_adapter, Adapter, Envelope};
 pub use rdf::{canonical_lines, serialise, serialise_at, GraphFormat};
 pub use resolver::{file_iri, unread, DirectoryResolver, Resolver};
 pub use run::{convert, prepare, Conversion, Form, Ms, Prepared, Source};
+pub use vocabulary::require_vocabularies;

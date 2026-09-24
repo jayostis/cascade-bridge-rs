@@ -198,7 +198,7 @@ fn reads_the_vocabulary_from_the_directory_the_command_was_given() {
     assert_eq!(
         output_findings(&without.findings),
         [],
-        "the command named no checkout, so there is nothing to read the graph against"
+        "a resolver given no checkout reads the graph against nothing"
     );
 
     let (with, document) = read_against_the_vocabulary("output-fails-a-shape.xml");
