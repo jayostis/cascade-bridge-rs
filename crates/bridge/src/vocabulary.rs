@@ -130,3 +130,9 @@ pub fn require_vocabularies(adapter: &Adapter, resolver: &dyn Resolver) -> Resul
         adapter.vocabulary_files.len()
     )))
 }
+
+pub fn unvalidated_output(adapter: &Adapter, resolver: &dyn Resolver) -> Option<String> {
+    require_vocabularies(adapter, resolver)
+        .err()
+        .map(|refusal| format!("{refusal}, so the graph is not validated against them"))
+}

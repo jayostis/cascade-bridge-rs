@@ -204,7 +204,15 @@ function convert(a) {
     throw new Error(`${a.document}: ${e.message}`);
   }
   const iri = pathToFileIri(canonical(a.document));
-  const converted = bridge.convert(root, vocabularies, files, iri, document, a.format);
+  const converted = bridge.convert(
+    root,
+    vocabularies,
+    files,
+    iri,
+    document,
+    a.format,
+    a.findings !== undefined,
+  );
   const graph = converted.graph();
   process.stderr.write(`${converted.summary}\n`);
   // Before the graph, so a findings file that cannot be written leaves
