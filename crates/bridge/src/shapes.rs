@@ -1,20 +1,17 @@
 // Nothing here opens a file or starts a thread, so the browser export stays reachable.
 use crate::error::{Error, Result};
-use crate::rdf::{SH_INFO, SH_SEVERITY, SH_VIOLATION, SH_WARNING};
-use oxrdf::Quad;
-use oxrdfio::{RdfFormat, RdfParser};
+use crate::terms::{SH_INFO, SH_SEVERITY, SH_VIOLATION, SH_WARNING};
+use oxrdf::{Graph, NamedNodeRef, Quad, TermRef};
 use rudof_rdf::rdf_core::term::Object;
-use rudof_rdf::rdf_core::{BuildRDF, RDFFormat, SHACLPath};
-use rudof_rdf::rdf_impl::{OxigraphInMemory, ReaderMode};
+use rudof_rdf::rdf_core::{BuildRDF, SHACLPath};
+use rudof_rdf::rdf_impl::OxigraphInMemory;
 use shacl::ir::IRSchema;
 use shacl::rdf::ShaclParser;
 use shacl::types::Severity;
 use shacl::validator::processor::{GraphValidation, ShaclProcessor};
 use shacl::validator::{ShaclConfig, ShaclValidationMode};
-use std::io::Cursor;
 
-/// The IRI a file of the vocabulary was read from, its base, and its bytes.
-pub(crate) type Document = (String, Vec<u8>);
+pub(crate) type Document = (String, Graph);
 
 /// One result, in the terms a finding carries it in.
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
@@ -33,17 +30,17 @@ pub(crate) struct Shapes {
 impl Shapes {
     pub(crate) fn of(documents: &[Document]) -> Result<Self> {
         let mut graph = OxigraphInMemory::new();
-        for (iri, bytes) in documents {
-            declares_a_reported_severity(iri, bytes)?;
-            graph
-                .merge_from_reader(
-                    &mut Cursor::new(bytes),
-                    iri,
-                    &RDFFormat::Turtle,
-                    Some(iri),
-                    &ReaderMode::default(),
-                )
-                .map_err(|e| Error::msg(format!("{iri}: {e}")))?;
+        for (iri, document) in documents {
+            declares_a_reported_severity(iri, document)?;
+            for triple in document {
+                graph
+                    .add_triple(
+                        triple.subject.into_owned(),
+                        triple.predicate.into_owned(),
+                        triple.object.into_owned(),
+                    )
+                    .map_err(|e| Error::msg(format!("{iri}: {e}")))?;
+            }
         }
         let parsed = ShaclParser::new(graph)
             .parse()
@@ -91,22 +88,18 @@ impl Shapes {
 
 const REPORTED: [&str; 3] = [SH_INFO, SH_WARNING, SH_VIOLATION];
 
-fn declares_a_reported_severity(iri: &str, bytes: &[u8]) -> Result<()> {
-    for quad in RdfParser::from_format(RdfFormat::Turtle)
-        .with_base_iri(iri)?
-        .for_slice(bytes)
+fn declares_a_reported_severity(iri: &str, document: &Graph) -> Result<()> {
+    let severity = NamedNodeRef::new_unchecked(SH_SEVERITY);
+    for declared in document
+        .triples_for_predicate(severity)
+        .map(|triple| triple.object)
     {
-        let quad = quad.map_err(|e| Error::msg(format!("{iri}: {e}")))?;
-        if quad.predicate.as_str() != SH_SEVERITY {
-            continue;
-        }
-        let reported = matches!(&quad.object, oxrdf::Term::NamedNode(named)
+        let reported = matches!(declared, TermRef::NamedNode(named)
             if REPORTED.contains(&named.as_str()));
         if !reported {
             return Err(Error::msg(format!(
-                "{iri}: a shape declares sh:severity {}; a finding carries sh:Info, sh:Warning or \
-                 sh:Violation",
-                quad.object
+                "{iri}: a shape declares sh:severity {declared}; a finding carries sh:Info, \
+                 sh:Warning or sh:Violation"
             )));
         }
     }

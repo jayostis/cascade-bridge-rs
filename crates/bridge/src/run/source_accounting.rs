@@ -1,10 +1,8 @@
-mod common;
-
-use cascade_bridge::Resolver;
-use common::{
+use crate::fixtures::{
     address, annotations, conversion, count, findings, node, says, step, tiny, unaccounted,
     with_accounting, Variant, ACCOUNTING, BRIDGE, CRATE, OA, PATH_NOT_ACCOUNTED, RDF_TYPE, SH,
 };
+use crate::Resolver;
 use oxrdf::{Quad, Term};
 use oxrdfio::{RdfFormat, RdfParser};
 use std::collections::BTreeSet;

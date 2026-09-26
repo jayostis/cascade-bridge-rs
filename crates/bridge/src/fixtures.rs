@@ -1,10 +1,29 @@
 #![allow(dead_code)]
 
-use cascade_bridge::{
-    convert, load_adapter, prepare, Conversion, DirectoryResolver, Resolver, Result, Source,
-};
+use crate::load::load_adapter;
+use crate::run::{convert, prepare, Conversion, Source};
+use crate::{DirectoryResolver, Resolver, Result};
 use oxrdf::{Quad, Term};
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
+
+pub(crate) fn fixture(path: &str) -> Vec<u8> {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(path);
+    fs::read(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+}
+
+pub(crate) fn fixture_names(directory: &str) -> Vec<String> {
+    fs::read_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join(directory))
+        .expect("the fixtures")
+        .map(|entry| {
+            entry
+                .expect("an entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect()
+}
 
 pub const OA: &str = "http://www.w3.org/ns/oa#";
 pub const SH: &str = "http://www.w3.org/ns/shacl#";

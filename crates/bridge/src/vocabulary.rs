@@ -1,15 +1,15 @@
 use crate::annotation::{self, Record};
 use crate::error::{Error, Result};
-use crate::load::Adapter;
-use crate::rdf::{
+use crate::load::{turtle, Adapter};
+use crate::resolver::Resolver;
+use crate::shapes::{Document, Shapes};
+use crate::terms::{
     BRIDGE_PREDICATE_NOT_DECLARED, OWL_ANNOTATION_PROPERTY, OWL_DATATYPE_PROPERTY,
     OWL_OBJECT_PROPERTY, RDF_PROPERTY, RDF_TYPE, SH_VIOLATION,
 };
-use crate::resolver::Resolver;
-use crate::shapes::{Document, Shapes};
 use oxiri::Iri;
-use oxrdf::{NamedOrBlankNode, Quad, Term};
-use oxrdfio::{RdfFormat, RdfParser};
+use oxrdf::vocab::rdf;
+use oxrdf::{NamedOrBlankNodeRef, Quad, TermRef};
 use std::collections::{BTreeSet, HashSet};
 
 const DECLARES_A_PREDICATE: [&str; 4] = [
@@ -45,13 +45,13 @@ impl Vocabulary {
                 .resolve(file)
                 .map_err(|e| Error::msg(format!("the crate names {file}: {e}")))?
                 .into_inner();
-            let bytes = resolver.read_vocabulary(&iri)?;
-            documents.push((iri, bytes));
+            let (graph, _) = turtle(&resolver.read_vocabulary(&iri)?, &iri)?;
+            documents.push((iri, graph));
         }
         let mut exempt = stamps;
         exempt.insert(RDF_TYPE.to_owned());
         Ok(Some(Self {
-            declared: declared(&documents)?,
+            declared: declared(&documents),
             shapes: Shapes::of(&documents)?,
             exempt,
         }))
@@ -90,28 +90,21 @@ impl Vocabulary {
     }
 }
 
-fn declared(documents: &[Document]) -> Result<HashSet<String>> {
+fn declared(documents: &[Document]) -> HashSet<String> {
     let mut declared = HashSet::new();
-    for (iri, bytes) in documents {
-        for quad in RdfParser::from_format(RdfFormat::Turtle)
-            .with_base_iri(iri)?
-            .for_slice(bytes)
-        {
-            let quad = quad.map_err(|e| Error::msg(format!("{iri}: {e}")))?;
-            if quad.predicate.as_str() != RDF_TYPE {
-                continue;
-            }
-            let declares = matches!(&quad.object, Term::NamedNode(class)
+    for (_, graph) in documents {
+        for triple in graph.triples_for_predicate(rdf::TYPE) {
+            let declares = matches!(triple.object, TermRef::NamedNode(class)
                 if DECLARES_A_PREDICATE.contains(&class.as_str()));
-            if let (true, NamedOrBlankNode::NamedNode(named)) = (declares, &quad.subject) {
+            if let (true, NamedOrBlankNodeRef::NamedNode(named)) = (declares, triple.subject) {
                 declared.insert(named.as_str().to_owned());
             }
         }
     }
-    Ok(declared)
+    declared
 }
 
-pub fn require_vocabularies(adapter: &Adapter, resolver: &dyn Resolver) -> Result<()> {
+pub(crate) fn require_vocabularies(adapter: &Adapter, resolver: &dyn Resolver) -> Result<()> {
     if adapter.vocabulary_files.is_empty() || resolver.vocabularies().is_some() {
         return Ok(());
     }
@@ -122,7 +115,7 @@ pub fn require_vocabularies(adapter: &Adapter, resolver: &dyn Resolver) -> Resul
     )))
 }
 
-pub fn unvalidated_output(adapter: &Adapter, resolver: &dyn Resolver) -> Option<String> {
+pub(crate) fn unvalidated_output(adapter: &Adapter, resolver: &dyn Resolver) -> Option<String> {
     require_vocabularies(adapter, resolver)
         .err()
         .map(|refusal| format!("{refusal}, so the graph is not validated against them"))

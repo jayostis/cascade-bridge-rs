@@ -2,13 +2,14 @@ use crate::annotation;
 use crate::decode::decode;
 use crate::error::{Error, Result};
 use crate::load::{as_subject, list, objects, one, subject, term_value, values, Adapter};
-use crate::rdf::{
-    canonical_lines, canonical_parts, BRIDGE_DATASET, BRIDGE_ENVELOPE, BRIDGE_EXPECTED_FINDINGS,
-    BRIDGE_EXPECTED_GRAPH, BRIDGE_INPUT, BRIDGE_INPUT_ONLY, BRIDGE_ISOMORPHIC, BRIDGE_SPARQL_1_1,
-    BRIDGE_STAMP_PREDICATE, MF_ACTION, MF_ENTRIES, MF_NAME, MF_RESULT, RDF_TYPE,
-};
+use crate::rdf::{canonical_lines, canonical_parts};
 use crate::resolver::Resolver;
 use crate::run::{convert, prepare, Prepared, Source};
+use crate::terms::{
+    BRIDGE_DATASET, BRIDGE_ENVELOPE, BRIDGE_EXPECTED_FINDINGS, BRIDGE_EXPECTED_GRAPH, BRIDGE_INPUT,
+    BRIDGE_INPUT_ONLY, BRIDGE_ISOMORPHIC, BRIDGE_SPARQL_1_1, BRIDGE_STAMP_PREDICATE, MF_ACTION,
+    MF_ENTRIES, MF_NAME, MF_RESULT, RDF_TYPE,
+};
 use crate::xpath;
 use oxigraph::model::{NamedOrBlankNode, Quad, Term};
 use oxrdfio::{RdfFormat, RdfParser};
@@ -17,10 +18,10 @@ use std::time::Duration;
 // std's clock panics on wasm32-unknown-unknown, where this one asks the host.
 use web_time::Instant;
 
-pub const OFFERED_PROFILES: [&str; 1] = [BRIDGE_SPARQL_1_1];
+pub(crate) const OFFERED_PROFILES: [&str; 1] = [BRIDGE_SPARQL_1_1];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Outcome {
+pub(crate) enum Outcome {
     Passed,
     Failed,
     CantTell,
@@ -29,7 +30,7 @@ pub enum Outcome {
 }
 
 impl Outcome {
-    pub fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::Passed => "passed",
             Self::Failed => "failed",
@@ -40,18 +41,17 @@ impl Outcome {
     }
 }
 
-pub struct EntryResult {
-    pub entry: Term,
-    pub name: String,
-    pub type_iri: String,
-    pub outcome: Outcome,
-    pub description: String,
-    pub elapsed: Duration,
+pub(crate) struct EntryResult {
+    pub(crate) entry: Term,
+    pub(crate) name: String,
+    pub(crate) outcome: Outcome,
+    pub(crate) description: String,
+    pub(crate) elapsed: Duration,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
-pub struct RunOptions {
-    pub datasets: bool,
+pub(crate) struct RunOptions {
+    pub(crate) datasets: bool,
 }
 
 /// The widths a description cuts a graph's line and a finding at.
@@ -254,7 +254,7 @@ impl Entry<'_> {
     }
 }
 
-pub fn run_manifest(
+pub(crate) fn run_manifest(
     adapter: &Adapter,
     resolver: &dyn Resolver,
     options: RunOptions,
@@ -351,7 +351,6 @@ pub fn run_manifest(
         results.push(EntryResult {
             entry,
             name,
-            type_iri,
             outcome,
             description,
             elapsed: start.elapsed(),
@@ -360,6 +359,8 @@ pub fn run_manifest(
     Ok(results)
 }
 
+#[cfg(test)]
+mod manifest;
 #[cfg(test)]
 mod tests {
     use super::beyond;

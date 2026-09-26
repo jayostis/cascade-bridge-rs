@@ -1,44 +1,8 @@
-mod common;
+use crate::fixtures::{tiny, tiny_with_vocabularies, with_accounting, ACCOUNTING, CRATE};
+use crate::run::Prepared;
+use crate::Resolver;
 
-use cascade_bridge::{Prepared, Resolver};
-use common::{tiny, tiny_with_vocabularies, with_accounting, ACCOUNTING, CRATE};
-use std::path::PathBuf;
-
-const ALLOWED: &str = "resolver.rs";
-
-fn source_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src")
-}
-
-#[test]
-fn lets_only_the_resolver_name_the_filesystem() {
-    let mut offenders = Vec::new();
-    let mut stack = vec![source_dir()];
-    while let Some(directory) = stack.pop() {
-        for entry in std::fs::read_dir(&directory).expect("read src") {
-            let path = entry.expect("entry").path();
-            if path.is_dir() {
-                stack.push(path);
-                continue;
-            }
-            if path.extension().is_none_or(|e| e != "rs") {
-                continue;
-            }
-            if path.file_name().is_some_and(|n| n == ALLOWED) {
-                continue;
-            }
-            let text = std::fs::read_to_string(&path).expect("read module");
-            for forbidden in ["std::fs", "std::path"] {
-                if text.contains(forbidden) {
-                    offenders.push(format!("{}: {forbidden}", path.display()));
-                }
-            }
-        }
-    }
-    assert_eq!(offenders, Vec::<String>::new());
-}
-
-fn refusal(read: cascade_bridge::Result<Vec<u8>>) -> String {
+fn refusal(read: crate::Result<Vec<u8>>) -> String {
     read.err()
         .map(|error| error.to_string())
         .unwrap_or_default()

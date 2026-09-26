@@ -5,7 +5,7 @@ use std::borrow::Cow;
 /// The XML declaration is the first thing in an entity.
 const WINDOW: usize = 256;
 
-pub fn decode(bytes: &[u8]) -> Result<Cow<'_, str>> {
+pub(crate) fn decode(bytes: &[u8]) -> Result<Cow<'_, str>> {
     let (encoding, rest) = sniff(bytes)?;
     if encoding == UTF_8 {
         return Ok(Cow::Borrowed(std::str::from_utf8(rest)?));
@@ -65,13 +65,13 @@ fn declared(bytes: &[u8]) -> Option<String> {
     Some(value[..value.find(quote)?].to_owned())
 }
 
-pub const XML_SPACE: [char; 4] = [' ', '\t', '\r', '\n'];
+pub(crate) const XML_SPACE: [char; 4] = [' ', '\t', '\r', '\n'];
 
-pub fn is_xml_space(s: &str) -> bool {
+pub(crate) fn is_xml_space(s: &str) -> bool {
     s.chars().all(|c| XML_SPACE.contains(&c))
 }
 
-pub fn normalise_line_endings(s: &str) -> Cow<'_, str> {
+pub(crate) fn normalise_line_endings(s: &str) -> Cow<'_, str> {
     if !s.contains('\r') {
         return Cow::Borrowed(s);
     }
@@ -80,7 +80,7 @@ pub fn normalise_line_endings(s: &str) -> Cow<'_, str> {
 
 /// Runs on the raw value, before any character reference is resolved, which
 /// keeps "&#10;" a line feed.
-pub fn normalise_attribute_value(raw: &str) -> Cow<'_, str> {
+pub(crate) fn normalise_attribute_value(raw: &str) -> Cow<'_, str> {
     if !raw.contains(['\t', '\r', '\n']) {
         return Cow::Borrowed(raw);
     }

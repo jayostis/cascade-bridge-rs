@@ -1,9 +1,10 @@
 // Every adapter here has its accounting struck out: what a findings query says is what
 // this file is about.
-mod common;
 
-use cascade_bridge::{convert, load_adapter, prepare, Conversion, Resolver, Source};
-use common::{address, annotations, one, tiny, unaccounted, Variant, OA, RDF_VALUE, SH};
+use crate::fixtures::{address, annotations, one, tiny, unaccounted, Variant, OA, RDF_VALUE, SH};
+use crate::load::load_adapter;
+use crate::run::{convert, prepare, Conversion, Source};
+use crate::Resolver;
 use oxrdf::{NamedNode, Quad, Term};
 use std::collections::BTreeSet;
 
@@ -17,7 +18,7 @@ fn findings_through(resolver: &dyn Resolver, input: &str) -> Vec<Quad> {
     conversion(resolver, input).expect("conversion").findings
 }
 
-fn conversion(resolver: &dyn Resolver, input: &str) -> cascade_bridge::Result<Conversion> {
+fn conversion(resolver: &dyn Resolver, input: &str) -> crate::Result<Conversion> {
     let adapter = load_adapter(resolver).expect("adapter");
     let prepared = prepare(&adapter, resolver).expect("prepared");
     let iri = format!("{}fixtures/in/{input}", resolver.root());

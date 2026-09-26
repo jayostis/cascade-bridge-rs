@@ -9,21 +9,21 @@ const EARL: &str = "http://www.w3.org/ns/earl#";
 const DCT: &str = "http://purl.org/dc/terms/";
 const DOAP: &str = "http://usefulinc.com/ns/doap#";
 
-pub struct ReportSubject {
-    pub iri: String,
-    pub name: String,
-    pub version: String,
+pub(crate) struct ReportSubject {
+    pub(crate) iri: String,
+    pub(crate) name: String,
+    pub(crate) version: String,
 }
 
 fn iri(namespace: &str, local: &str) -> Result<NamedNode> {
     Ok(NamedNode::new(format!("{namespace}{local}"))?)
 }
 
-pub fn earl_report(results: &[EntryResult], subject: &ReportSubject) -> Result<String> {
+pub(crate) fn earl_report(results: &[EntryResult], subject: &ReportSubject) -> Result<String> {
     earl_report_at(results, subject, &DateTime::now().to_string())
 }
 
-pub fn earl_report_at(
+pub(crate) fn earl_report_at(
     results: &[EntryResult],
     subject: &ReportSubject,
     when: &str,

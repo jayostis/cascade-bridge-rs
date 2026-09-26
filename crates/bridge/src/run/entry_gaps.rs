@@ -1,11 +1,9 @@
-mod common;
-
-use cascade_bridge::Resolver;
-use common::{
+use crate::fixtures::{
     accounting, address, annotations, concept, conversion, count, entry, findings, gap_scheme,
     node, one, says, step, tiny, with_accounting, Variant, ACCOUNTING, ACCOUNTING_PREAMBLE, BRIDGE,
     CRATE, GAPS_PREAMBLE, GAP_SCHEME, NOTE_GAP, OA, PATH_NOT_ACCOUNTED, SH, XSD_INTEGER,
 };
+use crate::Resolver;
 use oxrdf::{Quad, Term};
 use oxrdfio::{RdfFormat, RdfParser};
 
@@ -566,6 +564,28 @@ fn refuses_an_entry_naming_two_gaps() {
     };
     let refusal = refusal.to_string();
     assert!(refusal.contains("/item/note"), "{refusal}");
+}
+
+#[test]
+fn reads_a_verdict_written_twice_as_the_one_verdict_it_is() {
+    let twice = with_accounting(&format!(
+        "{ACCOUNTING_PREAMBLE}\n[] a bridge:PathEntry ;\n   bridge:sourcePath \"/item/note\" ;\n   bridge:verdict bridge:noHome, bridge:noHome ;\n   bridge:namesGap ex:noteHasNoTerm .\n"
+    ));
+    assert_eq!(
+        reported(&findings(&twice, "two.xml")),
+        [row(NOTE_GAP, "/item/note", "/catalog/item[1]", "note[1]")]
+    );
+}
+
+#[test]
+fn reports_a_gap_once_for_an_entry_writing_its_path_twice() {
+    let twice = with_accounting(&format!(
+        "{ACCOUNTING_PREAMBLE}\n[] a bridge:PathEntry ;\n   bridge:sourcePath \"/item/note\", \"/item/note\" ;\n   bridge:verdict bridge:noHome ;\n   bridge:namesGap ex:noteHasNoTerm .\n"
+    ));
+    assert_eq!(
+        reported(&findings(&twice, "two.xml")),
+        [row(NOTE_GAP, "/item/note", "/catalog/item[1]", "note[1]")]
+    );
 }
 
 #[test]

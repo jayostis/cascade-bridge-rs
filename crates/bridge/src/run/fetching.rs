@@ -1,7 +1,6 @@
-mod common;
-
-use cascade_bridge::{load_adapter, prepare};
-use common::{tiny_with_vocabularies, Variant};
+use crate::fixtures::{tiny_with_vocabularies, Variant};
+use crate::load::load_adapter;
+use crate::run::prepare;
 
 const ENDPOINT: &str = "<https://example.invalid/sparql>";
 const GRAPH: &str = "<https://example.invalid/g>";
@@ -21,6 +20,10 @@ fn assert_holds(refused: &str, query: &str, phrase: &str) {
     assert!(
         refused.contains(&said),
         "{query} was prepared, or refused without saying {said:?}: {refused:?}"
+    );
+    assert!(
+        !refused.contains('\n'),
+        "a refusal is one line: {refused:?}"
     );
 }
 

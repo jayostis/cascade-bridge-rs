@@ -1,9 +1,10 @@
-mod common;
+use crate::fixtures;
 
-use cascade_bridge::{
-    earl_report_at, load_adapter, run_manifest, EntryResult, ReportSubject, Resolver, RunOptions,
-};
-use common::{tiny, Variant, RDF_TYPE};
+use crate::earl::{earl_report_at, ReportSubject};
+use crate::fixtures::{tiny, Variant, BRIDGE, RDF_TYPE};
+use crate::harness::{run_manifest, EntryResult, RunOptions};
+use crate::load::load_adapter;
+use crate::Resolver;
 use oxrdf::{Graph, NamedNode, NamedOrBlankNodeRef, TermRef, Triple};
 use oxrdfio::{RdfFormat, RdfParser};
 use std::collections::BTreeMap;
@@ -13,7 +14,7 @@ use std::time::Duration;
 
 const EARL: &str = "http://www.w3.org/ns/earl#";
 
-fn run() -> Vec<cascade_bridge::EntryResult> {
+fn run() -> Vec<crate::harness::EntryResult> {
     let resolver = tiny();
     let adapter = load_adapter(&resolver).expect("adapter");
     run_manifest(&adapter, &resolver, RunOptions::default()).expect("manifest")
@@ -40,6 +41,16 @@ fn reaches_every_outcome_and_fails_exactly_the_entries_built_to_fail() {
             ("input-only", "cantTell"),
             ("dataset", "untested"),
         ])
+    );
+}
+
+#[test]
+fn times_each_entry_and_names_the_profiles_this_bridge_offers() {
+    let results = run();
+    assert!(results.iter().any(|r| r.elapsed > Duration::ZERO));
+    assert_eq!(
+        crate::harness::OFFERED_PROFILES,
+        [format!("{BRIDGE}sparql-1.1").as_str()]
     );
 }
 
@@ -212,49 +223,49 @@ struct Second {
 
 const SECONDS: [Second; 16] = [
     Second {
-        file: common::CRATE,
+        file: fixtures::CRATE,
         written: r#""about": { "@id": "./" }"#,
         doubled: r##""about": [{ "@id": "./" }, { "@id": "#other" }]"##,
         times: 1,
         named: ["schema.org/about", "tiny-adapter/>", "#other>"],
     },
     Second {
-        file: common::CRATE,
+        file: fixtures::CRATE,
         written: r#""bridge:testManifest": { "@id": "fixtures/manifest.ttl" }"#,
         doubled: r#""bridge:testManifest": [{ "@id": "fixtures/manifest.ttl" }, { "@id": "fixtures/other.ttl" }]"#,
         times: 1,
         named: ["#testManifest", "/manifest.ttl>", "/other.ttl>"],
     },
     Second {
-        file: common::CRATE,
+        file: fixtures::CRATE,
         written: r#""identifier": "catalog","#,
         doubled: r#""identifier": ["catalog", "other"],"#,
         times: 1,
         named: ["schema.org/identifier", r#""catalog""#, r#""other""#],
     },
     Second {
-        file: common::CRATE,
+        file: fixtures::CRATE,
         written: r#""bridge:elementNameOfEachRecord": "item""#,
         doubled: r#""bridge:elementNameOfEachRecord": ["item", "record"]"#,
         times: 1,
         named: ["#elementNameOfEachRecord", r#""item""#, r#""record""#],
     },
     Second {
-        file: common::CRATE,
+        file: fixtures::CRATE,
         written: r#""bridge:sourceSchema": { "@id": "schema/item.xsd" }"#,
         doubled: r#""bridge:sourceSchema": [{ "@id": "schema/item.xsd" }, { "@id": "schema/other.xsd" }]"#,
         times: 1,
         named: ["#sourceSchema", "/item.xsd>", "/other.xsd>"],
     },
     Second {
-        file: common::CRATE,
+        file: fixtures::CRATE,
         written: r#""bridge:gapScheme": { "@id": "vocab/catalog-gaps.ttl" }"#,
         doubled: r#""bridge:gapScheme": [{ "@id": "vocab/catalog-gaps.ttl" }, { "@id": "vocab/other-gaps.ttl" }]"#,
         times: 1,
         named: ["#gapScheme", "/catalog-gaps.ttl>", "/other-gaps.ttl>"],
     },
     Second {
-        file: common::CRATE,
+        file: fixtures::CRATE,
         written: r#""bridge:sourceAccounting": { "@id": "vocab/catalog-accounting.ttl" }"#,
         doubled: r#""bridge:sourceAccounting": [{ "@id": "vocab/catalog-accounting.ttl" }, { "@id": "vocab/other-accounting.ttl" }]"#,
         times: 1,
@@ -265,28 +276,28 @@ const SECONDS: [Second; 16] = [
         ],
     },
     Second {
-        file: common::CRATE,
+        file: fixtures::CRATE,
         written: r#""bridge:detectQuery": { "@id": "mapping/detect.rq" }"#,
         doubled: r#""bridge:detectQuery": [{ "@id": "mapping/detect.rq" }, { "@id": "mapping/other.rq" }]"#,
         times: 1,
         named: ["#detectQuery", "/detect.rq>", "/other.rq>"],
     },
     Second {
-        file: common::CRATE,
+        file: fixtures::CRATE,
         written: r#""name": "catalog","#,
         doubled: r#""name": ["catalog", "other"],"#,
         times: 1,
         named: ["schema.org/name", r#""catalog""#, r#""other""#],
     },
     Second {
-        file: common::CRATE,
+        file: fixtures::CRATE,
         written: r#""bridge:docRootElementName": "catalog""#,
         doubled: r#""bridge:docRootElementName": ["catalog", "zcatalog"]"#,
         times: 1,
         named: ["#docRootElementName", r#""catalog""#, r#""zcatalog""#],
     },
     Second {
-        file: common::CRATE,
+        file: fixtures::CRATE,
         written: r#""bridge:documentSchema": { "@id": "schema/catalog.xsd" }"#,
         doubled: r#""bridge:documentSchema": [{ "@id": "schema/catalog.xsd" }, { "@id": "schema/other.xsd" }]"#,
         times: 1,
@@ -339,9 +350,9 @@ fn said_of(second: &Second) -> std::result::Result<String, String> {
         second.times,
     );
     let adapter = match load_adapter(&resolver) {
-        Err(refusal) if second.file == common::CRATE => return Ok(refusal.to_string()),
+        Err(refusal) if second.file == fixtures::CRATE => return Ok(refusal.to_string()),
         Err(refusal) => return Err(format!("the crate was refused: {refusal}")),
-        Ok(_) if second.file == common::CRATE => return Err("the crate loaded".to_owned()),
+        Ok(_) if second.file == fixtures::CRATE => return Err("the crate loaded".to_owned()),
         Ok(adapter) => adapter,
     };
     let results = run_manifest(&adapter, &resolver, RunOptions::default())

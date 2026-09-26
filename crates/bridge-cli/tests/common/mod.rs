@@ -1,7 +1,8 @@
 #![allow(dead_code)]
 
-use oxrdf::Quad;
-use oxrdfio::{RdfFormat, RdfParser};
+use cascade_bridge::oxrdf::dataset::{CanonicalizationAlgorithm, CanonicalizationHashAlgorithm};
+use cascade_bridge::oxrdf::{self, Dataset, Quad};
+use cascade_bridge::oxrdfio::{RdfFormat, RdfParser};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
@@ -40,7 +41,18 @@ pub fn quads(bytes: &[u8], format: RdfFormat, base: &str) -> Vec<Quad> {
 /// twice is two annotations and still counts twice, though a triple written
 /// twice counts once.
 pub fn canonical(bytes: &[u8], format: RdfFormat, base: &str) -> BTreeSet<String> {
-    cascade_bridge::canonical_lines(quads(bytes, format, base)).expect("one canonical graph")
+    canonical_lines(quads(bytes, format, base))
+}
+
+pub fn canonical_lines(quads: impl IntoIterator<Item = Quad>) -> BTreeSet<String> {
+    let mut dataset = Dataset::new();
+    for quad in quads {
+        dataset.insert(&quad);
+    }
+    dataset.canonicalize(CanonicalizationAlgorithm::Rdfc10 {
+        hash_algorithm: CanonicalizationHashAlgorithm::Sha256,
+    });
+    dataset.iter().map(|quad| quad.to_string()).collect()
 }
 
 pub fn read_at_its_own_iri(path: &Path, format: RdfFormat) -> Vec<Quad> {

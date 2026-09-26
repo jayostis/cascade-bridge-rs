@@ -2,11 +2,12 @@
 // names each aggregate at random per parse, so two runs already differ in their bytes.
 mod common;
 
+use cascade_bridge::oxrdf::{NamedOrBlankNode, Quad, Term};
+use cascade_bridge::oxrdfio::{RdfFormat, RdfParser};
 use common::{
-    canonical, copied_to, names, read_at_its_own_iri, scratch, tiny, vocabularies, BASE, MAX_LENGTH,
+    canonical, canonical_lines, copied_to, names, read_at_its_own_iri, scratch, tiny, vocabularies,
+    BASE, MAX_LENGTH,
 };
-use oxrdf::{NamedOrBlankNode, Quad, Term};
-use oxrdfio::{RdfFormat, RdfParser};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
@@ -101,8 +102,8 @@ fn converts_as_the_native_command_does(
     assert!(!native_graph.is_empty(), "the native command wrote a graph");
     assert_eq!(node_graph, native_graph, "the graph --out names");
     assert_eq!(
-        cascade_bridge::canonical_lines(node_findings.clone()).expect("one canonical graph"),
-        cascade_bridge::canonical_lines(native_findings.clone()).expect("one canonical graph"),
+        canonical_lines(node_findings.clone()),
+        canonical_lines(native_findings.clone()),
         "the findings --findings names"
     );
     node_findings.clone()
@@ -308,6 +309,26 @@ fn the_node_host_converts_without_the_vocabularies_and_says_so_as_the_native_com
     );
 }
 
+#[test]
+fn the_node_host_says_of_a_conversion_what_the_native_command_says() {
+    let adapter = tiny().to_string_lossy().into_owned();
+    let document = tiny()
+        .join("fixtures/in/two.xml")
+        .to_string_lossy()
+        .into_owned();
+    let arguments = ["convert", adapter.as_str(), document.as_str()];
+    let native_run = native(&arguments);
+    let node_run = node(&arguments);
+    let said = |run: &Output| String::from_utf8_lossy(&run.stderr).into_owned();
+    assert_eq!(native_run.status.code(), Some(0), "{}", said(&native_run));
+    assert!(
+        said(&native_run).contains("Document "),
+        "{}",
+        said(&native_run)
+    );
+    assert_eq!(said(&node_run), said(&native_run));
+}
+
 fn convert_into_a_closed_pipe(mut command: Command) -> Output {
     let adapter = tiny().to_string_lossy().into_owned();
     let vocabularies = vocabularies().to_string_lossy().into_owned();
@@ -345,6 +366,28 @@ fn the_node_host_exits_as_the_native_command_does_when_standard_output_is_closed
     );
     assert_eq!(node_run.status.code(), native_run.status.code(), "{said}");
     assert!(said.contains("standard output"), "{said}");
+}
+
+#[test]
+fn the_node_host_exits_two_and_says_why_when_the_engine_traps() {
+    let scratch = scratch();
+    let host = scratch.path().join("cascade-bridge.mjs");
+    std::fs::copy(node_host_directory().join("cascade-bridge.mjs"), &host).expect("the host");
+    std::fs::create_dir(scratch.path().join("pkg")).expect("the module's directory");
+    std::fs::write(
+        scratch.path().join("pkg/cascade_bridge_wasm.js"),
+        "exports.run = () => { throw new WebAssembly.RuntimeError(\"unreachable\"); };\n",
+    )
+    .expect("a module whose engine traps");
+    let run = Command::new("node")
+        .arg(&host)
+        .arg("test")
+        .current_dir(scratch.path())
+        .output()
+        .expect("run node");
+    let said = String::from_utf8_lossy(&run.stderr);
+    assert_eq!(run.status.code(), Some(2), "{said}");
+    assert_eq!(said, "cascade-bridge: unreachable\n");
 }
 
 fn outcomes(report: &Path) -> BTreeMap<String, String> {

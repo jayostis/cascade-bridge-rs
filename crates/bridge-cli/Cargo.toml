@@ -14,6 +14,4 @@ path = "src/main.rs"
 cascade-bridge = { path = "../bridge", version = "=0.1.0" }
 
 [dev-dependencies]
-oxrdf = "=0.3.4"
-oxrdfio = "=0.2.6"
 tempfile = "=3.27.0"

@@ -1,8 +1,4 @@
-mod common;
-
-use cascade_bridge::lift_slice;
-use common::{converted, tiny, written, Variant, CATALOG, RDF_VALUE};
-use oxrdf::Quad;
+use super::lift_slice;
 
 fn selectors(xml: &[u8], record: &str) -> Vec<String> {
     lift_slice(xml, Some(record))
@@ -71,36 +67,4 @@ fn names_an_element_in_no_namespace_under_one_in_a_namespace_by_its_name() {
 #[test]
 fn writes_a_record_that_is_the_document_element_as_one_step_with_no_index() {
     assert_eq!(selectors(br#"<item id="9"/>"#, "item"), ["/item"]);
-}
-
-/// The tiny adapter with its input put in a namespace its schemas do not declare.
-fn namespaced() -> Variant {
-    Variant::of(tiny()).replacing(
-        "fixtures/in/two.xml",
-        "<catalog>",
-        format!("<catalog xmlns=\"{CATALOG}\">"),
-    )
-}
-
-fn values(findings: &[Quad]) -> Vec<String> {
-    findings
-        .iter()
-        .filter(|q| q.predicate.as_str() == RDF_VALUE)
-        .map(|q| written(q.object.clone()))
-        .collect()
-}
-
-#[test]
-fn names_a_namespaced_document_element_of_a_finding_about_the_document_itself() {
-    let values = values(&converted(&namespaced(), "two.xml").findings);
-    let document = format!("/*[local-name()='catalog' and namespace-uri()='{CATALOG}']");
-    assert!(values.contains(&document), "{values:?}");
-    let record = format!(
-        "/*[local-name()='catalog' and namespace-uri()='{CATALOG}']\
-         /*[local-name()='item' and namespace-uri()='{CATALOG}'][1]"
-    );
-    assert!(
-        values.contains(&record),
-        "a record and its document are written alike: {values:?}"
-    );
 }

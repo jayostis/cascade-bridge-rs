@@ -2,7 +2,7 @@
 // to an empty container. A unit is handed over as soon as its end tag is read, and
 // written out again as XML with the declarations in scope where it stood, for a
 // validator that brings its own parser.
-use crate::decode::{decode, is_xml_space, normalise_attribute_value, normalise_line_endings};
+use crate::decode::{is_xml_space, normalise_attribute_value, normalise_line_endings};
 use crate::error::Result;
 use oxigraph::model::{BlankNode, GraphName, Literal, NamedNode, NamedOrBlankNode, Quad, Term};
 use oxigraph::store::Store;
@@ -14,8 +14,8 @@ use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, Cursor};
 
 const RDF: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
-pub const FX: &str = "http://sparql.xyz/facade-x/ns/";
-pub const XYZ: &str = "http://sparql.xyz/facade-x/data/";
+const FX: &str = "http://sparql.xyz/facade-x/ns/";
+const XYZ: &str = "http://sparql.xyz/facade-x/data/";
 
 pub(crate) const UTF_8_DECLARATION: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>";
 
@@ -102,7 +102,7 @@ pub(crate) struct Valued {
 }
 
 #[derive(Clone, PartialEq, Eq)]
-pub enum Paths {
+pub(crate) enum Paths {
     Kept { valued: HashSet<String> },
     Dropped,
 }
@@ -220,16 +220,16 @@ impl Census {
     }
 }
 
-pub struct Unit {
-    pub store: Store,
-    pub xml: String,
+pub(crate) struct Unit {
+    pub(crate) store: Store,
+    pub(crate) xml: String,
     path: Vec<Step>,
     occurrences: Vec<Occurrence>,
     values: Vec<Valued>,
 }
 
 impl Unit {
-    pub fn selector(&self) -> String {
+    pub(crate) fn selector(&self) -> String {
         self.path
             .iter()
             .enumerate()
@@ -530,7 +530,7 @@ impl Builder {
     }
 }
 
-pub struct Lift<R: BufRead> {
+pub(crate) struct Lift<R: BufRead> {
     reader: NsReader<R>,
     buffer: Vec<u8>,
     builder: Builder,
@@ -539,11 +539,15 @@ pub struct Lift<R: BufRead> {
 
 /// Every outermost element named `unit` is lifted on its own; with none, the
 /// skeleton is the whole document.
-pub fn lift_slice<'a>(bytes: &'a [u8], unit: Option<&str>) -> Result<Lift<Box<dyn BufRead + 'a>>> {
-    lift_text(decode(bytes)?, unit, Paths::Dropped)
+#[cfg(test)]
+pub(crate) fn lift_slice<'a>(
+    bytes: &'a [u8],
+    unit: Option<&str>,
+) -> Result<Lift<Box<dyn BufRead + 'a>>> {
+    lift_text(crate::decode::decode(bytes)?, unit, Paths::Dropped)
 }
 
-pub fn lift_text<'a>(
+pub(crate) fn lift_text<'a>(
     text: Cow<'a, str>,
     unit: Option<&str>,
     paths: Paths,
@@ -556,7 +560,7 @@ pub fn lift_text<'a>(
 }
 
 impl<R: BufRead> Lift<R> {
-    pub fn new(reader: R, unit: Option<&str>, paths: Paths) -> Result<Self> {
+    pub(crate) fn new(reader: R, unit: Option<&str>, paths: Paths) -> Result<Self> {
         let mut reader = NsReader::from_reader(reader);
         reader.config_mut().expand_empty_elements = true;
         Ok(Self {
@@ -567,23 +571,23 @@ impl<R: BufRead> Lift<R> {
         })
     }
 
-    pub fn document_element(&self) -> Option<&str> {
+    pub(crate) fn document_element(&self) -> Option<&str> {
         self.builder.document_element.as_deref()
     }
 
-    pub fn document_selector(&self) -> Option<String> {
+    pub(crate) fn document_selector(&self) -> Option<String> {
         self.builder
             .document_step
             .as_ref()
             .map(|step| format!("/{}", step.write(false)))
     }
 
-    pub fn into_skeleton(mut self) -> Result<Store> {
+    pub(crate) fn into_skeleton(mut self) -> Result<Store> {
         while self.next_unit()?.is_some() {}
         store_of(self.builder.skeleton)
     }
 
-    pub fn next_unit(&mut self) -> Result<Option<Unit>> {
+    pub(crate) fn next_unit(&mut self) -> Result<Option<Unit>> {
         if self.done {
             return Ok(None);
         }
@@ -716,3 +720,10 @@ fn store_of(quads: Vec<Quad>) -> Result<Store> {
     store.extend(quads)?;
     Ok(store)
 }
+
+#[cfg(test)]
+mod encoding;
+#[cfg(test)]
+mod selector;
+#[cfg(test)]
+mod vectors;

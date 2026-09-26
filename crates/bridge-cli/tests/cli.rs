@@ -1,10 +1,10 @@
 mod common;
 
+use cascade_bridge::oxrdfio::{self, RdfFormat};
 use common::{
     canonical, copied_to, names, quads, read_at_its_own_iri, scratch, tiny, vocabularies, BASE,
     MAX_LENGTH,
 };
-use oxrdfio::RdfFormat;
 use std::collections::{BTreeMap, BTreeSet};
 use std::process::{Command, Stdio};
 
@@ -587,4 +587,22 @@ fn writes_the_same_findings_graph_as_turtle_as_it_does_as_n_triples() {
         "{}",
         String::from_utf8_lossy(&turtle_text)
     );
+}
+
+#[test]
+fn names_what_is_wrong_with_the_adapter_where_the_document_is_missing_too() {
+    let scratch = scratch();
+    let adapter = scratch.path().join("adapter");
+    std::fs::create_dir(&adapter).expect("the adapter's directory");
+    std::fs::write(adapter.join("ro-crate-metadata.json"), "{}").expect("the crate");
+    let missing = scratch.path().join("missing.xml");
+    let run = cascade_bridge(&[
+        "convert",
+        &adapter.to_string_lossy(),
+        &missing.to_string_lossy(),
+    ]);
+    assert_eq!(run.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&run.stderr);
+    assert!(stderr.contains("names no root entity"), "{stderr}");
+    assert!(!stderr.contains("missing.xml"), "{stderr}");
 }

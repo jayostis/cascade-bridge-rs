@@ -1,8 +1,7 @@
-mod common;
-
-use common::{
+use crate::fixtures::{
     accounting, address, annotations, concept, conversion, count, entry, findings, gap_scheme,
-    node, says, tiny, Variant, ACCOUNTING, CONCEPT_MAP, GAP_SCHEME, NOTE_GAP, OA, SH,
+    node, says, tiny, Variant, ACCOUNTING, ACCOUNTING_PREAMBLE, CONCEPT_MAP, GAP_SCHEME, NOTE_GAP,
+    OA, SH,
 };
 use oxrdf::{Quad, Term};
 
@@ -451,6 +450,17 @@ fn refuses_a_concept_map_holding_two_concept_schemes_or_none() {
             "{refusal}"
         );
     }
+}
+
+#[test]
+fn reports_a_miss_once_for_an_entry_writing_its_path_twice() {
+    let twice = declaring(format!(
+        "{ACCOUNTING_PREAMBLE}\n[] a bridge:PathEntry ;\n   bridge:sourcePath \"/item/note\", \"/item/note\" ;\n   bridge:verdict bridge:consumed ;\n   {LOOKUP_IN} ;\n   {LOOKUP_NAMES_GAP} .\n"
+    ));
+    assert_eq!(
+        missed(&findings(&twice, "lookup-a-value-at-three-nodes.xml")),
+        [row("Retired", "/catalog/item[1]", "note[2]")]
+    );
 }
 
 #[test]
