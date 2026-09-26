@@ -1,11 +1,9 @@
-use super::common;
-
-use crate::Resolver;
-use common::{
+use crate::fixtures::{
     accounting, address, annotations, concept, conversion, count, entry, findings, gap_scheme,
     node, one, says, step, tiny, with_accounting, Variant, ACCOUNTING, ACCOUNTING_PREAMBLE, BRIDGE,
     CRATE, GAPS_PREAMBLE, GAP_SCHEME, NOTE_GAP, OA, PATH_NOT_ACCOUNTED, SH, XSD_INTEGER,
 };
+use crate::Resolver;
 use oxrdf::{Quad, Term};
 use oxrdfio::{RdfFormat, RdfParser};
 

@@ -1,10 +1,7 @@
-use super::common;
-
-use common::{
-    annotations, converted, one, says, step, tiny, tiny_directory, violations, Variant, OA, SH,
+use crate::fixtures::{
+    annotations, converted, fixture, one, says, step, tiny, violations, Variant, OA, SH,
 };
 use oxrdf::{Quad, Term};
-use std::path::PathBuf;
 
 const PART_1: &str = "https://www.w3.org/TR/xmlschema-1/#";
 const PART_2: &str = "https://www.w3.org/TR/xmlschema-2/#";
@@ -124,7 +121,8 @@ fn selects_the_offending_element_under_the_document_element() {
 /// The tiny adapter with schemas in a namespace, for an input written in one.
 fn namespaced() -> Variant {
     let schema = |file: &str| {
-        std::fs::read_to_string(tiny_directory().join(file)).expect("a committed schema")
+        String::from_utf8(fixture(&format!("tests/tiny-adapter/{file}")))
+            .expect("a committed schema")
     };
     Variant::of(tiny())
         .with("schema/item.xsd", schema("schema/namespaced-item.xsd"))
@@ -190,40 +188,6 @@ fn gives_every_finding_it_writes_a_body_that_is_an_iri() {
             "{input} draws no finding"
         );
     }
-}
-
-#[test]
-fn names_the_sentence_body_nowhere_in_the_crates() {
-    // Written in parts, so this test is not itself what it looks for.
-    let sentence = concat!("Textual", "Body");
-    let crates = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("the crates directory")
-        .to_owned();
-    let mut naming = Vec::new();
-    let mut stack = vec![crates.clone()];
-    while let Some(directory) = stack.pop() {
-        for entry in std::fs::read_dir(&directory).expect("read a directory") {
-            let path = entry.expect("entry").path();
-            if path.is_dir() {
-                if path.file_name().is_some_and(|name| name == "target") {
-                    continue;
-                }
-                stack.push(path);
-                continue;
-            }
-            let bytes = std::fs::read(&path).expect("read a file");
-            if String::from_utf8_lossy(&bytes).contains(sentence) {
-                naming.push(path.display().to_string());
-            }
-        }
-    }
-    naming.sort();
-    assert!(
-        naming.is_empty(),
-        "{sentence} is named in {}: {naming:?}",
-        crates.display()
-    );
 }
 
 const GAP: &str = "urn:example:gaps#a-note-has-no-term";

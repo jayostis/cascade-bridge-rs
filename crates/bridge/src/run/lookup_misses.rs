@@ -1,6 +1,4 @@
-use super::common;
-
-use common::{
+use crate::fixtures::{
     accounting, address, annotations, concept, conversion, count, entry, findings, gap_scheme,
     node, says, tiny, Variant, ACCOUNTING, ACCOUNTING_PREAMBLE, CONCEPT_MAP, GAP_SCHEME, NOTE_GAP,
     OA, SH,

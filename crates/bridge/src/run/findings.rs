@@ -1,11 +1,10 @@
 // Every adapter here has its accounting struck out: what a findings query says is what
 // this file is about.
-use super::common;
 
+use crate::fixtures::{address, annotations, one, tiny, unaccounted, Variant, OA, RDF_VALUE, SH};
 use crate::load::load_adapter;
 use crate::run::{convert, prepare, Conversion, Source};
 use crate::Resolver;
-use common::{address, annotations, one, tiny, unaccounted, Variant, OA, RDF_VALUE, SH};
 use oxrdf::{NamedNode, Quad, Term};
 use std::collections::BTreeSet;
 

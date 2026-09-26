@@ -245,6 +245,8 @@ pub(crate) fn serialise_at(
 }
 
 #[cfg(test)]
+mod serialising;
+#[cfg(test)]
 mod tests {
     use super::relative_to;
     use oxiri::Iri;

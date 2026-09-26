@@ -366,10 +366,32 @@ fn detected<R: BufRead>(detect: &Query, lift: Lift<R>) -> Result<bool> {
 }
 
 #[cfg(test)]
+mod adapter_files;
+#[cfg(test)]
+mod address;
+#[cfg(test)]
+mod entry_gaps;
+#[cfg(test)]
+mod fetching;
+#[cfg(test)]
+mod finding_bodies;
+#[cfg(test)]
+mod findings;
+#[cfg(test)]
+mod lookup_misses;
+#[cfg(test)]
+mod output_validation;
+#[cfg(test)]
+mod selector;
+#[cfg(test)]
+mod source_accounting;
+#[cfg(test)]
+mod validation;
+#[cfg(test)]
 mod tests {
     use super::{document_selector, prepare};
+    use crate::fixtures::tiny;
     use crate::load::load_adapter;
-    use crate::suite::common::tiny;
     use crate::{DirectoryResolver, Resolver, Result};
     use std::cell::RefCell;
     use std::collections::BTreeMap;

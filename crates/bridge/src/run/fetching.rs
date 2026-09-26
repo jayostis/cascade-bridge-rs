@@ -1,8 +1,6 @@
-use super::common;
-
+use crate::fixtures::{tiny_with_vocabularies, Variant};
 use crate::load::load_adapter;
 use crate::run::prepare;
-use common::{tiny_with_vocabularies, Variant};
 
 const ENDPOINT: &str = "<https://example.invalid/sparql>";
 const GRAPH: &str = "<https://example.invalid/g>";

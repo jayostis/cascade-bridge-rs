@@ -1,16 +1,45 @@
-use super::common;
-
-use crate::command::{self, Host};
-use crate::{path_to_file_iri, Error, Resolver, Result};
-use common::{tiny, tiny_with_vocabularies, Variant, CRATE};
+use cascade_bridge::command::{self, Host};
+use cascade_bridge::{path_to_file_iri, DirectoryResolver, Error, Resolver, Result};
 use oxrdf::Term;
 use oxrdfio::{RdfFormat, RdfParser};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 const DOAP_REVISION: &str = "http://usefulinc.com/ns/doap#revision";
+const CRATE: &str = "ro-crate-metadata.json";
+
+fn tiny_directory() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/tiny-adapter")
+}
+
+fn tiny() -> DirectoryResolver {
+    DirectoryResolver::new(tiny_directory()).expect("resolver")
+}
+
+fn tiny_with_vocabularies() -> DirectoryResolver {
+    tiny()
+        .with_vocabularies(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/tiny-vocabularies"),
+        )
+        .expect("the vocabularies directory")
+}
+
+struct EmptyCrate(DirectoryResolver);
+
+impl Resolver for EmptyCrate {
+    fn root(&self) -> &str {
+        self.0.root()
+    }
+
+    fn read(&self, iri: &str) -> Result<Vec<u8>> {
+        if iri.ends_with(CRATE) {
+            return Ok(b"{}".to_vec());
+        }
+        self.0.read(iri)
+    }
+}
 
 /// Everything the command asked of its host, in the order it asked, with the
 /// adapter's reads among them.
@@ -130,7 +159,7 @@ impl Host for Recorder {
 }
 
 fn two() -> String {
-    common::tiny_directory()
+    tiny_directory()
         .join("fixtures/in/two.xml")
         .to_string_lossy()
         .into_owned()
@@ -285,7 +314,7 @@ fn test_says_the_adapter_and_this_bridge_before_it_runs_an_entry() {
 
 #[test]
 fn convert_reads_no_document_where_the_adapter_does_not_load() {
-    let mut host = Recorder::of(Variant::of(tiny()).with(CRATE, "{}"));
+    let mut host = Recorder::of(EmptyCrate(tiny()));
     assert_eq!(host.run(&["convert", "adapter", "no-such-document.xml"]), 2);
     let said = host.printed("err");
     assert!(said.contains("names no root entity"), "{said}");

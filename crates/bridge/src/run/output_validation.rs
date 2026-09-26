@@ -1,12 +1,10 @@
-use super::common;
-
-use crate::load::load_adapter;
-use crate::run::{prepare, Conversion};
-use crate::Resolver;
-use common::{
+use crate::fixtures::{
     address, annotations, converted, node, says, tiny, tiny_with_vocabularies, Variant, CRATE, OA,
     SH,
 };
+use crate::load::load_adapter;
+use crate::run::{prepare, Conversion};
+use crate::Resolver;
 use oxrdf::Quad;
 use std::collections::BTreeSet;
 

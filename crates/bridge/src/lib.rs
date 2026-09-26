@@ -30,24 +30,3 @@ pub use oxrdfio;
 pub use resolver::{
     authority, file_iri, file_iri_to_path, path_to_file_iri, unread, DirectoryResolver, Resolver,
 };
-
-#[cfg(test)]
-#[path = "../tests"]
-mod suite {
-    mod adapter_files;
-    mod address;
-    mod boundary;
-    mod command;
-    pub(crate) mod common;
-    mod entry_gaps;
-    mod fetching;
-    mod finding_bodies;
-    mod findings;
-    mod harness;
-    mod lookup_misses;
-    mod output_validation;
-    mod selector;
-    mod serialising;
-    mod source_accounting;
-    mod validation;
-}

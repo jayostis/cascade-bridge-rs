@@ -205,6 +205,8 @@ fn percent_decode(s: &str) -> Option<String> {
 }
 
 #[cfg(test)]
+mod boundary;
+#[cfg(test)]
 mod tests {
     use super::*;
 

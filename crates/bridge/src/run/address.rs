@@ -1,11 +1,9 @@
-use super::common;
-
+use crate::fixtures::{address, annotations, committed, converted, says, tiny, Variant, OA, SH};
 use crate::harness::{run_manifest, RunOptions};
 use crate::load::load_adapter;
 use crate::rdf::canonical_lines;
 use crate::run::Conversion;
 use crate::Resolver;
-use common::{address, annotations, committed, converted, says, tiny, Variant, OA, SH};
 use oxrdf::{Quad, Term};
 
 const ADDRESS_NOT_ONE_NODE: &str =

@@ -1,9 +1,9 @@
-use super::common;
+use crate::fixtures;
 
+use crate::fixtures::{address, annotations, converted, says, tiny, Variant, OA, SH};
 use crate::load::load_adapter;
 use crate::run::prepare;
 use crate::{DirectoryResolver, Error, Resolver, Result};
-use common::{address, annotations, converted, says, tiny, Variant, OA, SH};
 use oxrdf::{NamedOrBlankNode, Quad};
 
 /// Every finding as its body, its severity and its address, joined per finding.
@@ -25,7 +25,7 @@ fn rows(findings: &[Quad]) -> Vec<(String, String, String, String)> {
 }
 
 fn violations(findings: &[Quad]) -> Vec<(String, String)> {
-    let mut addressed: Vec<(String, String)> = common::violations(findings)
+    let mut addressed: Vec<(String, String)> = fixtures::violations(findings)
         .into_iter()
         .map(|(_, record, within)| (record, within))
         .collect();

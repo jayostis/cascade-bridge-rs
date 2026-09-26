@@ -1,11 +1,10 @@
 // The harness canonicalises before it compares, so it sees none of what this file holds.
-use super::common;
 
+use crate::fixtures::{committed, conversion, tiny, Variant, CRATE, RDF_TYPE};
 use crate::load::load_adapter;
 use crate::rdf::{canonical_lines, serialise, serialise_at, GraphFormat};
 use crate::run::{convert, prepare, Conversion, Source};
 use crate::Resolver;
-use common::{committed, conversion, tiny, Variant, CRATE, RDF_TYPE};
 use oxrdf::{NamedOrBlankNode, Quad, Term};
 use oxrdfio::{RdfFormat, RdfParser};
 use std::collections::BTreeSet;

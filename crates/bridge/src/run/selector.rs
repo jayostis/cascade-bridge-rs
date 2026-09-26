@@ -1,6 +1,4 @@
-use super::common;
-
-use common::{converted, tiny, written, Variant, CATALOG, RDF_VALUE};
+use crate::fixtures::{converted, tiny, written, Variant, CATALOG, RDF_VALUE};
 use oxrdf::Quad;
 
 /// The tiny adapter with its input put in a namespace its schemas do not declare.

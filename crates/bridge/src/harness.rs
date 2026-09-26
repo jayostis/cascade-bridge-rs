@@ -44,8 +44,6 @@ impl Outcome {
 pub(crate) struct EntryResult {
     pub(crate) entry: Term,
     pub(crate) name: String,
-    #[allow(dead_code)]
-    pub(crate) type_iri: String,
     pub(crate) outcome: Outcome,
     pub(crate) description: String,
     pub(crate) elapsed: Duration,
@@ -353,7 +351,6 @@ pub(crate) fn run_manifest(
         results.push(EntryResult {
             entry,
             name,
-            type_iri,
             outcome,
             description,
             elapsed: start.elapsed(),
@@ -362,6 +359,8 @@ pub(crate) fn run_manifest(
     Ok(results)
 }
 
+#[cfg(test)]
+mod manifest;
 #[cfg(test)]
 mod tests {
     use super::beyond;
