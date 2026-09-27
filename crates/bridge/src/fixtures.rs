@@ -73,7 +73,7 @@ pub fn conversion(resolver: &dyn Resolver, input: &str) -> Result<Conversion> {
         Source {
             iri: &iri,
             envelope: None,
-            xml: &xml,
+            bytes: &xml,
         },
     )
 }

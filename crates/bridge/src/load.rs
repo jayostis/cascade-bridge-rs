@@ -3,9 +3,9 @@ use crate::resolver::Resolver;
 use crate::terms::{
     BRIDGE_ADAPTER, BRIDGE_DETECT_QUERY, BRIDGE_DOCUMENT_SCHEMA, BRIDGE_DOC_ROOT_ELEMENT_NAME,
     BRIDGE_ELEMENT_NAME_OF_EACH_RECORD, BRIDGE_ENVELOPE, BRIDGE_FINDINGS_QUERY, BRIDGE_GAP_SCHEME,
-    BRIDGE_MAPPING, BRIDGE_REQUIRES_PROFILE, BRIDGE_SOURCE_ACCOUNTING, BRIDGE_SOURCE_SCHEMA,
-    BRIDGE_TABLE, BRIDGE_TEST_MANIFEST, BRIDGE_VOCABULARY_FILE, RDF_FIRST, RDF_NIL, RDF_REST,
-    RDF_TYPE, SCHEMA_ABOUT, SCHEMA_IDENTIFIER, SCHEMA_NAME,
+    BRIDGE_MAPPING, BRIDGE_REQUIRES_PROFILE, BRIDGE_SOURCE_ACCOUNTING, BRIDGE_SOURCE_MEDIA_TYPE,
+    BRIDGE_SOURCE_SCHEMA, BRIDGE_TABLE, BRIDGE_TEST_MANIFEST, BRIDGE_VOCABULARY_FILE, RDF_FIRST,
+    RDF_NIL, RDF_REST, RDF_TYPE, SCHEMA_ABOUT, SCHEMA_IDENTIFIER, SCHEMA_NAME,
 };
 use oxrdf::{Graph, NamedNode, NamedOrBlankNode, Term, Triple};
 use oxrdfio::{JsonLdProfile, JsonLdProfileSet, LoadedDocument, RdfFormat, RdfParser};
@@ -44,6 +44,7 @@ pub(crate) struct Adapter {
     pub(crate) root: String,
     pub(crate) graph: Graph,
     pub(crate) identifier: Option<String>,
+    pub(crate) source_media_type: Option<String>,
     pub(crate) element_name_of_each_record: Option<String>,
     pub(crate) source_schema: Option<String>,
     /// Paths in the checkout the engine command is given, not files of the crate.
@@ -238,6 +239,7 @@ pub(crate) fn load_adapter(resolver: &dyn Resolver) -> Result<Adapter> {
             &root_subject,
             BRIDGE_ELEMENT_NAME_OF_EACH_RECORD,
         )?,
+        source_media_type: one(&graph, &root_subject, BRIDGE_SOURCE_MEDIA_TYPE)?,
         source_schema: one(&graph, &root_subject, BRIDGE_SOURCE_SCHEMA)?,
         vocabulary_files: values(&graph, &root_subject, BRIDGE_VOCABULARY_FILE)?,
         source_accounting: one(&graph, &root_subject, BRIDGE_SOURCE_ACCOUNTING)?,

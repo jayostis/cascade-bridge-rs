@@ -19,6 +19,7 @@ mod rdf;
 mod resolver;
 mod run;
 mod shapes;
+mod syntax;
 pub mod terms;
 mod validate;
 mod vocabulary;

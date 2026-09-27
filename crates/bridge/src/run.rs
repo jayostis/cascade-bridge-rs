@@ -1,30 +1,28 @@
 use crate::accounting::{gap_scheme, Accounting};
 use crate::annotation::{self, Record};
-use crate::decode::decode;
 use crate::error::{Error, Result};
-use crate::lift::{lift_text, Lift, Paths, Unit};
+use crate::lift::{Lift, Paths, Unit};
 use crate::load::{subject, value, values, Adapter};
 use crate::query::{Form, Query};
 use crate::rdf::FINDINGS_PREFIXES;
 use crate::resolver::Resolver;
+use crate::syntax::{Addresses, Syntax};
 use crate::terms::{BRIDGE_STAMP_PREDICATE, SCHEMA_ENCODING_FORMAT};
-use crate::validate::{self, Schema};
+use crate::validate::Schema;
 use crate::vocabulary::Vocabulary;
-use crate::xpath;
 use oxigraph::model::Quad;
 use oxigraph::sparql::QueryResults;
 use oxrdfio::{RdfFormat, RdfParser};
-use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
-use std::io::BufRead;
 
 struct Envelope {
     iri: String,
-    doc_root_element_name: Option<String>,
-    document_schema: Option<Schema>,
+    document_root: Option<String>,
+    document_schema: Option<Box<dyn Schema>>,
 }
 
 pub(crate) struct Prepared {
+    pub(crate) syntax: Syntax,
     unit: String,
     mappings: Vec<Query>,
     findings_queries: Vec<Query>,
@@ -34,7 +32,7 @@ pub(crate) struct Prepared {
     pub(crate) prefixes: Vec<(String, String)>,
     pub(crate) findings_prefixes: Vec<(String, String)>,
     envelopes: Vec<Envelope>,
-    source_schema: Option<Schema>,
+    source_schema: Option<Box<dyn Schema>>,
     vocabulary: Option<Vocabulary>,
     accounting: Option<Accounting>,
     /// By gap concept IRI, for a findings query's annotation that declares no severity.
@@ -49,11 +47,11 @@ impl Prepared {
             .ok_or_else(|| Error::msg(format!("the adapter declares no envelope {iri}")))
     }
 
-    fn envelope_of(&self, document_element: Option<&str>) -> Option<&Envelope> {
-        let element = document_element?;
+    fn envelope_of(&self, document_root: Option<&str>) -> Option<&Envelope> {
+        let root = document_root?;
         self.envelopes
             .iter()
-            .find(|envelope| envelope.doc_root_element_name.as_deref() == Some(element))
+            .find(|envelope| envelope.document_root.as_deref() == Some(root))
     }
 }
 
@@ -78,13 +76,7 @@ impl Conversion {
 pub(crate) struct Source<'a> {
     pub(crate) iri: &'a str,
     pub(crate) envelope: Option<&'a str>,
-    pub(crate) xml: &'a [u8],
-}
-
-fn document_selector(document: Option<String>, described: Option<&str>) -> String {
-    document
-        .or_else(|| described.map(|element| format!("/{element}")))
-        .unwrap_or_else(|| "/*".to_owned())
+    pub(crate) bytes: &'a [u8],
 }
 
 /// The manifest's own: an entry's replaces it only where the harness compares.
@@ -102,10 +94,8 @@ pub(crate) fn prepare(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prep
     if adapter.mappings.is_empty() {
         return Err(Error::msg("the adapter names no bridge:mapping"));
     }
-    let unit = adapter
-        .element_name_of_each_record
-        .clone()
-        .ok_or_else(|| Error::msg("the adapter names no bridge:elementNameOfEachRecord"))?;
+    let syntax = Syntax::of(adapter.source_media_type.as_deref())?;
+    let unit = syntax.records(adapter)?;
     let tables = tables(adapter, resolver)?;
     let mappings = queries(resolver, &adapter.mappings, "mapping")?;
     let findings_queries = queries(resolver, &adapter.findings_queries, "findings query")?;
@@ -117,9 +107,9 @@ pub(crate) fn prepare(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prep
     let source_schema = adapter
         .source_schema
         .as_deref()
-        .map(|iri| validate::compile(iri, resolver))
+        .map(|iri| syntax.schema(iri, resolver))
         .transpose()?;
-    let envelopes = envelopes(adapter, resolver)?;
+    let envelopes = envelopes(adapter, syntax, resolver)?;
     let (scheme, gap_prefixes) = adapter
         .gap_scheme
         .as_deref()
@@ -139,6 +129,7 @@ pub(crate) fn prepare(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prep
         .map(|iri| Accounting::read(resolver, iri, &scheme))
         .transpose()?;
     Ok(Prepared {
+        syntax,
         unit,
         mappings,
         findings_queries,
@@ -182,16 +173,16 @@ fn queries(resolver: &dyn Resolver, iris: &[String], what: &str) -> Result<Vec<Q
         .collect()
 }
 
-fn envelopes(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Vec<Envelope>> {
+fn envelopes(adapter: &Adapter, syntax: Syntax, resolver: &dyn Resolver) -> Result<Vec<Envelope>> {
     let mut envelopes = Vec::new();
     for envelope in &adapter.envelopes {
         envelopes.push(Envelope {
             iri: envelope.iri.clone(),
-            doc_root_element_name: envelope.doc_root_element_name.clone(),
+            document_root: envelope.doc_root_element_name.clone(),
             document_schema: envelope
                 .document_schema
                 .as_deref()
-                .map(|iri| validate::compile(iri, resolver))
+                .map(|iri| syntax.schema(iri, resolver))
                 .transpose()?,
         });
     }
@@ -229,13 +220,14 @@ pub(crate) fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Convers
         .envelope
         .map(|iri| prepared.named_envelope(iri))
         .transpose()?;
-    let text = decode(source.xml)?;
+    let syntax = prepared.syntax;
+    let text = syntax.decode(source.bytes)?;
     let paths = prepared
         .accounting
         .as_ref()
         .map_or(Paths::Dropped, Accounting::paths);
-    let mut lift = lift_text(Cow::Borrowed(&text), Some(&prepared.unit), paths)?;
-    let followed = xpath::Followed::default();
+    let mut lift = syntax.lift(&text, &prepared.unit, paths)?;
+    let followed = syntax.addresses();
     let mut conversion = Conversion {
         quads: Vec::new(),
         findings: Vec::new(),
@@ -244,17 +236,21 @@ pub(crate) fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Convers
     };
     while let Some(unit) = lift.next_unit()? {
         conversion.units += 1;
-        // A record was read, so the document element was: no envelope is needed yet.
-        let document = document_selector(lift.document_selector(), None);
+        // A record was read, so the document root was: no envelope is needed yet.
+        let document = lift.document_selector(None);
         let (produced, findings) =
-            unit_converted(prepared, source.iri, &document, &unit, &followed)?;
+            unit_converted(prepared, source.iri, &document, &unit, followed.as_ref())?;
         conversion.quads.extend(produced);
         conversion.findings.extend(findings);
     }
-    let envelope = named.or_else(|| prepared.envelope_of(lift.document_element()));
-    conversion
-        .findings
-        .extend(document_findings(envelope, source.iri, &lift, &text)?);
+    let envelope = named.or_else(|| prepared.envelope_of(lift.document_root()));
+    conversion.findings.extend(document_findings(
+        prepared,
+        envelope,
+        source.iri,
+        lift.as_ref(),
+        &text,
+    )?);
     conversion.detected = prepared
         .detect
         .as_ref()
@@ -268,14 +264,16 @@ fn unit_converted(
     iri: &str,
     document: &str,
     unit: &Unit,
-    followed: &xpath::Followed,
+    followed: &dyn Addresses,
 ) -> Result<(Vec<Quad>, Vec<Quad>)> {
     let selector = unit.selector();
+    let selector_type = prepared.syntax.selector_type();
     let record = Record {
         source: iri,
         selector: &selector,
+        selector_type,
     };
-    let mut findings = validated(prepared.source_schema.as_ref(), &record, &unit.xml)?;
+    let mut findings = validated(prepared.source_schema.as_deref(), &record, &unit.text)?;
     if let Some(accounting) = &prepared.accounting {
         findings.extend(accounting.findings(&record, unit)?);
     }
@@ -287,21 +285,22 @@ fn unit_converted(
     let document = Record {
         source: iri,
         selector: document,
+        selector_type,
     };
-    let unresolved = followed.unresolved(&document, &unit.xml, &findings)?;
+    let unresolved = followed.unresolved(&document, &unit.text, &findings)?;
     findings.extend(unresolved);
     Ok((produced, findings))
 }
 
-fn validated(schema: Option<&Schema>, record: &Record<'_>, xml: &str) -> Result<Vec<Quad>> {
+fn validated(schema: Option<&dyn Schema>, record: &Record<'_>, text: &str) -> Result<Vec<Quad>> {
     let mut findings = Vec::new();
     let Some(schema) = schema else {
         return Ok(findings);
     };
-    for broken in schema.errors(xml)? {
+    for broken in schema.errors(text)? {
         findings.extend(annotation::violation(
             record,
-            &broken.body(),
+            broken.body(),
             broken.within(),
         )?);
     }
@@ -332,29 +331,28 @@ fn queried(prepared: &Prepared, record: &Record<'_>, unit: &Unit) -> Result<Vec<
 }
 
 /// This Bridge wrote these addresses, so they are not followed as an adapter's are.
-fn document_findings<R: BufRead>(
+fn document_findings(
+    prepared: &Prepared,
     envelope: Option<&Envelope>,
     iri: &str,
-    lift: &Lift<R>,
+    lift: &dyn Lift,
     text: &str,
 ) -> Result<Vec<Quad>> {
     let Some((envelope, schema)) =
-        envelope.and_then(|envelope| Some((envelope, envelope.document_schema.as_ref()?)))
+        envelope.and_then(|envelope| Some((envelope, envelope.document_schema.as_deref()?)))
     else {
         return Ok(Vec::new());
     };
-    let selector = document_selector(
-        lift.document_selector(),
-        envelope.doc_root_element_name.as_deref(),
-    );
+    let selector = lift.document_selector(envelope.document_root.as_deref());
     let record = Record {
         source: iri,
         selector: &selector,
+        selector_type: prepared.syntax.selector_type(),
     };
     validated(Some(schema), &record, text)
 }
 
-fn detected<R: BufRead>(detect: &Query, lift: Lift<R>) -> Result<bool> {
+fn detected(detect: &Query, lift: Box<dyn Lift + '_>) -> Result<bool> {
     let skeleton = lift.into_skeleton()?;
     let QueryResults::Boolean(answer) = detect.on(&skeleton)? else {
         return Err(Error::msg(format!(
@@ -389,7 +387,7 @@ mod source_accounting;
 mod validation;
 #[cfg(test)]
 mod tests {
-    use super::{document_selector, prepare};
+    use super::prepare;
     use crate::fixtures::tiny;
     use crate::load::load_adapter;
     use crate::{DirectoryResolver, Resolver, Result};
@@ -449,19 +447,5 @@ mod tests {
             .filter(|(_, times)| *times != 1)
             .collect();
         assert_eq!(misread, Vec::<(&String, usize)>::new());
-    }
-
-    #[test]
-    fn selects_the_element_the_envelope_describes_where_the_document_has_none() {
-        assert_eq!(
-            document_selector(None, Some("catalog")),
-            "/catalog",
-            "a finding about the document selects the envelope's document root element"
-        );
-        assert_eq!(
-            document_selector(Some("/other".to_owned()), Some("catalog")),
-            "/other"
-        );
-        assert_eq!(document_selector(None, None), "/*");
     }
 }

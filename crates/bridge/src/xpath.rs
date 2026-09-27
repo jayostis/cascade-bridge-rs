@@ -4,8 +4,9 @@
 use crate::annotation::{self, Record};
 use crate::decode::{normalise_attribute_value, normalise_line_endings};
 use crate::error::Result;
-use crate::lift::Step;
+use crate::lift::xml::Step;
 use crate::rdf::{OA_HAS_SELECTOR, OA_REFINED_BY, RDF_VALUE};
+use crate::syntax::{Addresses, Respelled, Respelling};
 use oxrdf::{BlankNode, Literal, NamedOrBlankNode, Quad, Term};
 use quick_xml::events::Event;
 use quick_xml::name::ResolveResult;
@@ -502,13 +503,8 @@ pub(crate) struct Followed {
     parsed: Parsed,
 }
 
-impl Followed {
-    pub(crate) fn unresolved(
-        &self,
-        document: &Record,
-        record: &str,
-        findings: &[Quad],
-    ) -> Result<Vec<Quad>> {
+impl Addresses for Followed {
+    fn unresolved(&self, document: &Record, record: &str, findings: &[Quad]) -> Result<Vec<Quad>> {
         let addresses = refinements(findings);
         if addresses.is_empty() {
             return Ok(Vec::new());
@@ -545,8 +541,10 @@ impl<'a> Spelled<'a> {
     fn tree(&self) -> Option<&Tree> {
         self.tree.get_or_init(|| Tree::of(self.xml)).as_ref()
     }
+}
 
-    pub(crate) fn respelled(&self, findings: Vec<Quad>) -> Respelled {
+impl Respelling for Spelled<'_> {
+    fn respelled(&self, findings: Vec<Quad>) -> Respelled {
         let Some(tree) = self.tree() else {
             return Respelled {
                 findings,
@@ -648,16 +646,12 @@ fn respelling(
     (respell, missed)
 }
 
-pub(crate) struct Respelled {
-    pub(crate) findings: Vec<Quad>,
-    pub(crate) missed: BTreeSet<String>,
-}
-
 #[cfg(test)]
 mod tests {
     use super::{one, Followed, Parsed, Tree, DOCUMENT, EVALUATED, PARSED};
-    use crate::annotation::Record;
+    use crate::annotation::{Record, SelectorType};
     use crate::rdf::{OA_REFINED_BY, RDF_VALUE};
+    use crate::syntax::Addresses;
     use oxrdf::{BlankNode, GraphName, Literal, NamedNode, Quad};
     use xpath_eval::NodeKind;
 
@@ -756,7 +750,7 @@ mod tests {
     fn spells_a_record_as_the_lift_wrote_its_selector() {
         let document =
             br#"<s:set xmlns:s="urn:example:set"><g><s:item/><s:item/></g><g><item/></g></s:set>"#;
-        let units: Vec<crate::lift::Unit> = crate::lift::lift_slice(document, Some("item"))
+        let units: Vec<crate::lift::Unit> = crate::lift::xml::lift_slice(document, Some("item"))
             .expect("the lift")
             .map(|unit| unit.expect("a unit"))
             .collect();
@@ -839,7 +833,7 @@ mod tests {
         let document =
             b"<catalog><item><note/></item><item><note/></item><item><note/></item></catalog>";
         let followed = Followed::default();
-        let units: Vec<crate::lift::Unit> = crate::lift::lift_slice(document, Some("item"))
+        let units: Vec<crate::lift::Unit> = crate::lift::xml::lift_slice(document, Some("item"))
             .expect("the lift")
             .map(|unit| unit.expect("a unit"))
             .collect();
@@ -851,9 +845,10 @@ mod tests {
             let record = Record {
                 source: "urn:example:catalog",
                 selector: &selector,
+                selector_type: SelectorType::XPath,
             };
             assert!(followed
-                .unresolved(&record, &unit.xml, &findings)
+                .unresolved(&record, &unit.text, &findings)
                 .expect("the reports")
                 .is_empty());
         }
@@ -865,7 +860,7 @@ mod tests {
         let document =
             b"<catalog><item><note/></item><item><note/></item><item><note/></item></catalog>";
         let followed = Followed::default();
-        let units: Vec<crate::lift::Unit> = crate::lift::lift_slice(document, Some("item"))
+        let units: Vec<crate::lift::Unit> = crate::lift::xml::lift_slice(document, Some("item"))
             .expect("the lift")
             .map(|unit| unit.expect("a unit"))
             .collect();
@@ -877,9 +872,10 @@ mod tests {
             let record = Record {
                 source: "urn:example:catalog",
                 selector: &selector,
+                selector_type: SelectorType::XPath,
             };
             assert!(followed
-                .unresolved(&record, &unit.xml, &findings)
+                .unresolved(&record, &unit.text, &findings)
                 .expect("the reports")
                 .is_empty());
         }

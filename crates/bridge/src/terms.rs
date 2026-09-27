@@ -54,6 +54,7 @@ terms! {
     BRIDGE_TABLE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "table";
     BRIDGE_ENVELOPE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "envelope";
     BRIDGE_DOC_ROOT_ELEMENT_NAME = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "docRootElementName";
+    BRIDGE_SOURCE_MEDIA_TYPE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "sourceMediaType";
     BRIDGE_SOURCE_SCHEMA = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "sourceSchema";
     BRIDGE_VOCABULARY_FILE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "vocabularyFile";
     BRIDGE_PREDICATE_NOT_DECLARED = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "predicateNotDeclared";

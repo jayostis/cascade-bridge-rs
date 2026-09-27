@@ -213,7 +213,7 @@ fn convert(arguments: &Convert, host: &mut dyn Host) -> Result<u8> {
         Source {
             iri: &iri,
             envelope: None,
-            xml: &xml,
+            bytes: &xml,
         },
     )?;
     let graph = serialise(&conversion.quads, arguments.format, &prepared.prefixes)?;

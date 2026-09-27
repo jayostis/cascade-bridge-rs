@@ -14,6 +14,29 @@ use std::collections::{HashMap, HashSet};
 pub(crate) struct Record<'a> {
     pub(crate) source: &'a str,
     pub(crate) selector: &'a str,
+    pub(crate) selector_type: SelectorType,
+}
+
+/// A record's selector and every address refining it are written in the one language.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SelectorType {
+    XPath,
+}
+
+impl SelectorType {
+    fn write(self, value: &str, into: &mut Vec<Quad>) -> Result<BlankNode> {
+        let node = BlankNode::default();
+        let type_iri = match self {
+            Self::XPath => OA_XPATH_SELECTOR,
+        };
+        into.push(triple(node.clone(), RDF_TYPE, named(type_iri)?)?);
+        into.push(triple(
+            node.clone(),
+            RDF_VALUE,
+            Literal::new_simple_literal(value),
+        )?);
+        Ok(node)
+    }
 }
 
 pub(crate) fn annotations(quads: &[Quad]) -> usize {
@@ -39,17 +62,6 @@ fn triple(
 
 fn named(iri: &str) -> Result<Term> {
     Ok(Term::from(NamedNode::new(iri)?))
-}
-
-fn record_selector(record: &Record, into: &mut Vec<Quad>) -> Result<BlankNode> {
-    let node = BlankNode::default();
-    into.push(triple(node.clone(), RDF_TYPE, named(OA_XPATH_SELECTOR)?)?);
-    into.push(triple(
-        node.clone(),
-        RDF_VALUE,
-        Literal::new_simple_literal(record.selector),
-    )?);
-    Ok(node)
 }
 
 fn described(quads: &[Quad]) -> HashMap<&BlankNode, Vec<&Quad>> {
@@ -107,19 +119,9 @@ fn finding(
     let mut quads = Vec::new();
     let annotation = BlankNode::default();
     let target = BlankNode::default();
-    let selector = record_selector(record, &mut quads)?;
+    let selector = record.selector_type.write(record.selector, &mut quads)?;
     if let Some(within) = within {
-        let refinement = BlankNode::default();
-        quads.push(triple(
-            refinement.clone(),
-            RDF_TYPE,
-            named(OA_XPATH_SELECTOR)?,
-        )?);
-        quads.push(triple(
-            refinement.clone(),
-            RDF_VALUE,
-            Literal::new_simple_literal(within),
-        )?);
+        let refinement = record.selector_type.write(within, &mut quads)?;
         quads.push(triple(selector.clone(), OA_REFINED_BY, refinement)?);
     }
     quads.push(triple(annotation.clone(), RDF_TYPE, named(OA_ANNOTATION)?)?);
@@ -330,7 +332,7 @@ pub(crate) fn about(
         let made = copy(&target, &description, &mut made_over);
         let target = made[&target].clone();
         copied.extend(made.into_keys());
-        let selector = record_selector(record, &mut findings)?;
+        let selector = record.selector_type.write(record.selector, &mut findings)?;
         for quad in made_over {
             if quad.predicate.as_str() == OA_HAS_SELECTOR
                 && matches!(&quad.subject, NamedOrBlankNode::BlankNode(b) if *b == target)
