@@ -1,8 +1,8 @@
 use super::ni_name;
 use crate::fixtures::{converted_with_facts, fixture, objects, tiny, versioned, Variant, CRATE};
 use crate::terms::{
-    BRIDGE_ARRIVED_AS, BRIDGE_SELECTOR, PAV_VERSION, PROV_ACTIVITY, PROV_WAS_DERIVED_FROM,
-    PROV_WAS_GENERATED_BY, RDF_TYPE,
+    BRIDGE_ARRIVED_AS, BRIDGE_SELECTOR, PAV_LAST_UPDATE_ON, PAV_VERSION, PROV_ACTIVITY,
+    PROV_WAS_DERIVED_FROM, PROV_WAS_GENERATED_BY, RDF_TYPE,
 };
 use oxrdf::{Quad, Term};
 use std::collections::BTreeSet;
@@ -171,4 +171,57 @@ bridge:thisDocument prov:qualifiedAttribution [ prov:agent [ rdfs:label \"a shop
             .collect::<Vec<String>>()
     };
     assert_eq!(written(1), written(2));
+}
+
+#[test]
+fn keeps_the_selector_a_mapping_wrote_on_an_arrival_and_adds_none() {
+    let resolver = versioned().replacing(
+        "mapping/item.rq",
+        "pav:version ?id .",
+        "pav:version ?id ; bridge:selector \"/held\" .",
+    );
+    let quads = converted_with_facts(&resolver, "two.xml").quads;
+    let arrivals = subjects(&quads, BRIDGE_ARRIVED_AS);
+    assert_eq!(arrivals.len(), 2, "{arrivals:?}");
+    for arrival in &arrivals {
+        assert_eq!(
+            said(&quads, arrival, BRIDGE_SELECTOR),
+            BTreeSet::from(["/held".to_owned()]),
+            "{arrival}"
+        );
+    }
+}
+
+#[test]
+fn keeps_an_arrival_s_last_update_in_the_source_s_own_text() {
+    let resolver = versioned()
+        .replacing(
+            "mapping/item.rq",
+            "pav:version ?id .",
+            "pav:version ?id ; pav:lastUpdateOn ?updated .",
+        )
+        .replacing(
+            "mapping/item.rq",
+            "rdf:_1 ?title . }",
+            "rdf:_1 ?title . }
+  BIND(STRDT(?title, <http://www.w3.org/2001/XMLSchema#dateTime>) AS ?updated)",
+        )
+        .replacing(
+            "fixtures/in/two.xml",
+            "<title>First</title>",
+            "<title>2026-01-01T00:00:00.000+01:00</title>",
+        );
+    let quads = converted_with_facts(&resolver, "two.xml").quads;
+    let written: BTreeSet<String> = quads
+        .iter()
+        .filter(|quad| quad.predicate.as_str() == PAV_LAST_UPDATE_ON)
+        .map(|quad| quad.object.to_string())
+        .collect();
+    assert_eq!(
+        written,
+        BTreeSet::from([
+            "\"2026-01-01T00:00:00.000+01:00\"^^<http://www.w3.org/2001/XMLSchema#dateTime>"
+                .to_owned()
+        ])
+    );
 }

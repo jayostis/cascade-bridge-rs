@@ -2,15 +2,19 @@ use super::{ni_name, normalised_base_url, Versioned};
 use crate::error::{Error, Result};
 use crate::terms::{
     BRIDGE_ARRIVED_AS, BRIDGE_SELECTOR, BRIDGE_SERVER_BASE_URL, BRIDGE_SHA256,
-    BRIDGE_THIS_DOCUMENT, BRIDGE_THIS_IMPORT, BRIDGE_THIS_RECORD, PAV_VERSION, PROV_ACTIVITY,
-    PROV_AGENT, PROV_ENTITY, PROV_HAD_PLAN, PROV_PLAN, PROV_QUALIFIED_ASSOCIATION,
+    BRIDGE_THIS_DOCUMENT, BRIDGE_THIS_IMPORT, BRIDGE_THIS_RECORD, PAV_LAST_UPDATE_ON, PAV_VERSION,
+    PROV_ACTIVITY, PROV_AGENT, PROV_ENTITY, PROV_HAD_PLAN, PROV_PLAN, PROV_QUALIFIED_ASSOCIATION,
     PROV_SOFTWARE_AGENT, PROV_USED, PROV_WAS_DERIVED_FROM, PROV_WAS_GENERATED_BY, RDFS_LABEL,
     RDF_TYPE,
 };
+use oxigraph::store::Store;
+use oxrdf::vocab::xsd;
 use oxrdf::{BlankNode, GraphName, Literal, NamedNode, NamedOrBlankNode, Quad, Term};
 use oxrdfio::{RdfFormat, RdfParser};
+use oxsdatatypes::DateTime;
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::str::FromStr;
 
 /// A Turtle file of the facts a caller supplies with a document.
 pub(crate) struct Supplied<'a> {
@@ -81,6 +85,41 @@ fn supplied(facts: Option<Supplied<'_>>, document: &str) -> Result<Vec<Quad>> {
     Ok(supplied)
 }
 
+/// Each `pav:lastUpdateOn` in the text of the record's dataset a store canonicalised it from.
+fn last_updates_as_the_source_wrote(graph: &mut [Quad], source: &Store) -> Result<()> {
+    let date_time = |quad: &Quad| match &quad.object {
+        Term::Literal(literal)
+            if quad.predicate.as_str() == PAV_LAST_UPDATE_ON
+                && literal.datatype() == xsd::DATE_TIME =>
+        {
+            Some(literal.value().to_owned())
+        }
+        _ => None,
+    };
+    if !graph.iter().any(|quad| date_time(quad).is_some()) {
+        return Ok(());
+    }
+    let mut written: HashMap<String, String> = HashMap::new();
+    for quad in source.quads_for_pattern(None, None, None, None) {
+        if let Term::Literal(literal) = quad?.object {
+            if literal.datatype() != xsd::STRING {
+                continue;
+            }
+            if let Ok(value) = DateTime::from_str(literal.value()) {
+                written
+                    .entry(value.to_string())
+                    .or_insert_with(|| literal.value().to_owned());
+            }
+        }
+    }
+    for quad in graph.iter_mut() {
+        if let Some(text) = date_time(quad).and_then(|canonical| written.get(&canonical)) {
+            quad.object = Literal::new_typed_literal(text, xsd::DATE_TIME).into();
+        }
+    }
+    Ok(())
+}
+
 impl Document {
     pub(crate) fn new(bytes: &[u8], facts: Option<Supplied<'_>>) -> Result<Self> {
         let name = ni_name(bytes);
@@ -114,7 +153,12 @@ impl Document {
     }
 
     /// The record's graph with an arrival for each of its versions.
-    pub(crate) fn arrived(&self, versioned: Versioned, selector: &str) -> Vec<Quad> {
+    pub(crate) fn arrived(
+        &self,
+        versioned: Versioned,
+        selector: &str,
+        source: &Store,
+    ) -> Result<Vec<Quad>> {
         let arrivals: HashMap<&str, BlankNode> = versioned
             .versions
             .iter()
@@ -148,20 +192,28 @@ impl Document {
                 quad
             })
             .collect();
+        let mapping_selected: HashSet<NamedOrBlankNode> = graph
+            .iter()
+            .filter(|quad| quad.predicate.as_str() == BRIDGE_SELECTOR)
+            .map(|quad| quad.subject.clone())
+            .collect();
         for version in &versioned.versions {
             let arrival = arrivals[version.name.as_str()].clone();
-            graph.extend([
-                quad(arrival.clone(), BRIDGE_ARRIVED_AS, named(&version.name)),
-                quad(
+            if !mapping_selected.contains(&NamedOrBlankNode::from(arrival.clone())) {
+                graph.push(quad(
                     arrival.clone(),
                     BRIDGE_SELECTOR,
                     Literal::new_simple_literal(selector),
-                ),
+                ));
+            }
+            graph.extend([
+                quad(arrival.clone(), BRIDGE_ARRIVED_AS, named(&version.name)),
                 quad(arrival.clone(), PROV_WAS_DERIVED_FROM, self.name.clone()),
                 quad(arrival, PROV_WAS_GENERATED_BY, self.import.clone()),
             ]);
         }
-        graph
+        last_updates_as_the_source_wrote(&mut graph, source)?;
+        Ok(graph)
     }
 
     fn in_place(&self, term: Term) -> Term {

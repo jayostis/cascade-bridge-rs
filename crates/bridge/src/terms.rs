@@ -124,6 +124,7 @@ terms! {
     PROV_AGENT = "http://www.w3.org/ns/prov#", "agent";
 
     PAV_VERSION = "http://purl.org/pav/", "version";
+    PAV_LAST_UPDATE_ON = "http://purl.org/pav/", "lastUpdateOn";
 
     RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#", "label";
 

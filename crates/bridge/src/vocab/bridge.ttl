@@ -65,13 +65,12 @@ bridge:vocabularyFile a owl:DatatypeProperty ;
 
 bridge:sourceMediaType a owl:DatatypeProperty ;
   rdfs:label "source media type"@en ;
-  rdfs:domain bridge:Adapter ;
   rdfs:range xsd:string ;
   rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
 
 bridge:sourceSchema a owl:ObjectProperty ;
   rdfs:label "source schema"@en ;
-  rdfs:comment "The XSD 1.0 schema a Bridge validates every record against."@en ;
+  rdfs:comment "The schema a Bridge validates every record against: XSD 1.0 for an XML source, JSON Schema for a JSON one."@en ;
   rdfs:domain bridge:Adapter ;
   rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
 
@@ -83,6 +82,12 @@ bridge:envelope a owl:ObjectProperty ;
 bridge:elementNameOfEachRecord a owl:DatatypeProperty ;
   rdfs:label "element name of each record"@en ;
   rdfs:comment "A Bridge hands each record to the mapping on its own, and preserves its raw bytes."@en ;
+  rdfs:range xsd:string ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:jsonPathOfEachRecord a owl:DatatypeProperty ;
+  rdfs:label "JSON path of each record"@en ;
+  rdfs:comment "The RFC 9535 JSONPath selecting the records of a JSON document read in the envelope. A Bridge hands each record to the mapping on its own."@en ;
   rdfs:range xsd:string ;
   rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
 
@@ -262,7 +267,7 @@ bridge:carriedWithLoss a skos:Concept ;
   rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
 
 bridge:schemaRuleUnnamed a skos:Concept ;
-  skos:prefLabel "a value at a source path failing a schema rule W3C names no anchor for"@en ;
+  skos:prefLabel "a value at a source path failing a schema rule its specification names no anchor for"@en ;
   skos:inScheme bridge:gapKinds ;
   rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
 
@@ -304,9 +309,23 @@ bridge:docRootElementName a owl:DatatypeProperty ;
   rdfs:range xsd:string ;
   rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
 
+bridge:docRootMemberName a owl:DatatypeProperty ;
+  rdfs:label "document root member name"@en ;
+  rdfs:comment "A member the object at the root of a JSON document in this envelope carries, by its name."@en ;
+  rdfs:domain bridge:Envelope ;
+  rdfs:range xsd:string ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:docRootMemberValue a owl:DatatypeProperty ;
+  rdfs:label "document root member value"@en ;
+  rdfs:comment "The value, as the JSON lift writes it, of the member bridge:docRootMemberName names."@en ;
+  rdfs:domain bridge:Envelope ;
+  rdfs:range xsd:string ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
 bridge:documentSchema a owl:ObjectProperty ;
   rdfs:label "document schema"@en ;
-  rdfs:comment "The XSD 1.0 schema a Bridge validates a whole document in this envelope against, where the source schema does not declare its root."@en ;
+  rdfs:comment "The schema a Bridge validates a whole document in this envelope against, in the source schema's language, where the source schema does not declare its root."@en ;
   rdfs:domain bridge:Envelope ;
   rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
 
@@ -343,7 +362,7 @@ bridge:sha256 a owl:DatatypeProperty ;
 
 bridge:selector a owl:DatatypeProperty ;
   rdfs:label "selector"@en ;
-  rdfs:comment "Where a record stood in its document: of bridge:thisRecord in the record's dataset, and of the record's arrival."@en ;
+  rdfs:comment "Where a record stood in its document, as the rdf:value of the selector selecting it: of bridge:thisRecord in the record's dataset, and of the arrival of each version of a record."@en ;
   rdfs:range xsd:string ;
   rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
 
@@ -416,7 +435,7 @@ rdfs:label a owl:AnnotationProperty ;
 bridge:IsomorphicConversionTest a owl:Class ;
   rdfs:subClassOf mf:ManifestEntry ;
   rdfs:label "Isomorphic conversion test"@en ;
-  rdfs:comment "Convert bridge:input, supplied with the facts bridge:facts names where the action names them. The produced graph must be isomorphic to bridge:expectedGraph (blank nodes relabelled, IRIs and literals exact) after every triple whose subject is the prov:agent of a prov:qualifiedAssociation, the Bridge's release, is removed from both sides. The produced findings must be isomorphic to bridge:expectedFindings in the same way, except that two oa:XPathSelector rdf:values are equal when both select the same one node: a record's selector evaluated against bridge:input, a refinement against the record that selector selects, read as a document of its own. An address selecting no node, or more than one, fails the entry. A finding produced twice is two blank nodes and counts twice."@en ;
+  rdfs:comment "Convert bridge:input, supplied with the facts bridge:facts names where the action names them. The produced graph must be isomorphic to bridge:expectedGraph (blank nodes relabelled, IRIs and literals exact) after every triple whose subject is the prov:agent of a prov:qualifiedAssociation, the Bridge's release, is removed from both sides. The produced findings must be isomorphic to bridge:expectedFindings in the same way, except that two selectors of one kind, oa:XPathSelector or an oa:FragmentSelector conforming to JSON Pointer, are equal when their rdf:values select the same one node: a record's selector evaluated against bridge:input, a refinement against the record that selector selects, read as a document of its own. An address selecting no node, or more than one, fails the entry. A finding produced twice is two blank nodes and counts twice."@en ;
   rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
 
 bridge:InputOnlyTest a owl:Class ;
@@ -434,13 +453,13 @@ bridge:DatasetCompletionTest a owl:Class ;
 bridge:LiftTest a owl:Class ;
   rdfs:subClassOf mf:ManifestEntry ;
   rdfs:label "Lift test"@en ;
-  rdfs:comment "A test of a Bridge offering bridge:sparql-1.1: lift bridge:input with its document element as the lift root. The produced graph must be isomorphic to bridge:expectedGraph, blank nodes relabelled and IRIs and literals exact. No mapping runs, and nothing is removed from either side."@en ;
+  rdfs:comment "A test of a Bridge offering bridge:sparql-1.1: lift bridge:input by the lift the action's bridge:sourceMediaType selects, with its document element, or its JSON value, as the lift root. The produced graph must be isomorphic to bridge:expectedGraph, blank nodes relabelled and IRIs and literals exact. No mapping runs, and nothing is removed from either side."@en ;
   rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
 
 bridge:SkeletonTest a owl:Class ;
   rdfs:subClassOf mf:ManifestEntry ;
   rdfs:label "Envelope skeleton test"@en ;
-  rdfs:comment "A test of a Bridge offering bridge:sparql-1.1: build the envelope skeleton of bridge:input, with the action's bridge:elementNameOfEachRecord as the record element's local name. The produced graph must be isomorphic to bridge:expectedGraph, blank nodes relabelled and IRIs and literals exact. Nothing is removed from either side."@en ;
+  rdfs:comment "A test of a Bridge offering bridge:sparql-1.1: build the envelope skeleton of bridge:input by the lift the action's bridge:sourceMediaType selects, its records named by the action's bridge:elementNameOfEachRecord or bridge:jsonPathOfEachRecord. The produced graph must be isomorphic to bridge:expectedGraph, blank nodes relabelled and IRIs and literals exact. Nothing is removed from either side."@en ;
   rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
 
 bridge:NamingTest a owl:Class ;

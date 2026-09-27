@@ -49,7 +49,7 @@
 
 <#fhir-bundle-entry-urn> a bridge:NamingTest ;
   mf:name "fhir-bundle-entry-urn" ;
-  rdfs:comment "A Bundle entry with no id and a urn:uuid fullUrl: the urn, hashed as any input is, and never the name itself." ;
+  rdfs:comment "A Bundle entry with no id and a urn:uuid fullUrl, whether a server is known or not: the urn, hashed as any input is, and never the name itself." ;
   mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "urn:uuid:5c1e0a4e-7d2b-4f0a-9a47-3f6e1b2c8d90" ) ] ;
   mf:result [ bridge:expectedName <urn:uuid:4d3c6fb5-45a5-8405-9a5f-af391d457e6d> ] .
 
@@ -121,7 +121,7 @@
 
 <#no-server> a bridge:NamingTest ;
   mf:name "no-server" ;
-  rdfs:comment "A bare resource with no known server: the document's name and the record's JSON Pointer, the empty string for the whole document." ;
+  rdfs:comment "A bare resource with an id and no known server: the document's name and the record's JSON Pointer, the empty string for the whole document." ;
   mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "ni:///sha-256;xB0nSd3NEIv7JKSR3cDS7kcXb2swhmvDd51Of6iI-2c" "" ) ] ;
   mf:result [ bridge:expectedName <urn:uuid:0fff036b-ebd4-85fe-84c4-edefdeb6d52b> ] .
 

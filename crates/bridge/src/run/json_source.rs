@@ -1,4 +1,4 @@
-use crate::fixtures::{converted, tiny_json, Variant, OA, RDF_TYPE, RDF_VALUE};
+use crate::fixtures::{converted, objects, tiny_json, Variant, OA, RDF_TYPE, RDF_VALUE};
 use crate::harness::{run_manifest, RunOptions};
 use crate::load::load_adapter;
 use crate::run::{convert, prepare, Conversion, Source};
@@ -136,5 +136,74 @@ fn follows_no_address_this_bridge_built_from_its_own_walk() {
     assert!(
         !findings.iter().any(|q| q.object.to_string() == not_one),
         "{findings:?}"
+    );
+}
+
+/// The tiny JSON adapter with its mapping reading the selector fact and a
+/// document table every record of the document constructs.
+fn tabled() -> Variant {
+    Variant::of(tiny_json())
+        .with(
+            "mapping/item.rq",
+            "PREFIX fx: <http://sparql.xyz/facade-x/ns/>
+PREFIX xyz: <http://sparql.xyz/facade-x/data/>
+PREFIX bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#>
+PREFIX ex: <urn:example:list#>
+CONSTRUCT { ?s ex:at ?at ; ex:seen ?other . }
+WHERE {
+  ?item a fx:root ; xyz:id ?id .
+  BIND(IRI(CONCAT(\"urn:example:item:\", ?id)) AS ?s)
+  bridge:thisRecord bridge:selector ?at .
+  ?holder ex:holds ?other .
+}",
+        )
+        .with(
+            "mapping/table.rq",
+            "PREFIX fx: <http://sparql.xyz/facade-x/ns/>
+PREFIX xyz: <http://sparql.xyz/facade-x/data/>
+PREFIX ex: <urn:example:list#>
+CONSTRUCT { [] ex:holds ?id } WHERE { ?item a fx:root ; xyz:id ?id }",
+        )
+        .replacing(
+            "ro-crate-metadata.json",
+            "\"bridge:detectQuery\": \"bridge:detectQuery\",",
+            "\"bridge:detectQuery\": \"bridge:detectQuery\",\n      \"bridge:documentTableQuery\": \"bridge:documentTableQuery\",",
+        )
+        .replacing(
+            "ro-crate-metadata.json",
+            "\"bridge:detectQuery\": { \"@id\": \"mapping/detect.rq\" },",
+            "\"bridge:detectQuery\": { \"@id\": \"mapping/detect.rq\" },\n      \"bridge:documentTableQuery\": { \"@id\": \"mapping/table.rq\" },",
+        )
+}
+
+fn said(quads: &[Quad], subject: &str, predicate: &str) -> Vec<String> {
+    let mut said: Vec<String> = objects(quads, subject, predicate)
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    said.sort();
+    said
+}
+
+#[test]
+fn gives_each_json_record_its_pointer_and_the_table_every_record_of_its_document_constructs() {
+    let quads = converted(&tabled(), "list.json").quads;
+    for (item, at) in [("1", "\"/items/0\""), ("2", "\"/items/1\"")] {
+        let item = format!("<urn:example:item:{item}>");
+        assert_eq!(said(&quads, &item, "urn:example:list#at"), [at]);
+        assert_eq!(
+            said(&quads, &item, "urn:example:list#seen"),
+            ["\"1\"", "\"2\""],
+            "{item} reads what every record of its document holds"
+        );
+    }
+}
+
+#[test]
+fn gives_a_json_document_s_own_value_the_empty_pointer() {
+    let quads = read_in(&tabled(), "item.json", "envelope-item").quads;
+    assert_eq!(
+        said(&quads, "<urn:example:item:9>", "urn:example:list#at"),
+        ["\"\""]
     );
 }

@@ -302,7 +302,11 @@ fn unit_converted(
         findings.extend(accounting.findings(&record, unit)?);
     }
     unit.store.extend(arrived_in.dataset(&selector))?;
-    let produced = arrived_in.arrived(records::versioned(mapped(prepared, unit)?)?, &selector);
+    let produced = arrived_in.arrived(
+        records::versioned(mapped(prepared, unit)?)?,
+        &selector,
+        &unit.store,
+    )?;
     if let Some(vocabulary) = &prepared.vocabulary {
         findings.extend(vocabulary.findings(&record, &produced)?);
     }
