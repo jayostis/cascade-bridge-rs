@@ -1,0 +1,6 @@
+<urn:cascade:this-version> <http://example.org/clinical#allergen> "Penicillin G" .
+<urn:cascade:this-version> <http://example.org/clinical#clinicalStatus> "active" .
+<urn:cascade:this-version> <http://example.org/clinical#criticality> "high" .
+<urn:cascade:this-version> <http://example.org/clinical#patient> <urn:uuid:83c84d0f-e803-8fc5-aa28-73f45078a304> .
+<urn:cascade:this-version> <http://example.org/clinical#recordedDate> "2021-06-14"^^<http://www.w3.org/2001/XMLSchema#date> .
+<urn:cascade:this-version> <http://www.w3.org/ns/prov#specializationOf> <urn:uuid:7435b3b8-2d93-8912-9d48-940c5870dc81> .

@@ -28,7 +28,8 @@ fn conversion(resolver: &dyn Resolver, input: &str) -> crate::Result<Conversion>
         Source {
             iri: &iri,
             envelope: None,
-            xml: &xml,
+            bytes: &xml,
+            facts: None,
         },
     )
 }

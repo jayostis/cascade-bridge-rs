@@ -4,6 +4,7 @@
     {
       "bridge": "https://ns.cascadeprotocol.org/bridge/v1-draft#",
       "bridge:requiresProfile": "bridge:requiresProfile",
+      "bridge:sourceMediaType": "bridge:sourceMediaType",
       "bridge:elementNameOfEachRecord": "bridge:elementNameOfEachRecord",
       "bridge:sourceSchema": "bridge:sourceSchema",
       "bridge:envelope": "bridge:envelope",
@@ -29,8 +30,10 @@
       "@id": "./",
       "@type": ["Dataset", "bridge:Adapter"],
       "identifier": "catalog",
+      "version": "1",
       "name": "A synthetic catalog format, the engine's own test subject",
       "bridge:requiresProfile": { "@id": "bridge:sparql-1.1" },
+      "bridge:sourceMediaType": "application/xml",
       "bridge:elementNameOfEachRecord": "item",
       "bridge:sourceSchema": { "@id": "schema/item.xsd" },
       "bridge:gapScheme": { "@id": "vocab/catalog-gaps.ttl" },

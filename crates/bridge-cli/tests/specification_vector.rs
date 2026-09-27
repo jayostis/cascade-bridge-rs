@@ -13,8 +13,18 @@ fn specification() -> PathBuf {
 #[test]
 #[ignore = "reads a checkout of jayostis/cascade-bridge-spec beside this one"]
 fn reproduces_every_finding_the_specification_s_synthetic_adapter_expects() {
+    passes_every_entry_of("synthetic-adapter");
+}
+
+#[test]
+#[ignore = "reads a checkout of jayostis/cascade-bridge-spec beside this one"]
+fn reproduces_every_finding_the_specification_s_synthetic_json_adapter_expects() {
+    passes_every_entry_of("synthetic-json-adapter");
+}
+
+fn passes_every_entry_of(synthetic: &str) {
     let specification = specification();
-    let adapter = specification.join("fixtures/synthetic-adapter");
+    let adapter = specification.join("fixtures").join(synthetic);
     let vocabularies = specification.join("fixtures/synthetic-vocabularies");
     assert!(
         adapter.is_dir(),

@@ -110,9 +110,18 @@ fn converts_as_the_native_command_does(
 }
 
 #[test]
-fn the_node_host_converts_a_document_to_the_graph_and_findings_the_native_command_writes() {
+fn the_node_host_converts_a_document_and_its_facts_to_the_graph_and_findings_the_native_command_writes(
+) {
     let vocabularies = vocabularies().to_string_lossy().into_owned();
-    converts_as_the_native_command_does(&tiny(), "two.xml", &["--vocabularies", &vocabularies]);
+    let facts = tiny()
+        .join("fixtures/facts/catalog.ttl")
+        .to_string_lossy()
+        .into_owned();
+    converts_as_the_native_command_does(
+        &tiny(),
+        "two.xml",
+        &["--vocabularies", &vocabularies, "--facts", &facts],
+    );
 }
 
 #[test]

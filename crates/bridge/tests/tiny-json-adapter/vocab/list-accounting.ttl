@@ -1,0 +1,5 @@
+@prefix bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+[] a bridge:PathEntry ; bridge:sourcePath "/kind" ; bridge:verdict bridge:ignored .
+[] a bridge:PathEntry ; bridge:sourcePath "/id" ; bridge:verdict bridge:carried .
+[] a bridge:PathEntry ; bridge:sourcePath "/title" ; bridge:verdict bridge:carried .

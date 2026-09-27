@@ -4,7 +4,7 @@ use crate::load::load_adapter;
 use crate::rdf::canonical_lines;
 use crate::run::Conversion;
 use crate::Resolver;
-use oxrdf::{Quad, Term};
+use oxrdf::{NamedNode, NamedOrBlankNode, Quad, Term};
 
 const ADDRESS_NOT_ONE_NODE: &str =
     "https://ns.cascadeprotocol.org/bridge/v1-draft#addressNotOneNode";
@@ -38,6 +38,36 @@ fn reports(findings: &[Quad]) -> Vec<(String, String)> {
 
 fn graph(conversion: &Conversion) -> Vec<String> {
     canonical_lines(conversion.quads.clone())
+        .expect("canonical")
+        .into_iter()
+        .collect()
+}
+
+/// The graph with the document written by one name, whatever its bytes name it.
+fn graph_of_any_document(conversion: &Conversion) -> Vec<String> {
+    let any = NamedNode::new_unchecked("urn:example:document");
+    let named = |node: &NamedNode| {
+        if node.as_str().starts_with("ni:///sha-256;") {
+            any.clone()
+        } else {
+            node.clone()
+        }
+    };
+    let quads = conversion.quads.iter().map(|quad| {
+        Quad::new(
+            match &quad.subject {
+                NamedOrBlankNode::NamedNode(node) => named(node).into(),
+                blank => blank.clone(),
+            },
+            quad.predicate.clone(),
+            match &quad.object {
+                Term::NamedNode(node) => named(node).into(),
+                other => other.clone(),
+            },
+            quad.graph_name.clone(),
+        )
+    });
+    canonical_lines(quads)
         .expect("canonical")
         .into_iter()
         .collect()
@@ -170,7 +200,10 @@ fn produces_the_graph_for_a_document_no_tree_can_be_built_from() {
         ),
         "two.xml",
     );
-    assert_eq!(graph(&two_rooted), graph(&converted(&tiny(), "two.xml")));
+    assert_eq!(
+        graph_of_any_document(&two_rooted),
+        graph_of_any_document(&converted(&tiny(), "two.xml"))
+    );
     assert_eq!(
         reports(&two_rooted.findings),
         Vec::<(String, String)>::new(),

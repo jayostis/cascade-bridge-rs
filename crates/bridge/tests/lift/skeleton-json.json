@@ -1,0 +1,1 @@
+{"kind": "set", "meta": {"tag": ["kept"]}, "entry": [{"fullUrl": "urn:one", "resource": {"id": "1"}, "search": [], "rank": 1.0, "match": true, "gone": null}, "not a record", {"fullUrl": "urn:two", "extension": {}}]}

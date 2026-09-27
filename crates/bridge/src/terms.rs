@@ -23,6 +23,9 @@ terms! {
     OA_HAS_BODY = "http://www.w3.org/ns/oa#", "hasBody";
     OA_REFINED_BY = "http://www.w3.org/ns/oa#", "refinedBy";
     OA_XPATH_SELECTOR = "http://www.w3.org/ns/oa#", "XPathSelector";
+    OA_FRAGMENT_SELECTOR = "http://www.w3.org/ns/oa#", "FragmentSelector";
+    DCTERMS_CONFORMS_TO = "http://purl.org/dc/terms/", "conformsTo";
+    JSON_POINTER = "https://www.rfc-editor.org/rfc/", "rfc6901";
     OA_MOTIVATED_BY = "http://www.w3.org/ns/oa#", "motivatedBy";
     OA_CLASSIFYING = "http://www.w3.org/ns/oa#", "classifying";
 
@@ -43,6 +46,7 @@ terms! {
     SCHEMA_NAME = "http://schema.org/", "name";
     SCHEMA_IDENTIFIER = "http://schema.org/", "identifier";
     SCHEMA_ENCODING_FORMAT = "http://schema.org/", "encodingFormat";
+    SCHEMA_VERSION = "http://schema.org/", "version";
 
     BRIDGE_ADAPTER = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "Adapter";
     BRIDGE_TEST_MANIFEST = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "testManifest";
@@ -50,10 +54,15 @@ terms! {
     BRIDGE_REQUIRES_PROFILE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "requiresProfile";
     BRIDGE_MAPPING = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "mapping";
     BRIDGE_FINDINGS_QUERY = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "findingsQuery";
+    BRIDGE_DOCUMENT_TABLE_QUERY = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "documentTableQuery";
     BRIDGE_DETECT_QUERY = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "detectQuery";
     BRIDGE_TABLE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "table";
     BRIDGE_ENVELOPE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "envelope";
     BRIDGE_DOC_ROOT_ELEMENT_NAME = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "docRootElementName";
+    BRIDGE_DOC_ROOT_MEMBER_NAME = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "docRootMemberName";
+    BRIDGE_DOC_ROOT_MEMBER_VALUE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "docRootMemberValue";
+    BRIDGE_JSON_PATH_OF_EACH_RECORD = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "jsonPathOfEachRecord";
+    BRIDGE_SOURCE_MEDIA_TYPE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "sourceMediaType";
     BRIDGE_SOURCE_SCHEMA = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "sourceSchema";
     BRIDGE_VOCABULARY_FILE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "vocabularyFile";
     BRIDGE_PREDICATE_NOT_DECLARED = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "predicateNotDeclared";
@@ -79,13 +88,49 @@ terms! {
     BRIDGE_INPUT = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "input";
     BRIDGE_EXPECTED_GRAPH = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "expectedGraph";
     BRIDGE_EXPECTED_FINDINGS = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "expectedFindings";
-    BRIDGE_STAMP_PREDICATE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "stampPredicate";
     BRIDGE_SPARQL_1_1 = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "sparql-1.1";
     BRIDGE_ISOMORPHIC = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "IsomorphicConversionTest";
     BRIDGE_INPUT_ONLY = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "InputOnlyTest";
     BRIDGE_DATASET = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "DatasetCompletionTest";
 
-    MF_ENTRIES = "http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#", "entries";
+    BRIDGE_NAMING_TEST = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "NamingTest";
+    BRIDGE_BASE_URL_NORMALISATION_TEST = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "BaseUrlNormalisationTest";
+    BRIDGE_VERSIONING_TEST = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "VersioningTest";
+    BRIDGE_NAME_INPUTS = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "nameInputs";
+    BRIDGE_EXPECTED_NAME = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "expectedName";
+    BRIDGE_SERVER_BASE_URL = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "serverBaseUrl";
+    BRIDGE_EXPECTED_VERSION = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "expectedVersion";
+    BRIDGE_CANONICAL_CONTENT = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "canonicalContent";
+    BRIDGE_FACTS = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "facts";
+    BRIDGE_THIS_DOCUMENT = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "thisDocument";
+    BRIDGE_THIS_IMPORT = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "thisImport";
+    BRIDGE_SHA256 = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "sha256";
+    BRIDGE_SELECTOR = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "selector";
+    BRIDGE_ARRIVED_AS = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "arrivedAs";
+    BRIDGE_IDENTITY_RELATION_TEST = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "IdentityRelationTest";
+    BRIDGE_CONVERSION = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "conversion";
+    BRIDGE_SAME_RECORD = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "sameRecord";
+
+    PROV_SPECIALIZATION_OF = "http://www.w3.org/ns/prov#", "specializationOf";
+    PROV_ENTITY = "http://www.w3.org/ns/prov#", "Entity";
+    PROV_ACTIVITY = "http://www.w3.org/ns/prov#", "Activity";
+    PROV_PLAN = "http://www.w3.org/ns/prov#", "Plan";
+    PROV_SOFTWARE_AGENT = "http://www.w3.org/ns/prov#", "SoftwareAgent";
+    PROV_USED = "http://www.w3.org/ns/prov#", "used";
+    PROV_WAS_DERIVED_FROM = "http://www.w3.org/ns/prov#", "wasDerivedFrom";
+    PROV_WAS_GENERATED_BY = "http://www.w3.org/ns/prov#", "wasGeneratedBy";
+    PROV_QUALIFIED_ASSOCIATION = "http://www.w3.org/ns/prov#", "qualifiedAssociation";
+    PROV_HAD_PLAN = "http://www.w3.org/ns/prov#", "hadPlan";
+    PROV_AGENT = "http://www.w3.org/ns/prov#", "agent";
+
+    PAV_VERSION = "http://purl.org/pav/", "version";
+    PAV_LAST_UPDATE_ON = "http://purl.org/pav/", "lastUpdateOn";
+
+    RDFS_LABEL = "http://www.w3.org/2000/01/rdf-schema#", "label";
+
+    QT_QUERY = "http://www.w3.org/2001/sw/DataAccess/tests/test-query#", "query";
+
+    MF_ENTRIES ="http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#", "entries";
     MF_ACTION = "http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#", "action";
     MF_RESULT = "http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#", "result";
     MF_NAME = "http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#", "name";

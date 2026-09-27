@@ -12,13 +12,16 @@ mod error;
 #[cfg(test)]
 mod fixtures;
 mod harness;
+mod json;
 mod lift;
 mod load;
 mod query;
 mod rdf;
+mod records;
 mod resolver;
 mod run;
 mod shapes;
+mod syntax;
 pub mod terms;
 mod validate;
 mod vocabulary;

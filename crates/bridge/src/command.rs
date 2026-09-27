@@ -1,15 +1,16 @@
 use crate::earl::{earl_report, ReportSubject};
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::harness::{run_manifest, EntryResult, Outcome, RunOptions, OFFERED_PROFILES};
 use crate::load::{load_adapter, Adapter};
 use crate::rdf::{serialise, serialise_at, GraphFormat};
+use crate::records::Supplied;
 use crate::resolver::Resolver;
 use crate::run::{self, prepare, Source};
 use crate::vocabulary::{require_vocabularies, unvalidated_output};
 use std::fmt::Write;
 
 const USAGE: &str = "usage: cascade-bridge test <adapter-dir> [--vocabularies <directory>] [--earl <out.ttl>] [--datasets]
-       cascade-bridge convert <adapter-dir> <document.xml> [--vocabularies <directory>] [--out <file>] [--findings <file>] [--format turtle|ntriples]";
+       cascade-bridge convert <adapter-dir> <document> [--envelope <iri>] [--facts <file>] [--vocabularies <directory>] [--out <file>] [--findings <file>] [--format turtle|ntriples]";
 
 /// Every path is the command's argument as it was given. An error is printed
 /// as the reason the command stopped, so it names what it could not do.
@@ -38,6 +39,8 @@ struct Test {
 struct Convert {
     directory: String,
     document: String,
+    envelope: Option<String>,
+    facts: Option<String>,
     vocabularies: Option<String>,
     out: Option<String>,
     findings: Option<String>,
@@ -73,6 +76,8 @@ fn parse(argv: impl IntoIterator<Item = String>) -> Option<Command> {
             let mut arguments = Convert {
                 directory: argv.next()?,
                 document: argv.next()?,
+                envelope: None,
+                facts: None,
                 vocabularies: None,
                 out: None,
                 findings: None,
@@ -80,6 +85,8 @@ fn parse(argv: impl IntoIterator<Item = String>) -> Option<Command> {
             };
             while let Some(flag) = argv.next() {
                 match flag.as_str() {
+                    "--envelope" => arguments.envelope = Some(argv.next()?),
+                    "--facts" => arguments.facts = Some(argv.next()?),
                     "--vocabularies" => arguments.vocabularies = Some(argv.next()?),
                     "--out" => arguments.out = Some(argv.next()?),
                     "--findings" => arguments.findings = Some(argv.next()?),
@@ -92,6 +99,8 @@ fn parse(argv: impl IntoIterator<Item = String>) -> Option<Command> {
         _ => None,
     }
 }
+
+pub(crate) const NAME: &str = "Cascade Bridge for Rust";
 
 /// The command's exit status: 0 where it did what it was asked and every entry
 /// held, 1 where an entry did not, 2 where it could not do what it was asked.
@@ -115,7 +124,7 @@ const FAILING: [Outcome; 2] = [Outcome::Failed, Outcome::Inapplicable];
 fn subject() -> ReportSubject {
     ReportSubject {
         iri: "https://github.com/jayostis/cascade-bridge-rs".to_owned(),
-        name: "Cascade Bridge for Rust".to_owned(),
+        name: NAME.to_owned(),
         version: env!("CARGO_PKG_VERSION").to_owned(),
     }
 }
@@ -195,6 +204,16 @@ fn test(arguments: &Test, host: &mut dyn Host) -> Result<u8> {
     ))
 }
 
+/// Resolved as the adapter's `ro-crate-metadata.json` resolves the IRIs it writes.
+fn crate_named(resolver: &dyn Resolver, named: &str) -> Result<String> {
+    let crate_iri = format!("{}ro-crate-metadata.json", resolver.root());
+    let base = oxiri::Iri::parse(crate_iri).map_err(|e| Error::msg(e.to_string()))?;
+    Ok(base
+        .resolve(named)
+        .map_err(|e| Error::msg(format!("--envelope {named}: {e}")))?
+        .into_inner())
+}
+
 fn convert(arguments: &Convert, host: &mut dyn Host) -> Result<u8> {
     let resolver = host.resolver(&arguments.directory, arguments.vocabularies.as_deref())?;
     let adapter = load_adapter(resolver.as_ref())?;
@@ -208,12 +227,22 @@ fn convert(arguments: &Convert, host: &mut dyn Host) -> Result<u8> {
     let prepared = prepare(&adapter, resolver.as_ref())?;
     let xml = host.read(&arguments.document)?;
     let iri = host.file_iri(&arguments.document)?;
+    let envelope = arguments
+        .envelope
+        .as_deref()
+        .map(|named| crate_named(resolver.as_ref(), named))
+        .transpose()?;
+    let facts = match &arguments.facts {
+        Some(path) => Some((host.file_iri(path)?, host.read(path)?)),
+        None => None,
+    };
     let conversion = run::convert(
         &prepared,
         Source {
             iri: &iri,
-            envelope: None,
-            xml: &xml,
+            envelope: envelope.as_deref(),
+            bytes: &xml,
+            facts: facts.as_ref().map(|(iri, turtle)| Supplied { iri, turtle }),
         },
     )?;
     let graph = serialise(&conversion.quads, arguments.format, &prepared.prefixes)?;

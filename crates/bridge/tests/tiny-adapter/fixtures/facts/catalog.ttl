@@ -1,0 +1,9 @@
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix pav:    <http://purl.org/pav/> .
+@prefix bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:thisDocument
+  bridge:serverBaseUrl "HTTP://Shop.Example/Catalog/" ;
+  pav:retrievedFrom <http://shop.example/Catalog/items> .
+
+bridge:thisImport rdfs:label "a catalog import" .

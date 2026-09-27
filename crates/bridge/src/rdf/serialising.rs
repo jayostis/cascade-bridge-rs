@@ -80,7 +80,8 @@ fn converted(
         Source {
             iri: "urn:example:document",
             envelope: None,
-            xml: &xml,
+            bytes: &xml,
+            facts: None,
         },
     )
     .expect("conversion");
@@ -118,6 +119,12 @@ fn blank_nodes(quads: &[Quad]) -> BTreeSet<String> {
     named
 }
 
+/// The triples and the blank nodes of what a conversion says of the document and the import.
+fn described() -> (usize, usize) {
+    let quads = read_back(&graph("", GraphFormat::NTriples), RdfFormat::NTriples);
+    (quads.len(), blank_nodes(&quads).len())
+}
+
 #[test]
 fn writes_a_triple_every_record_constructs_once() {
     let written = read_back(
@@ -136,7 +143,7 @@ fn keeps_two_records_blank_nodes_apart() {
     let written = graph("?s ex:note [ ex:about ?id ] .", GraphFormat::NTriples);
     assert_eq!(
         blank_nodes(&read_back(&written, RdfFormat::NTriples)).len(),
-        2,
+        2 + described().1,
         "{written}"
     );
 }
@@ -164,7 +171,7 @@ WHERE {
         2,
         "{written}"
     );
-    assert_eq!(blank_nodes(&quads).len(), 2, "{written}");
+    assert_eq!(blank_nodes(&quads).len(), 2 + described().1, "{written}");
 }
 
 #[test]
@@ -177,12 +184,12 @@ fn counts_the_triples_the_written_graph_holds() {
     );
     assert_eq!(
         conversion.quads.len(),
-        4,
+        4 + described().0,
         "the raw union: both records construct the catalog's type"
     );
     assert_eq!(
         conversion.triples(),
-        3,
+        3 + described().0,
         "the catalog's type once, and each record's own"
     );
     assert_eq!(

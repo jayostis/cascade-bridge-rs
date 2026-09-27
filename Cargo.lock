@@ -158,6 +158,7 @@ checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
 name = "cascade-bridge"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "encoding_rs",
  "oxigraph",
  "oxiri 0.2.11",
@@ -165,7 +166,9 @@ dependencies = [
  "oxrdfio",
  "oxsdatatypes",
  "quick-xml 0.37.5",
+ "regress",
  "rudof_rdf",
+ "sha2",
  "shacl",
  "spargebra",
  "web-time",
@@ -1707,6 +1710,15 @@ name = "regex-syntax"
 version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
+
+[[package]]
+name = "regress"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32eef8b209c3c1c15dbad02c1f30f9539f00dc7253e0cbcdaae442a50a09d7c1"
+dependencies = [
+ "memchr",
+]
 
 [[package]]
 name = "reqwest"

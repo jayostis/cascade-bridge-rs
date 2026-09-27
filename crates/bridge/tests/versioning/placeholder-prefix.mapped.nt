@@ -1,0 +1,8 @@
+<urn:example:v1> <http://www.w3.org/ns/prov#specializationOf> <urn:uuid:7435b3b8-2d93-8912-9d48-940c5870dc81> .
+<urn:example:v1> <http://example.org/clinical#allergen> "Latex" .
+<urn:example:v1> <http://example.org/clinical#seeAlso> <urn:example:v10> .
+<urn:example:v1> <http://example.org/clinical#seeAlso> <urn:example:v1/reaction> .
+<urn:example:v1> <http://example.org/clinical#reaction> <urn:example:v1#reaction-1> .
+<urn:example:v1#reaction-1> <http://example.org/clinical#manifestation> "Rash" .
+<urn:example:v10> <http://example.org/clinical#allergen> "Not in the version" .
+<urn:uuid:7435b3b8-2d93-8912-9d48-940c5870dc81> <http://example.org/clinical#latest> <urn:example:v1> .
