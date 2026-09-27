@@ -96,18 +96,38 @@ fn resolved(base: &str, reference: &str) -> Result<String> {
         .into_inner())
 }
 
-/// Every string a member of this name holds, anywhere in the document.
-fn strings_named<'a>(node: &'a Node, name: &str, into: &mut Vec<&'a str>) {
-    for (named, child) in node.children() {
-        if let (true, Some(value)) = (named == name, text(child)) {
-            into.push(value);
+/// Keywords whose value is an instance, never a schema.
+const VALUES: [&str; 4] = ["enum", "const", "default", "examples"];
+
+/// Keywords whose value names its schemas, so a member's name there is no keyword.
+const NAMING: [&str; 4] = [
+    "properties",
+    "patternProperties",
+    "dependencies",
+    "definitions",
+];
+
+/// Every regular expression the schema writes, in a `pattern` or as a
+/// `patternProperties` name, anywhere but inside an instance.
+fn patterns_written<'a>(schema: &'a Node, into: &mut Vec<&'a str>) {
+    for (keyword, value) in schema.children() {
+        match keyword.as_str() {
+            "pattern" => into.extend(text(value)),
+            keyword if VALUES.contains(&keyword) => continue,
+            _ => {}
         }
-        if named == "patternProperties" && name == "pattern" {
-            if let Value::Object(members) = &child.value {
-                into.extend(members.iter().map(|(pattern, _)| pattern.as_str()));
+        if NAMING.contains(&keyword.as_str()) {
+            if keyword == "patternProperties" {
+                if let Value::Object(members) = &value.value {
+                    into.extend(members.iter().map(|(pattern, _)| pattern.as_str()));
+                }
             }
+            for (_, named) in value.children() {
+                patterns_written(named, into);
+            }
+        } else {
+            patterns_written(value, into);
         }
-        strings_named(child, name, into);
     }
 }
 
@@ -177,7 +197,7 @@ pub(crate) fn compile(iri: &str, resolver: &dyn Resolver) -> Result<JsonSchema> 
             }
         }
         let mut written = Vec::new();
-        strings_named(&node, "pattern", &mut written);
+        patterns_written(&node, &mut written);
         for pattern in written {
             if !patterns.contains_key(pattern) {
                 let compiled = Regex::with_flags(pattern, "u").map_err(|e| {

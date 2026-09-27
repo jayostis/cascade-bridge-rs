@@ -205,3 +205,18 @@ fn reads_a_pattern_as_ecma_262_does() {
         found(&[("6.8", Some("/digits"))])
     );
 }
+
+#[test]
+fn compiles_the_pattern_keyword_alone_and_no_pattern_member_of_a_value() {
+    let schema = r#"{
+        "enum": [{"pattern": "("}],
+        "const": {"pattern": "(", "patternProperties": {"(": 1}},
+        "default": {"pattern": "("},
+        "examples": [{"pattern": "("}],
+        "properties": {"enum": {"pattern": "^a$"}, "pattern": {"enum": [{"pattern": "("}]}}
+    }"#;
+    assert_eq!(
+        findings(schema, r#"{"enum": "b"}"#),
+        found(&[("6.23", None), ("6.24", None), ("6.8", Some("/enum"))])
+    );
+}
