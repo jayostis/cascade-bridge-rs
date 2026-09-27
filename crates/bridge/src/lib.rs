@@ -12,6 +12,7 @@ mod error;
 #[cfg(test)]
 mod fixtures;
 mod harness;
+mod json;
 mod lift;
 mod load;
 mod query;

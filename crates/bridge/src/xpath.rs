@@ -6,7 +6,7 @@ use crate::decode::{normalise_attribute_value, normalise_line_endings};
 use crate::error::Result;
 use crate::lift::xml::Step;
 use crate::rdf::{OA_HAS_SELECTOR, OA_REFINED_BY, RDF_VALUE};
-use crate::syntax::{Addresses, Respelled, Respelling};
+use crate::syntax::{refinements, Addresses, Respelled, Respelling};
 use oxrdf::{BlankNode, Literal, NamedOrBlankNode, Quad, Term};
 use quick_xml::events::Event;
 use quick_xml::name::ResolveResult;
@@ -471,31 +471,6 @@ fn followed(
 
 fn one(tree: &Tree, parsed: &Parsed, context: usize, written: &str) -> Option<usize> {
     followed(tree, parsed, context, written).ok()
-}
-
-fn refinements(findings: &[Quad]) -> BTreeSet<String> {
-    let refined: HashSet<&BlankNode> = findings
-        .iter()
-        .filter(|quad| quad.predicate.as_str() == OA_REFINED_BY)
-        .filter_map(|quad| match &quad.object {
-            Term::BlankNode(node) => Some(node),
-            _ => None,
-        })
-        .collect();
-    if refined.is_empty() {
-        return BTreeSet::new();
-    }
-    findings
-        .iter()
-        .filter(|quad| quad.predicate.as_str() == RDF_VALUE)
-        .filter(|quad| {
-            matches!(&quad.subject, NamedOrBlankNode::BlankNode(node) if refined.contains(node))
-        })
-        .filter_map(|quad| match &quad.object {
-            Term::Literal(literal) => Some(literal.value().to_owned()),
-            _ => None,
-        })
-        .collect()
 }
 
 #[derive(Default)]

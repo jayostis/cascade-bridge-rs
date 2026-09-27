@@ -1,0 +1,13 @@
+_:doc <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/ns/root> .
+_:doc <http://sparql.xyz/facade-x/data/kind> "set" .
+_:doc <http://sparql.xyz/facade-x/data/meta> _:meta .
+_:meta <http://sparql.xyz/facade-x/data/tag> _:tags .
+_:tags <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "kept" .
+_:doc <http://sparql.xyz/facade-x/data/entry> _:entry .
+_:entry <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> _:one .
+_:one <http://sparql.xyz/facade-x/data/fullUrl> "urn:one" .
+_:one <http://sparql.xyz/facade-x/data/rank> "1.0" .
+_:one <http://sparql.xyz/facade-x/data/match> "true" .
+_:entry <http://www.w3.org/1999/02/22-rdf-syntax-ns#_2> "not a record" .
+_:entry <http://www.w3.org/1999/02/22-rdf-syntax-ns#_3> _:two .
+_:two <http://sparql.xyz/facade-x/data/fullUrl> "urn:two" .

@@ -1,0 +1,7 @@
+_:doc <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/ns/root> .
+_:doc <http://sparql.xyz/facade-x/data/object> _:object .
+_:doc <http://sparql.xyz/facade-x/data/array> _:array .
+_:doc <http://sparql.xyz/facade-x/data/items> _:items .
+_:items <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> _:emptyObject .
+_:items <http://www.w3.org/1999/02/22-rdf-syntax-ns#_2> _:emptyArray .
+_:items <http://www.w3.org/1999/02/22-rdf-syntax-ns#_3> "last" .

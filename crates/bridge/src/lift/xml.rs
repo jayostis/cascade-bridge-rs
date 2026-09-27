@@ -2,10 +2,10 @@
 // to an empty container. A unit is handed over as soon as its end tag is read, and
 // written out again as XML with the declarations in scope where it stood, for a
 // validator that brings its own parser.
-use super::{store_of, Occurrence, Paths, Unit, Valued};
+use super::{member, name, store_of, triple, Occurrence, Paths, Unit, Valued, FX, RDF, XYZ};
 use crate::decode::{is_xml_space, normalise_attribute_value, normalise_line_endings};
 use crate::error::Result;
-use oxigraph::model::{BlankNode, GraphName, Literal, NamedNode, NamedOrBlankNode, Quad, Term};
+use oxigraph::model::{BlankNode, Literal, NamedNode, Quad};
 use oxigraph::store::Store;
 use quick_xml::events::Event;
 use quick_xml::name::ResolveResult;
@@ -14,53 +14,7 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, Cursor};
 
-const RDF: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
-const FX: &str = "http://sparql.xyz/facade-x/ns/";
-const XYZ: &str = "http://sparql.xyz/facade-x/data/";
-
 pub(crate) const UTF_8_DECLARATION: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>";
-
-/// RFC 3987's `iunreserved`.
-fn iunreserved(character: char) -> bool {
-    matches!(character,
-        'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '.' | '_' | '~'
-        | '\u{A0}'..='\u{D7FF}' | '\u{F900}'..='\u{FDCF}' | '\u{FDF0}'..='\u{FFEF}'
-        | '\u{10000}'..='\u{1FFFD}' | '\u{20000}'..='\u{2FFFD}' | '\u{30000}'..='\u{3FFFD}'
-        | '\u{40000}'..='\u{4FFFD}' | '\u{50000}'..='\u{5FFFD}' | '\u{60000}'..='\u{6FFFD}'
-        | '\u{70000}'..='\u{7FFFD}' | '\u{80000}'..='\u{8FFFD}' | '\u{90000}'..='\u{9FFFD}'
-        | '\u{A0000}'..='\u{AFFFD}' | '\u{B0000}'..='\u{BFFFD}' | '\u{C0000}'..='\u{CFFFD}'
-        | '\u{D0000}'..='\u{DFFFD}' | '\u{E1000}'..='\u{EFFFD}')
-}
-
-/// `%` is no XML name character, so two names never land on one IRI.
-fn name(namespace: &str, local: &str) -> Result<NamedNode> {
-    let mut iri = String::with_capacity(namespace.len() + local.len());
-    iri.push_str(namespace);
-    for character in local.chars() {
-        if iunreserved(character) {
-            iri.push(character);
-            continue;
-        }
-        let mut octets = [0; 4];
-        for octet in character.encode_utf8(&mut octets).as_bytes() {
-            iri.push_str(&format!("%{octet:02X}"));
-        }
-    }
-    Ok(NamedNode::new(iri)?)
-}
-
-fn member(index: usize) -> Result<NamedNode> {
-    Ok(NamedNode::new(format!("{RDF}_{index}"))?)
-}
-
-fn triple(subject: &BlankNode, predicate: NamedNode, object: impl Into<Term>) -> Quad {
-    Quad::new(
-        NamedOrBlankNode::from(subject.clone()),
-        predicate,
-        object,
-        GraphName::DefaultGraph,
-    )
-}
 
 /// One step of an XPath; `position` is among the siblings of the same name.
 #[derive(Clone)]
@@ -663,8 +617,8 @@ impl<R: BufRead> super::Lift for Lift<R> {
         Lift::next_unit(self)
     }
 
-    fn document_root(&self) -> Option<&str> {
-        self.builder.document_element.as_deref()
+    fn admits(&self, admission: &super::Admission) -> bool {
+        admission.root.is_some() && self.builder.document_element == admission.root
     }
 
     fn document_selector(&self, described: Option<&str>) -> String {

@@ -1,7 +1,7 @@
 use crate::accounting::{gap_scheme, Accounting};
 use crate::annotation::{self, Record};
 use crate::error::{Error, Result};
-use crate::lift::{Lift, Paths, Unit};
+use crate::lift::{admitting, Admission, Lift, Paths, Reading, Unit};
 use crate::load::{subject, value, values, Adapter};
 use crate::query::{Form, Query};
 use crate::rdf::FINDINGS_PREFIXES;
@@ -17,13 +17,13 @@ use std::collections::{HashMap, HashSet};
 
 struct Envelope {
     iri: String,
-    document_root: Option<String>,
+    admission: Admission,
     document_schema: Option<Box<dyn Schema>>,
 }
 
 pub(crate) struct Prepared {
     pub(crate) syntax: Syntax,
-    unit: String,
+    unit: Option<String>,
     mappings: Vec<Query>,
     findings_queries: Vec<Query>,
     detect: Option<Query>,
@@ -40,18 +40,11 @@ pub(crate) struct Prepared {
 }
 
 impl Prepared {
-    fn named_envelope(&self, iri: &str) -> Result<&Envelope> {
+    fn named_envelope(&self, iri: &str) -> Result<usize> {
         self.envelopes
             .iter()
-            .find(|envelope| envelope.iri == iri)
+            .position(|envelope| envelope.iri == iri)
             .ok_or_else(|| Error::msg(format!("the adapter declares no envelope {iri}")))
-    }
-
-    fn envelope_of(&self, document_root: Option<&str>) -> Option<&Envelope> {
-        let root = document_root?;
-        self.envelopes
-            .iter()
-            .find(|envelope| envelope.document_root.as_deref() == Some(root))
     }
 }
 
@@ -178,7 +171,7 @@ fn envelopes(adapter: &Adapter, syntax: Syntax, resolver: &dyn Resolver) -> Resu
     for envelope in &adapter.envelopes {
         envelopes.push(Envelope {
             iri: envelope.iri.clone(),
-            document_root: envelope.doc_root_element_name.clone(),
+            admission: syntax.admission(envelope)?,
             document_schema: envelope
                 .document_schema
                 .as_deref()
@@ -226,7 +219,16 @@ pub(crate) fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Convers
         .accounting
         .as_ref()
         .map_or(Paths::Dropped, Accounting::paths);
-    let mut lift = syntax.lift(&text, &prepared.unit, paths)?;
+    let reading = Reading {
+        element: prepared.unit.as_deref(),
+        envelopes: prepared
+            .envelopes
+            .iter()
+            .map(|envelope| &envelope.admission)
+            .collect(),
+        named,
+    };
+    let mut lift = syntax.lift(&text, &reading, paths)?;
     let followed = syntax.addresses();
     let mut conversion = Conversion {
         quads: Vec::new(),
@@ -243,7 +245,7 @@ pub(crate) fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Convers
         conversion.quads.extend(produced);
         conversion.findings.extend(findings);
     }
-    let envelope = named.or_else(|| prepared.envelope_of(lift.document_root()));
+    let envelope = admitting(lift.as_ref(), &reading).map(|chosen| &prepared.envelopes[chosen]);
     conversion.findings.extend(document_findings(
         prepared,
         envelope,
@@ -343,7 +345,7 @@ fn document_findings(
     else {
         return Ok(Vec::new());
     };
-    let selector = lift.document_selector(envelope.document_root.as_deref());
+    let selector = lift.document_selector(envelope.admission.root.as_deref());
     let record = Record {
         source: iri,
         selector: &selector,

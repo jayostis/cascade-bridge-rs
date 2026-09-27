@@ -2,7 +2,8 @@ use crate::error::{Error, Result};
 use crate::resolver::Resolver;
 use crate::terms::{
     BRIDGE_ADAPTER, BRIDGE_DETECT_QUERY, BRIDGE_DOCUMENT_SCHEMA, BRIDGE_DOC_ROOT_ELEMENT_NAME,
-    BRIDGE_ELEMENT_NAME_OF_EACH_RECORD, BRIDGE_ENVELOPE, BRIDGE_FINDINGS_QUERY, BRIDGE_GAP_SCHEME,
+    BRIDGE_DOC_ROOT_MEMBER_NAME, BRIDGE_DOC_ROOT_MEMBER_VALUE, BRIDGE_ELEMENT_NAME_OF_EACH_RECORD,
+    BRIDGE_ENVELOPE, BRIDGE_FINDINGS_QUERY, BRIDGE_GAP_SCHEME, BRIDGE_JSON_PATH_OF_EACH_RECORD,
     BRIDGE_MAPPING, BRIDGE_REQUIRES_PROFILE, BRIDGE_SOURCE_ACCOUNTING, BRIDGE_SOURCE_MEDIA_TYPE,
     BRIDGE_SOURCE_SCHEMA, BRIDGE_TABLE, BRIDGE_TEST_MANIFEST, BRIDGE_VOCABULARY_FILE, RDF_FIRST,
     RDF_NIL, RDF_REST, RDF_TYPE, SCHEMA_ABOUT, SCHEMA_IDENTIFIER, SCHEMA_NAME,
@@ -36,6 +37,9 @@ fn context(url: &str) -> LoaderResult {
 pub(crate) struct Envelope {
     pub(crate) iri: String,
     pub(crate) doc_root_element_name: Option<String>,
+    pub(crate) doc_root_member_name: Option<String>,
+    pub(crate) doc_root_member_value: Option<String>,
+    pub(crate) json_path_of_each_record: Option<String>,
     pub(crate) document_schema: Option<String>,
 }
 
@@ -227,6 +231,9 @@ pub(crate) fn load_adapter(resolver: &dyn Resolver) -> Result<Adapter> {
         one(&graph, &s, SCHEMA_NAME)?;
         envelopes.push(Envelope {
             doc_root_element_name: one(&graph, &s, BRIDGE_DOC_ROOT_ELEMENT_NAME)?,
+            doc_root_member_name: one(&graph, &s, BRIDGE_DOC_ROOT_MEMBER_NAME)?,
+            doc_root_member_value: one(&graph, &s, BRIDGE_DOC_ROOT_MEMBER_VALUE)?,
+            json_path_of_each_record: one(&graph, &s, BRIDGE_JSON_PATH_OF_EACH_RECORD)?,
             document_schema: one(&graph, &s, BRIDGE_DOCUMENT_SCHEMA)?,
             iri,
         });
