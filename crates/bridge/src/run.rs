@@ -5,6 +5,7 @@ use crate::lift::{admitting, Admission, Lift, Paths, Reading, Unit};
 use crate::load::{subject, value, values, Adapter};
 use crate::query::{Form, Query};
 use crate::rdf::FINDINGS_PREFIXES;
+use crate::records;
 use crate::resolver::Resolver;
 use crate::syntax::{Addresses, Syntax};
 use crate::terms::{BRIDGE_STAMP_PREDICATE, SCHEMA_ENCODING_FORMAT};
@@ -279,7 +280,7 @@ fn unit_converted(
     if let Some(accounting) = &prepared.accounting {
         findings.extend(accounting.findings(&record, unit)?);
     }
-    let produced = mapped(prepared, unit)?;
+    let produced = records::versioned(mapped(prepared, unit)?)?.graph;
     if let Some(vocabulary) = &prepared.vocabulary {
         findings.extend(vocabulary.findings(&record, &produced)?);
     }

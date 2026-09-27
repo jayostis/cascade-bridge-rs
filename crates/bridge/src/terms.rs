@@ -92,7 +92,20 @@ terms! {
     BRIDGE_INPUT_ONLY = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "InputOnlyTest";
     BRIDGE_DATASET = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "DatasetCompletionTest";
 
-    MF_ENTRIES = "http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#", "entries";
+    BRIDGE_NAMING_TEST = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "NamingTest";
+    BRIDGE_BASE_URL_NORMALISATION_TEST = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "BaseUrlNormalisationTest";
+    BRIDGE_VERSIONING_TEST = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "VersioningTest";
+    BRIDGE_NAME_INPUTS = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "nameInputs";
+    BRIDGE_EXPECTED_NAME = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "expectedName";
+    BRIDGE_SERVER_BASE_URL = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "serverBaseUrl";
+    BRIDGE_EXPECTED_VERSION = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "expectedVersion";
+    BRIDGE_CANONICAL_CONTENT = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "canonicalContent";
+
+    PROV_SPECIALIZATION_OF = "http://www.w3.org/ns/prov#", "specializationOf";
+
+    QT_QUERY = "http://www.w3.org/2001/sw/DataAccess/tests/test-query#", "query";
+
+    MF_ENTRIES ="http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#", "entries";
     MF_ACTION = "http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#", "action";
     MF_RESULT = "http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#", "result";
     MF_NAME = "http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#", "name";

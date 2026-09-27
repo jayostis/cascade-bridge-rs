@@ -1,0 +1,3 @@
+<ni:///sha-256;5LWkRrnFyAOWO8BulZlHmDd_PizVbHXz-daRwWmVKGc> <http://example.org/clinical#allergen> "Pénicilline" .
+<ni:///sha-256;5LWkRrnFyAOWO8BulZlHmDd_PizVbHXz-daRwWmVKGc> <http://example.org/clinical#note> "Said \"hives\" \\ then\nswelling\r" .
+<ni:///sha-256;5LWkRrnFyAOWO8BulZlHmDd_PizVbHXz-daRwWmVKGc> <http://www.w3.org/ns/prov#specializationOf> <urn:uuid:7435b3b8-2d93-8912-9d48-940c5870dc81> .

@@ -1,0 +1,2 @@
+<urn:cascade:this-version> <http://example.org/clinical#allergen> "Amoxicillin" .
+<urn:cascade:this-version> <http://www.w3.org/ns/prov#specializationOf> <urn:uuid:351ccd8a-d25c-83d4-8025-988b8769088e> .

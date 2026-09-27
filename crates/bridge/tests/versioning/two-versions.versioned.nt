@@ -1,0 +1,9 @@
+<ni:///sha-256;I-LBKjOKD6YSe5CC4yK7VCKmPLH8HfQkW9-5tDh7pc8> <http://example.org/clinical#allergen> "Penicillin G" .
+<ni:///sha-256;I-LBKjOKD6YSe5CC4yK7VCKmPLH8HfQkW9-5tDh7pc8> <http://example.org/clinical#basedOn> <urn:uuid:351ccd8a-d25c-83d4-8025-988b8769088e> .
+<ni:///sha-256;I-LBKjOKD6YSe5CC4yK7VCKmPLH8HfQkW9-5tDh7pc8> <http://www.w3.org/ns/prov#specializationOf> <urn:uuid:7435b3b8-2d93-8912-9d48-940c5870dc81> .
+<ni:///sha-256;ssT9yOOiEly2AprRx10KlfLetW4Vp7NQZwUN260Zigk> <http://example.org/clinical#allergen> "Amoxicillin" .
+<ni:///sha-256;ssT9yOOiEly2AprRx10KlfLetW4Vp7NQZwUN260Zigk> <http://www.w3.org/ns/prov#specializationOf> <urn:uuid:351ccd8a-d25c-83d4-8025-988b8769088e> .
+<urn:uuid:351ccd8a-d25c-83d4-8025-988b8769088e> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/clinical#AllergyRecord> .
+<urn:uuid:7435b3b8-2d93-8912-9d48-940c5870dc81> <http://example.org/clinical#sourceRecordId> "eQ3xk2RtVb7Lm9Pw1aZy8A3" .
+<urn:uuid:7435b3b8-2d93-8912-9d48-940c5870dc81> <http://example.org/clinical#sourceUrl> <https://fhir.example.org/api/FHIR/R4/AllergyIntolerance/eQ3xk2RtVb7Lm9Pw1aZy8A3> .
+<urn:uuid:7435b3b8-2d93-8912-9d48-940c5870dc81> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/clinical#AllergyRecord> .

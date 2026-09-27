@@ -1,0 +1,9 @@
+<urn:uuid:f83d6a9d-1d0e-84bd-826c-e3f00989c291> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/clinical#AllergyRecord> .
+<urn:uuid:f83d6a9d-1d0e-84bd-826c-e3f00989c291> <http://example.org/clinical#sourceUrl> <https://fhir.other.example/r4/AllergyIntolerance/eQ3xk2RtVb7Lm9Pw1aZy8A3> .
+<urn:uuid:f83d6a9d-1d0e-84bd-826c-e3f00989c291> <http://example.org/clinical#sourceRecordId> "eQ3xk2RtVb7Lm9Pw1aZy8A3" .
+<urn:example:mapping:version> <http://www.w3.org/ns/prov#specializationOf> <urn:uuid:f83d6a9d-1d0e-84bd-826c-e3f00989c291> .
+<urn:example:mapping:version> <http://example.org/clinical#patient> <urn:uuid:83c84d0f-e803-8fc5-aa28-73f45078a304> .
+<urn:example:mapping:version> <http://example.org/clinical#allergen> "Penicillin G" .
+<urn:example:mapping:version> <http://example.org/clinical#criticality> "high" .
+<urn:example:mapping:version> <http://example.org/clinical#clinicalStatus> "active" .
+<urn:example:mapping:version> <http://example.org/clinical#recordedDate> "2021-06-14"^^<http://www.w3.org/2001/XMLSchema#date> .

@@ -1,0 +1,6 @@
+<urn:cascade:this-version#reaction-1> <http://example.org/clinical#manifestation> "Rash" .
+<urn:cascade:this-version> <http://example.org/clinical#allergen> "Latex" .
+<urn:cascade:this-version> <http://example.org/clinical#reaction> <urn:cascade:this-version#reaction-1> .
+<urn:cascade:this-version> <http://example.org/clinical#seeAlso> <urn:example:v1/reaction> .
+<urn:cascade:this-version> <http://example.org/clinical#seeAlso> <urn:example:v10> .
+<urn:cascade:this-version> <http://www.w3.org/ns/prov#specializationOf> <urn:uuid:7435b3b8-2d93-8912-9d48-940c5870dc81> .
