@@ -42,6 +42,7 @@ pub(crate) struct Envelope {
     pub(crate) doc_root_member_value: Option<String>,
     pub(crate) json_path_of_each_record: Option<String>,
     pub(crate) document_schema: Option<String>,
+    pub(crate) source_schema: Option<String>,
 }
 
 pub(crate) struct Adapter {
@@ -238,6 +239,7 @@ pub(crate) fn load_adapter(resolver: &dyn Resolver) -> Result<Adapter> {
             doc_root_member_value: one(&graph, &s, BRIDGE_DOC_ROOT_MEMBER_VALUE)?,
             json_path_of_each_record: one(&graph, &s, BRIDGE_JSON_PATH_OF_EACH_RECORD)?,
             document_schema: one(&graph, &s, BRIDGE_DOCUMENT_SCHEMA)?,
+            source_schema: one(&graph, &s, BRIDGE_SOURCE_SCHEMA)?,
             iri,
         });
     }

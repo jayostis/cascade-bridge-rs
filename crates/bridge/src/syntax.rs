@@ -99,6 +99,9 @@ impl Syntax {
 
     pub(crate) fn schema(self, iri: &str, resolver: &dyn Resolver) -> Result<Box<dyn Schema>> {
         match self {
+            Self::Xml if iri.contains('#') => Err(Error::msg(format!(
+                "{iri} names a part of an XML Schema; an XML Schema is named whole, without a fragment"
+            ))),
             Self::Xml => Ok(Box::new(xsd::compile(iri, resolver)?)),
             Self::Json => Ok(Box::new(json_schema::compile(iri, resolver)?)),
         }

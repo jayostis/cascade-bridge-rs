@@ -1,3 +1,4 @@
+use crate::fixtures;
 use crate::fixtures::{converted, objects, tiny_json, Variant, OA, RDF_TYPE, RDF_VALUE};
 use crate::harness::{run_manifest, RunOptions};
 use crate::load::load_adapter;
@@ -206,4 +207,91 @@ fn gives_a_json_document_s_own_value_the_empty_pointer() {
         said(&quads, "<urn:example:item:9>", "urn:example:list#at"),
         ["\"\""]
     );
+}
+
+/// The tiny JSON adapter whose list envelope names one definition of a schema whose
+/// whole the adapter names, the whole requiring a member the definition does not,
+/// and the definition one the whole does not.
+fn entry_schema() -> Variant {
+    Variant::of(tiny_json())
+        .with(
+            "schema/entries.schema.json",
+            r##"{
+  "$schema": "http://json-schema.org/draft-06/schema#",
+  "type": "object",
+  "required": ["kind"],
+  "properties": {"kind": {"type": "string"}},
+  "definitions": {
+    "entry": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {"title": {"$ref": "#/definitions/title"}}
+    },
+    "title": {"type": "string"}
+  }
+}"##,
+        )
+        .replacing(
+            "ro-crate-metadata.json",
+            "\"bridge:sourceSchema\": { \"@id\": \"schema/item.schema.json\" },",
+            "\"bridge:sourceSchema\": { \"@id\": \"schema/entries.schema.json\" },",
+        )
+        .replacing(
+            "ro-crate-metadata.json",
+            "\"bridge:documentSchema\": { \"@id\": \"schema/list.schema.json\" }",
+            "\"bridge:documentSchema\": { \"@id\": \"schema/list.schema.json\" },\n      \"bridge:sourceSchema\": { \"@id\": \"schema/entries.schema.json#/definitions/entry\" }",
+        )
+        .replacing(
+            "fixtures/in/list.json",
+            "\"extra\": {\"a\": \"x\"}}]",
+            "\"extra\": {\"a\": \"x\"}}, {\"kind\": \"entry\", \"title\": \"three\"}]",
+        )
+}
+
+#[test]
+fn validates_a_record_against_the_subschema_its_envelope_s_schema_fragment_names_resolving_refs_in_the_whole_document(
+) {
+    let violations = fixtures::violations(&converted(&entry_schema(), "list.json").findings);
+    let section = |number: &str| {
+        format!("https://datatracker.ietf.org/doc/html/draft-wright-json-schema-validation-01#section-6.{number}")
+    };
+    assert_eq!(
+        violations,
+        [
+            (section("17"), "/items/2".to_owned(), String::new()),
+            (section("25"), "/items/1".to_owned(), "/title".to_owned()),
+        ]
+    );
+}
+
+#[test]
+fn validates_a_record_read_in_an_envelope_naming_no_schema_against_the_adapter_s() {
+    let violations = fixtures::violations(
+        &converted(
+            &entry_schema().replacing("fixtures/in/item.json", "\"kind\": \"item\"", "\"kind\": 3"),
+            "item.json",
+        )
+        .findings,
+    );
+    let type_ =
+        "https://datatracker.ietf.org/doc/html/draft-wright-json-schema-validation-01#section-6.25";
+    assert_eq!(
+        violations,
+        [(type_.to_owned(), String::new(), "/kind".to_owned())]
+    );
+}
+
+#[test]
+fn refuses_a_source_schema_whose_fragment_names_no_subschema() {
+    let resolver = entry_schema().replacing(
+        "ro-crate-metadata.json",
+        "#/definitions/entry",
+        "#/definitions/absent",
+    );
+    let adapter = load_adapter(&resolver).expect("the adapter");
+    let refused = prepare(&adapter, &resolver)
+        .err()
+        .expect("refused")
+        .to_string();
+    assert!(refused.contains("#/definitions/absent"), "{refused}");
 }

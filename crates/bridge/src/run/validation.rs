@@ -309,3 +309,17 @@ fn applies_two_included_schemas_whose_paths_differ_only_before_a_colon_segment()
         rows(&conversion.findings)
     );
 }
+
+#[test]
+fn refuses_an_xml_schema_named_with_a_fragment() {
+    let resolver = Variant::of(tiny()).replacing(
+        "ro-crate-metadata.json",
+        "\"schema/item.xsd\"",
+        "\"schema/item.xsd#item\"",
+    );
+    let adapter = load_adapter(&resolver).expect("adapter");
+    let Err(error) = prepare(&adapter, &resolver) else {
+        panic!("an XML Schema named with a fragment was compiled");
+    };
+    assert!(error.to_string().contains("without a fragment"), "{error}");
+}

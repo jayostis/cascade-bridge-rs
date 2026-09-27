@@ -20,6 +20,7 @@ struct Envelope {
     iri: String,
     admission: Admission,
     document_schema: Option<Box<dyn Schema>>,
+    source_schema: Option<usize>,
 }
 
 pub(crate) struct Prepared {
@@ -34,7 +35,8 @@ pub(crate) struct Prepared {
     pub(crate) prefixes: Vec<(String, String)>,
     pub(crate) findings_prefixes: Vec<(String, String)>,
     envelopes: Vec<Envelope>,
-    source_schema: Option<Box<dyn Schema>>,
+    source_schemas: SourceSchemas,
+    source_schema: Option<usize>,
     vocabulary: Option<Vocabulary>,
     accounting: Option<Accounting>,
     /// By gap concept IRI, for a findings query's annotation that declares no severity.
@@ -43,7 +45,33 @@ pub(crate) struct Prepared {
     version: Option<String>,
 }
 
+/// Each schema a record may be validated against, compiled once however many name it.
+#[derive(Default)]
+struct SourceSchemas {
+    compiled: Vec<Box<dyn Schema>>,
+    by_iri: HashMap<String, usize>,
+}
+
+impl SourceSchemas {
+    fn compiled(&mut self, iri: &str, syntax: Syntax, resolver: &dyn Resolver) -> Result<usize> {
+        if let Some(&index) = self.by_iri.get(iri) {
+            return Ok(index);
+        }
+        self.compiled.push(syntax.schema(iri, resolver)?);
+        self.by_iri.insert(iri.to_owned(), self.compiled.len() - 1);
+        Ok(self.compiled.len() - 1)
+    }
+}
+
 impl Prepared {
+    /// The schema of the envelope a record was read in, else the adapter's.
+    fn source_schema(&self, envelope: Option<usize>) -> Option<&dyn Schema> {
+        envelope
+            .and_then(|chosen| self.envelopes[chosen].source_schema)
+            .or(self.source_schema)
+            .map(|index| self.source_schemas.compiled[index].as_ref())
+    }
+
     fn named_envelope(&self, iri: &str) -> Result<usize> {
         self.envelopes
             .iter()
@@ -96,12 +124,13 @@ pub(crate) fn prepare(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prep
         .as_deref()
         .map(|iri| Query::read(resolver, iri, Form::Ask, "detect query"))
         .transpose()?;
+    let mut source_schemas = SourceSchemas::default();
     let source_schema = adapter
         .source_schema
         .as_deref()
-        .map(|iri| syntax.schema(iri, resolver))
+        .map(|iri| source_schemas.compiled(iri, syntax, resolver))
         .transpose()?;
-    let envelopes = envelopes(adapter, syntax, resolver)?;
+    let envelopes = envelopes(adapter, syntax, resolver, &mut source_schemas)?;
     let (scheme, gap_prefixes) = adapter
         .gap_scheme
         .as_deref()
@@ -131,6 +160,7 @@ pub(crate) fn prepare(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prep
         prefixes,
         findings_prefixes,
         envelopes,
+        source_schemas,
         source_schema,
         vocabulary,
         accounting,
@@ -168,7 +198,12 @@ fn queries(resolver: &dyn Resolver, iris: &[String], what: &str) -> Result<Vec<Q
         .collect()
 }
 
-fn envelopes(adapter: &Adapter, syntax: Syntax, resolver: &dyn Resolver) -> Result<Vec<Envelope>> {
+fn envelopes(
+    adapter: &Adapter,
+    syntax: Syntax,
+    resolver: &dyn Resolver,
+    source_schemas: &mut SourceSchemas,
+) -> Result<Vec<Envelope>> {
     let mut envelopes = Vec::new();
     for envelope in &adapter.envelopes {
         envelopes.push(Envelope {
@@ -178,6 +213,11 @@ fn envelopes(adapter: &Adapter, syntax: Syntax, resolver: &dyn Resolver) -> Resu
                 .document_schema
                 .as_deref()
                 .map(|iri| syntax.schema(iri, resolver))
+                .transpose()?,
+            source_schema: envelope
+                .source_schema
+                .as_deref()
+                .map(|iri| source_schemas.compiled(iri, syntax, resolver))
                 .transpose()?,
         });
     }
@@ -245,8 +285,10 @@ pub(crate) fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Convers
         conversion.units += 1;
         // A record was read, so the document root was: no envelope is needed yet.
         let document = lift.document_selector(None);
+        let schema = prepared.source_schema(admitting(lift.as_ref(), &reading));
         let (produced, findings) = unit_converted(
             prepared,
+            schema,
             source.iri,
             &document,
             &unit,
@@ -284,6 +326,7 @@ pub(crate) fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Convers
 
 fn unit_converted(
     prepared: &Prepared,
+    schema: Option<&dyn Schema>,
     iri: &str,
     document: &str,
     unit: &Unit,
@@ -297,7 +340,7 @@ fn unit_converted(
         selector: &selector,
         selector_type,
     };
-    let mut findings = validated(prepared.source_schema.as_deref(), &record, &unit.text)?;
+    let mut findings = validated(schema, &record, &unit.text)?;
     if let Some(accounting) = &prepared.accounting {
         findings.extend(accounting.findings(&record, unit)?);
     }
