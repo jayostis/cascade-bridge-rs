@@ -372,6 +372,9 @@ fn percent_decoded(text: &str) -> Option<String> {
     while at < bytes.len() {
         if bytes[at] == b'%' {
             let hex = text.get(at + 1..at + 3)?;
+            if !hex.bytes().all(|digit| digit.is_ascii_hexdigit()) {
+                return None;
+            }
             octets.push(u8::from_str_radix(hex, 16).ok()?);
             at += 3;
         } else {

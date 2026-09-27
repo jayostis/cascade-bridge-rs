@@ -112,3 +112,11 @@ fn selects_as_records_only_the_objects_a_path_reaches() {
         Some(Value::String(_))
     ));
 }
+
+#[test]
+fn reads_a_percent_escape_only_as_two_hex_digits() {
+    assert_eq!(tokens("/%41"), Some(vec!["A".to_owned()]));
+    assert_eq!(tokens("/%+41"), None);
+    assert_eq!(tokens("/%-1"), None);
+    assert_eq!(tokens("/%4"), None);
+}
