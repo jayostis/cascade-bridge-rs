@@ -70,10 +70,11 @@ fn writes_a_pointer_in_its_fragment_representation_and_reads_it_back() {
 }
 
 #[test]
-fn a_pointer_through_a_repeated_name_selects_each_node_and_one_at_null_none() {
+fn a_pointer_through_a_repeated_name_selects_each_node_and_one_to_null_the_null() {
     let node = parse(r#"{"a": {"b": 1}, "a": {"b": 2}, "n": null}"#).expect("parsed");
     assert_eq!(selected(&node, "/a/b").len(), 2);
-    assert_eq!(selected(&node, "/n").len(), 0);
+    assert_eq!(selected(&node, "/n").len(), 1);
+    assert_eq!(selected(&node, "/%FF").len(), 0);
     assert_eq!(selected(&node, "").len(), 1);
 }
 

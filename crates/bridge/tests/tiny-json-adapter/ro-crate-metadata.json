@@ -1,0 +1,69 @@
+{
+  "@context": [
+    "https://w3id.org/ro/crate/1.2/context",
+    {
+      "bridge": "https://ns.cascadeprotocol.org/bridge/v1-draft#",
+      "bridge:requiresProfile": "bridge:requiresProfile",
+      "bridge:sourceMediaType": "bridge:sourceMediaType",
+      "bridge:sourceSchema": "bridge:sourceSchema",
+      "bridge:envelope": "bridge:envelope",
+      "bridge:docRootMemberName": "bridge:docRootMemberName",
+      "bridge:docRootMemberValue": "bridge:docRootMemberValue",
+      "bridge:jsonPathOfEachRecord": "bridge:jsonPathOfEachRecord",
+      "bridge:documentSchema": "bridge:documentSchema",
+      "bridge:sourceAccounting": "bridge:sourceAccounting",
+      "bridge:mapping": "bridge:mapping",
+      "bridge:detectQuery": "bridge:detectQuery",
+      "bridge:testManifest": "bridge:testManifest"
+    }
+  ],
+  "@graph": [
+    {
+      "@id": "ro-crate-metadata.json",
+      "@type": "CreativeWork",
+      "conformsTo": { "@id": "https://w3id.org/ro/crate/1.2" },
+      "about": { "@id": "./" }
+    },
+    {
+      "@id": "./",
+      "@type": ["Dataset", "bridge:Adapter"],
+      "identifier": "list",
+      "name": "A synthetic JSON list format, the engine's own JSON test subject",
+      "bridge:requiresProfile": { "@id": "bridge:sparql-1.1" },
+      "bridge:sourceMediaType": "application/example+json",
+      "bridge:sourceSchema": { "@id": "schema/item.schema.json" },
+      "bridge:sourceAccounting": { "@id": "vocab/list-accounting.ttl" },
+      "bridge:envelope": [{ "@id": "#envelope-item" }, { "@id": "#envelope-list" }],
+      "bridge:mapping": [{ "@id": "mapping/item.rq" }],
+      "bridge:detectQuery": { "@id": "mapping/detect.rq" },
+      "bridge:testManifest": { "@id": "fixtures/manifest.ttl" }
+    },
+    {
+      "@id": "#envelope-item",
+      "@type": "bridge:Envelope",
+      "name": "item",
+      "bridge:docRootMemberName": "kind",
+      "bridge:jsonPathOfEachRecord": "$"
+    },
+    {
+      "@id": "#envelope-list",
+      "@type": "bridge:Envelope",
+      "name": "list",
+      "bridge:docRootMemberName": "kind",
+      "bridge:docRootMemberValue": "list",
+      "bridge:jsonPathOfEachRecord": "$.items[*]",
+      "bridge:documentSchema": { "@id": "schema/list.schema.json" }
+    },
+    {
+      "@id": "vocab/list-accounting.ttl",
+      "@type": "File",
+      "name": "what the list adapter does with each path of a record",
+      "encodingFormat": "text/turtle"
+    },
+    {
+      "@id": "bridge:sparql-1.1",
+      "@type": "bridge:Profile",
+      "name": "sparql-1.1"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+# The engine's own JSON test subject. The list names no envelope, so the one
+# naming its kind's value reads it; the item is read in the envelope it names.
+@prefix mf:     <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#> .
+@prefix bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+<> a mf:Manifest ;
+  bridge:adapter <../> ;
+  mf:entries ( <#list> <#item> ) .
+
+<#list> a bridge:IsomorphicConversionTest ;
+  mf:name "list" ;
+  mf:action [ bridge:input <in/list.json> ] ;
+  mf:result [ bridge:expectedGraph <expected/list.ttl> ; bridge:expectedFindings <findings/list.ttl> ] .
+
+<#item> a bridge:IsomorphicConversionTest ;
+  mf:name "item" ;
+  mf:action [ bridge:input <in/item.json> ; bridge:envelope <../ro-crate-metadata.json#envelope-item> ] ;
+  mf:result [ bridge:expectedGraph <expected/item.ttl> ; bridge:expectedFindings <findings/item.ttl> ] .

@@ -378,6 +378,8 @@ mod finding_bodies;
 #[cfg(test)]
 mod findings;
 #[cfg(test)]
+mod json_source;
+#[cfg(test)]
 mod lookup_misses;
 #[cfg(test)]
 mod output_validation;

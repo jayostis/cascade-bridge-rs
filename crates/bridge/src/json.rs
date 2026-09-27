@@ -383,7 +383,7 @@ fn percent_decoded(text: &str) -> Option<String> {
 }
 
 /// Every node a pointer selects, with its child positions: more than one through a
-/// name its object repeats, and none at a `null`.
+/// name its object repeats.
 pub(crate) fn selected<'a>(root: &'a Node, pointer: &str) -> Vec<(Vec<usize>, &'a Node)> {
     let Some(tokens) = tokens(pointer) else {
         return Vec::new();
@@ -393,7 +393,7 @@ pub(crate) fn selected<'a>(root: &'a Node, pointer: &str) -> Vec<(Vec<usize>, &'
         let mut next = Vec::new();
         for (positions, node) in reached {
             for (position, (name, child)) in node.children().into_iter().enumerate() {
-                if name == *token && child.value != Value::Null {
+                if name == *token {
                     let mut walked = positions.clone();
                     walked.push(position);
                     next.push((walked, child));
