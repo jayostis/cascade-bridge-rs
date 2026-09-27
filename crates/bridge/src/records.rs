@@ -80,7 +80,7 @@ fn renamed_quad(quad: &Quad, names: &BTreeMap<String, String>) -> Quad {
 }
 
 fn drafts(mapped: &[Quad]) -> Result<BTreeSet<String>> {
-    let mut drafts = BTreeSet::new();
+    let mut drafts: BTreeMap<String, &Term> = BTreeMap::new();
     for quad in mapped
         .iter()
         .filter(|quad| quad.predicate.as_str() == PROV_SPECIALIZATION_OF)
@@ -96,13 +96,16 @@ fn drafts(mapped: &[Quad]) -> Result<BTreeSet<String>> {
                 "a mapping wrote the version {version} with a fragment; a fragment names a node nested in a version"
             )));
         }
-        if !drafts.insert(version.as_str().to_owned()) {
+        if drafts
+            .insert(version.as_str().to_owned(), &quad.object)
+            .is_some_and(|record| *record != quad.object)
+        {
             return Err(Error::msg(format!(
                 "a mapping wrote the version {version} as a specialization of more than one record"
             )));
         }
     }
-    Ok(drafts)
+    Ok(drafts.into_keys().collect())
 }
 
 fn content(mapped: &[Quad], version: &str, drafts: &BTreeSet<String>) -> Result<Vec<Quad>> {
@@ -199,6 +202,19 @@ mod tests {
             "<urn:example:v> {OF} <urn:example:one> .\n<urn:example:v> {OF} <urn:example:two> ."
         ));
         assert!(said.contains("more than one record"), "{said}");
+    }
+
+    #[test]
+    fn names_a_version_every_mapping_writes_as_a_specialization_of_the_same_record() {
+        let quads: Vec<Quad> = RdfParser::from_format(RdfFormat::NTriples)
+            .for_slice(
+                format!("<urn:example:v> {OF} <urn:example:record> .\n<urn:example:v> {OF} <urn:example:record> .\n")
+                    .as_bytes(),
+            )
+            .map(|quad| quad.expect("N-Triples"))
+            .collect();
+        let versioned = versioned(quads).expect("versioned");
+        assert_eq!(versioned.versions.len(), 1);
     }
 
     #[test]

@@ -85,11 +85,16 @@ fn supplied(facts: Option<Supplied<'_>>, document: &str) -> Result<Vec<Quad>> {
     Ok(supplied)
 }
 
-/// Each `pav:lastUpdateOn` in the text of the record's dataset a store canonicalised it from.
-fn last_updates_as_the_source_wrote(graph: &mut [Quad], source: &Store) -> Result<()> {
+/// Each arrival's `pav:lastUpdateOn` in the text of the record's dataset a store canonicalised it from.
+fn last_updates_as_the_source_wrote(
+    graph: &mut [Quad],
+    arrivals: &HashSet<NamedOrBlankNode>,
+    source: &Store,
+) -> Result<()> {
     let date_time = |quad: &Quad| match &quad.object {
         Term::Literal(literal)
             if quad.predicate.as_str() == PAV_LAST_UPDATE_ON
+                && arrivals.contains(&quad.subject)
                 && literal.datatype() == xsd::DATE_TIME =>
         {
             Some(literal.value().to_owned())
@@ -212,7 +217,8 @@ impl Document {
                 quad(arrival, PROV_WAS_GENERATED_BY, self.import.clone()),
             ]);
         }
-        last_updates_as_the_source_wrote(&mut graph, source)?;
+        let arrivals = arrivals.into_values().map(NamedOrBlankNode::from).collect();
+        last_updates_as_the_source_wrote(&mut graph, &arrivals, source)?;
         Ok(graph)
     }
 

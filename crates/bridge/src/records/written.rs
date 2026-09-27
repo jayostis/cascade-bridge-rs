@@ -1,10 +1,10 @@
-use super::ni_name;
+use super::{canonical_nquads, ni_name, PLACEHOLDER};
 use crate::fixtures::{converted_with_facts, fixture, objects, tiny, versioned, Variant, CRATE};
 use crate::terms::{
     BRIDGE_ARRIVED_AS, BRIDGE_SELECTOR, PAV_LAST_UPDATE_ON, PAV_VERSION, PROV_ACTIVITY,
     PROV_WAS_DERIVED_FROM, PROV_WAS_GENERATED_BY, RDF_TYPE,
 };
-use oxrdf::{Quad, Term};
+use oxrdf::{NamedNode, Quad, Term};
 use std::collections::BTreeSet;
 
 const EX: &str = "urn:example:catalog#";
@@ -224,4 +224,51 @@ fn keeps_an_arrival_s_last_update_in_the_source_s_own_text() {
                 .to_owned()
         ])
     );
+}
+
+#[test]
+fn leaves_a_version_s_last_update_as_its_name_was_hashed_over() {
+    let resolver = versioned()
+        .replacing(
+            "mapping/item.rq",
+            "ex:title ?title .",
+            "ex:title ?title ; pav:lastUpdateOn ?updated .",
+        )
+        .replacing(
+            "mapping/item.rq",
+            "rdf:_1 ?title . }",
+            "rdf:_1 ?title . }
+  BIND(STRDT(?title, <http://www.w3.org/2001/XMLSchema#dateTime>) AS ?updated)",
+        )
+        .replacing(
+            "fixtures/in/two.xml",
+            "<title>First</title>",
+            "<title>2026-01-01T00:00:00.000+01:00</title>",
+        );
+    let quads = converted_with_facts(&resolver, "two.xml").quads;
+    let names = BTreeSet::from_iter(quads.iter().filter_map(|quad| match &quad.object {
+        Term::NamedNode(version) if quad.predicate.as_str() == BRIDGE_ARRIVED_AS => {
+            Some(version.clone())
+        }
+        _ => None,
+    }));
+    assert_eq!(names.len(), 2, "{names:?}");
+    for name in names {
+        let content: Vec<Quad> = quads
+            .iter()
+            .filter(|quad| quad.subject == name.clone().into())
+            .map(|quad| {
+                Quad::new(
+                    NamedNode::new_unchecked(PLACEHOLDER),
+                    quad.predicate.clone(),
+                    quad.object.clone(),
+                    quad.graph_name.clone(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            ni_name(canonical_nquads(content).expect("canonical").as_bytes()),
+            name.as_str()
+        );
+    }
 }
