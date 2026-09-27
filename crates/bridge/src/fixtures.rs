@@ -55,6 +55,13 @@ pub fn tiny() -> DirectoryResolver {
     DirectoryResolver::new(tiny_directory()).expect("resolver")
 }
 
+pub fn tiny_json() -> DirectoryResolver {
+    DirectoryResolver::new(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/tiny-json-adapter"),
+    )
+    .expect("resolver")
+}
+
 pub fn tiny_with_vocabularies() -> DirectoryResolver {
     tiny()
         .with_vocabularies(vocabularies_directory())
@@ -73,7 +80,7 @@ pub fn conversion(resolver: &dyn Resolver, input: &str) -> Result<Conversion> {
         Source {
             iri: &iri,
             envelope: None,
-            xml: &xml,
+            bytes: &xml,
         },
     )
 }

@@ -1,0 +1,5 @@
+_:doc <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/ns/root> .
+_:doc <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "first" .
+_:doc <http://www.w3.org/1999/02/22-rdf-syntax-ns#_2> _:object .
+_:object <http://sparql.xyz/facade-x/data/k> "v" .
+_:doc <http://www.w3.org/1999/02/22-rdf-syntax-ns#_4> "false" .

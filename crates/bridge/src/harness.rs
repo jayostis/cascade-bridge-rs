@@ -1,5 +1,4 @@
 use crate::annotation;
-use crate::decode::decode;
 use crate::error::{Error, Result};
 use crate::load::{as_subject, list, objects, one, subject, term_value, values, Adapter};
 use crate::rdf::{canonical_lines, canonical_parts};
@@ -10,7 +9,6 @@ use crate::terms::{
     BRIDGE_INPUT_ONLY, BRIDGE_ISOMORPHIC, BRIDGE_SPARQL_1_1, BRIDGE_STAMP_PREDICATE, MF_ACTION,
     MF_ENTRIES, MF_NAME, MF_RESULT, RDF_TYPE,
 };
-use crate::xpath;
 use oxigraph::model::{NamedOrBlankNode, Quad, Term};
 use oxrdfio::{RdfFormat, RdfParser};
 use std::collections::{HashMap, HashSet};
@@ -140,7 +138,7 @@ impl Entry<'_> {
             Source {
                 iri: &input,
                 envelope: envelope.as_deref(),
-                xml: &bytes,
+                bytes: &bytes,
             },
         )?;
         let detect = if run.detected == Some(false) {
@@ -197,8 +195,8 @@ impl Entry<'_> {
             let want = graph_at(&self.resolver.read(&iri)?, &iri)?;
             let wanted = annotation::annotations(&want);
             // Two addresses that select one node are one address.
-            let source = decode(&bytes)?;
-            let spelled = xpath::Spelled::of(&source);
+            let source = self.setup.syntax.decode(&bytes)?;
+            let spelled = self.setup.syntax.respelling(&source);
             let want = spelled.respelled(want);
             let got = spelled.respelled(run.findings);
             let missed: Vec<String> = want

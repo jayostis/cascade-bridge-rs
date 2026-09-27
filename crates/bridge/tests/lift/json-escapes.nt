@@ -1,0 +1,8 @@
+_:doc <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/ns/root> .
+_:doc <http://sparql.xyz/facade-x/data/quote> "say \"hi\"" .
+_:doc <http://sparql.xyz/facade-x/data/backslash> "a\\b" .
+_:doc <http://sparql.xyz/facade-x/data/solidus> "a/b" .
+_:doc <http://sparql.xyz/facade-x/data/controls> "tab\tline\nend" .
+_:doc <http://sparql.xyz/facade-x/data/escaped> "café" .
+_:doc <http://sparql.xyz/facade-x/data/surrogates> "𝄞" .
+_:doc <http://sparql.xyz/facade-x/data/raw> "café 日本 𝄞" .

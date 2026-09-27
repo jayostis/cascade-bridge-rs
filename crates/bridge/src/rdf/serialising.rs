@@ -80,7 +80,7 @@ fn converted(
         Source {
             iri: "urn:example:document",
             envelope: None,
-            xml: &xml,
+            bytes: &xml,
         },
     )
     .expect("conversion");

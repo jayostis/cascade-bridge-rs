@@ -1,0 +1,11 @@
+_:doc <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/ns/root> .
+_:doc <http://sparql.xyz/facade-x/data/zero> "0" .
+_:doc <http://sparql.xyz/facade-x/data/negativeZero> "-0" .
+_:doc <http://sparql.xyz/facade-x/data/decimal> "1.50" .
+_:doc <http://sparql.xyz/facade-x/data/exponent> "1E+2" .
+_:doc <http://sparql.xyz/facade-x/data/small> "2.5e-3" .
+_:doc <http://sparql.xyz/facade-x/data/big> "123456789012345678901234567890" .
+_:doc <http://sparql.xyz/facade-x/data/yes> "true" .
+_:doc <http://sparql.xyz/facade-x/data/no> "false" .
+_:doc <http://sparql.xyz/facade-x/data/empty> "" .
+_:doc <http://sparql.xyz/facade-x/data/padded> "  kept  " .

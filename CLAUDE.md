@@ -35,9 +35,9 @@ So:
 - **Nothing here pins another repository.** Which version of each
   one a run uses is `jayostis/cascade-bridge-spec`'s
   [`compatibility.md`](https://github.com/jayostis/cascade-bridge-spec/blob/main/compatibility.md).
-- **Its own tests use the tiny adapter,
-  `crates/bridge/tests/tiny-adapter`**, built so each outcome is reached by the
-  smallest input that can reach it. The specification's synthetic adapter is
+- **Its own tests use the tiny adapters, `crates/bridge/tests/tiny-adapter`
+  and `tiny-json-adapter`**, built so each outcome is reached by the smallest
+  input that can reach it. The specification's synthetic adapters are
   met only through its vector, `specification_vector.rs`:
   `meets_the_specification_s_synthetic_adapter_only_through_its_vector`. A
   real adapter is met only through `compatibility.json`:
