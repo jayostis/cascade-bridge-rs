@@ -1,12 +1,13 @@
 use crate::error::{Error, Result};
 use crate::resolver::Resolver;
 use crate::terms::{
-    BRIDGE_ADAPTER, BRIDGE_DETECT_QUERY, BRIDGE_DOCUMENT_SCHEMA, BRIDGE_DOC_ROOT_ELEMENT_NAME,
-    BRIDGE_DOC_ROOT_MEMBER_NAME, BRIDGE_DOC_ROOT_MEMBER_VALUE, BRIDGE_ELEMENT_NAME_OF_EACH_RECORD,
-    BRIDGE_ENVELOPE, BRIDGE_FINDINGS_QUERY, BRIDGE_GAP_SCHEME, BRIDGE_JSON_PATH_OF_EACH_RECORD,
-    BRIDGE_MAPPING, BRIDGE_REQUIRES_PROFILE, BRIDGE_SOURCE_ACCOUNTING, BRIDGE_SOURCE_MEDIA_TYPE,
-    BRIDGE_SOURCE_SCHEMA, BRIDGE_TABLE, BRIDGE_TEST_MANIFEST, BRIDGE_VOCABULARY_FILE, RDF_FIRST,
-    RDF_NIL, RDF_REST, RDF_TYPE, SCHEMA_ABOUT, SCHEMA_IDENTIFIER, SCHEMA_NAME,
+    BRIDGE_ADAPTER, BRIDGE_DETECT_QUERY, BRIDGE_DOCUMENT_SCHEMA, BRIDGE_DOCUMENT_TABLE_QUERY,
+    BRIDGE_DOC_ROOT_ELEMENT_NAME, BRIDGE_DOC_ROOT_MEMBER_NAME, BRIDGE_DOC_ROOT_MEMBER_VALUE,
+    BRIDGE_ELEMENT_NAME_OF_EACH_RECORD, BRIDGE_ENVELOPE, BRIDGE_FINDINGS_QUERY, BRIDGE_GAP_SCHEME,
+    BRIDGE_JSON_PATH_OF_EACH_RECORD, BRIDGE_MAPPING, BRIDGE_REQUIRES_PROFILE,
+    BRIDGE_SOURCE_ACCOUNTING, BRIDGE_SOURCE_MEDIA_TYPE, BRIDGE_SOURCE_SCHEMA, BRIDGE_TABLE,
+    BRIDGE_TEST_MANIFEST, BRIDGE_VOCABULARY_FILE, RDF_FIRST, RDF_NIL, RDF_REST, RDF_TYPE,
+    SCHEMA_ABOUT, SCHEMA_IDENTIFIER, SCHEMA_NAME, SCHEMA_VERSION,
 };
 use oxrdf::{Graph, NamedNode, NamedOrBlankNode, Term, Triple};
 use oxrdfio::{JsonLdProfile, JsonLdProfileSet, LoadedDocument, RdfFormat, RdfParser};
@@ -49,6 +50,7 @@ pub(crate) struct Adapter {
     pub(crate) graph: Graph,
     pub(crate) identifier: Option<String>,
     pub(crate) source_media_type: Option<String>,
+    pub(crate) version: Option<String>,
     pub(crate) element_name_of_each_record: Option<String>,
     pub(crate) source_schema: Option<String>,
     /// Paths in the checkout the engine command is given, not files of the crate.
@@ -58,6 +60,7 @@ pub(crate) struct Adapter {
     pub(crate) required_profiles: Vec<String>,
     pub(crate) mappings: Vec<String>,
     pub(crate) findings_queries: Vec<String>,
+    pub(crate) document_table_queries: Vec<String>,
     pub(crate) detect_query: Option<String>,
     pub(crate) tables: Vec<String>,
     pub(crate) envelopes: Vec<Envelope>,
@@ -241,6 +244,7 @@ pub(crate) fn load_adapter(resolver: &dyn Resolver) -> Result<Adapter> {
 
     Ok(Adapter {
         identifier: one(&graph, &root_subject, SCHEMA_IDENTIFIER)?,
+        version: one(&graph, &root_subject, SCHEMA_VERSION)?,
         element_name_of_each_record: one(
             &graph,
             &root_subject,
@@ -254,6 +258,7 @@ pub(crate) fn load_adapter(resolver: &dyn Resolver) -> Result<Adapter> {
         required_profiles: values(&graph, &root_subject, BRIDGE_REQUIRES_PROFILE)?,
         mappings: values(&graph, &root_subject, BRIDGE_MAPPING)?,
         findings_queries: values(&graph, &root_subject, BRIDGE_FINDINGS_QUERY)?,
+        document_table_queries: values(&graph, &root_subject, BRIDGE_DOCUMENT_TABLE_QUERY)?,
         detect_query: one(&graph, &root_subject, BRIDGE_DETECT_QUERY)?,
         tables: values(&graph, &root_subject, BRIDGE_TABLE)?,
         envelopes,

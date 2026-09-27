@@ -319,8 +319,8 @@ const SECONDS: [Second; 16] = [
     },
     Second {
         file: MANIFEST,
-        written: "bridge:envelope <../ro-crate-metadata.json#envelope-catalog> ]",
-        doubled: "bridge:envelope <../ro-crate-metadata.json#envelope-catalog>, <../ro-crate-metadata.json#envelope-other> ]",
+        written: "bridge:envelope <../ro-crate-metadata.json#envelope-catalog>",
+        doubled: "bridge:envelope <../ro-crate-metadata.json#envelope-catalog>, <../ro-crate-metadata.json#envelope-other>",
         times: 8,
         named: ["#envelope ", "#envelope-catalog>", "#envelope-other>"],
     },
@@ -441,7 +441,7 @@ fn tests_reported(report: &Graph) -> Vec<String> {
 fn reports_an_entry_written_as_a_blank_node_by_its_name() {
     let (results, report) = run_with(
         r#"[ a bridge:IsomorphicConversionTest ; mf:name "anonymous" ;
-             mf:action [ bridge:input <in/two.xml> ] ;
+             mf:action [ bridge:input <in/two.xml> ; bridge:facts <facts/catalog.ttl> ] ;
              mf:result [ bridge:expectedGraph <expected/two.ttl> ; bridge:expectedFindings <findings/two.ttl> ] ]"#,
     );
     let outcomes: Vec<_> = results

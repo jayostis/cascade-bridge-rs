@@ -17,6 +17,7 @@ fn read_in(resolver: &dyn Resolver, input: &str, envelope: &str) -> Conversion {
             iri: &iri,
             envelope: Some(&named),
             bytes: &bytes,
+            facts: None,
         },
     )
     .expect("the conversion")
@@ -109,6 +110,7 @@ fn refuses_a_json_document_that_is_not_json() {
             iri: &iri,
             envelope: None,
             bytes: &bytes,
+            facts: None,
         },
     )
     .err()

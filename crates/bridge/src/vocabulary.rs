@@ -12,6 +12,10 @@ use oxrdf::vocab::rdf;
 use oxrdf::{NamedOrBlankNodeRef, Quad, TermRef};
 use std::collections::{BTreeSet, HashSet};
 
+// vocab/bridge.ttl is a copy of vocab/bridge.ttl in jayostis/cascade-bridge-spec, the authority.
+const BRIDGE_VOCABULARY: &[u8] = include_bytes!("vocab/bridge.ttl");
+const BRIDGE_NAMESPACE: &str = "https://ns.cascadeprotocol.org/bridge/v1-draft#";
+
 const DECLARES_A_PREDICATE: [&str; 4] = [
     RDF_PROPERTY,
     OWL_DATATYPE_PROPERTY,
@@ -22,16 +26,12 @@ const DECLARES_A_PREDICATE: [&str; 4] = [
 pub(crate) struct Vocabulary {
     shapes: Shapes,
     declared: HashSet<String>,
-    /// The predicates a record's graph writes that no ontology is asked about.
+    /// The predicates a record's graph writes that no ontology of the adapter's is asked about.
     exempt: HashSet<String>,
 }
 
 impl Vocabulary {
-    pub(crate) fn read(
-        files: &[String],
-        stamps: HashSet<String>,
-        resolver: &dyn Resolver,
-    ) -> Result<Option<Self>> {
+    pub(crate) fn read(files: &[String], resolver: &dyn Resolver) -> Result<Option<Self>> {
         let Some(directory) = resolver.vocabularies() else {
             return Ok(None);
         };
@@ -48,7 +48,8 @@ impl Vocabulary {
             let (graph, _) = turtle(&resolver.read_vocabulary(&iri)?, &iri)?;
             documents.push((iri, graph));
         }
-        let mut exempt = stamps;
+        let (bridge, _) = turtle(BRIDGE_VOCABULARY, BRIDGE_NAMESPACE)?;
+        let mut exempt = declared(&[(BRIDGE_NAMESPACE.to_owned(), bridge)]);
         exempt.insert(RDF_TYPE.to_owned());
         Ok(Some(Self {
             declared: declared(&documents),

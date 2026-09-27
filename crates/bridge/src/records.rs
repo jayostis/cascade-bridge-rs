@@ -7,6 +7,10 @@ use oxrdf::{NamedNode, NamedOrBlankNode, Quad, Term};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
+mod document;
+
+pub(crate) use document::{Document, Release, Supplied};
+
 pub(crate) const PLACEHOLDER: &str = "urn:cascade:this-version";
 
 pub(crate) fn ni_name(octets: &[u8]) -> String {
@@ -16,7 +20,6 @@ pub(crate) fn ni_name(octets: &[u8]) -> String {
     )
 }
 
-#[cfg_attr(not(test), expect(dead_code))]
 pub(crate) fn normalised_base_url(url: &str) -> String {
     let normal = match url.split_once("://") {
         Some((scheme, rest)) => {
@@ -37,15 +40,14 @@ pub(crate) fn normalised_base_url(url: &str) -> String {
     normal.trim_end_matches('/').to_owned()
 }
 
-#[cfg_attr(not(test), expect(dead_code))]
 pub(crate) struct Version {
     pub(crate) name: String,
+    #[cfg_attr(not(test), expect(dead_code))]
     pub(crate) canonical: String,
 }
 
 pub(crate) struct Versioned {
     pub(crate) graph: Vec<Quad>,
-    #[cfg_attr(not(test), expect(dead_code))]
     pub(crate) versions: Vec<Version>,
 }
 
@@ -163,6 +165,8 @@ pub(crate) fn versioned(mapped: Vec<Quad>) -> Result<Versioned> {
 
 #[cfg(test)]
 mod vectors;
+#[cfg(test)]
+mod written;
 #[cfg(test)]
 mod tests {
     use super::{ni_name, versioned};

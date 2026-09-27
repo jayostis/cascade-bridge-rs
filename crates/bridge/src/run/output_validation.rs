@@ -159,7 +159,7 @@ fn makes_a_finding_of_its_own_of_each_of_two_results_about_one_record() {
 }
 
 #[test]
-fn reports_a_predicate_no_ontology_declares_and_leaves_rdf_type_and_the_stamp_alone() {
+fn reports_a_predicate_no_ontology_declares_and_leaves_rdf_type_and_the_bridge_s_own_alone() {
     let (conversion, _) = read_against_the_vocabulary("a-predicate-no-ontology-declares.xml");
     let reported: Vec<(String, String, String)> = output_findings(&conversion.findings)
         .into_iter()
@@ -172,7 +172,7 @@ fn reports_a_predicate_no_ontology_declares_and_leaves_rdf_type_and_the_stamp_al
             format!("{EX}colour"),
             format!("{SH}Violation"),
         )],
-        "the record's graph writes rdf:type and the manifest's bridge:stampPredicate too"
+        "the record's graph writes rdf:type and rdfs:label, which the Cascade Bridge vocabulary declares, too"
     );
 }
 
@@ -239,27 +239,5 @@ fn refuses_a_shape_whose_severity_no_finding_can_carry() {
     assert!(
         refused.contains("sh:Info, sh:Warning or sh:Violation"),
         "a severity the specification's finding shape has no room for was compiled: {refused:?}"
-    );
-}
-
-#[test]
-fn reports_a_predicate_one_entry_of_the_manifest_stamps_with() {
-    // A stamp predicate on one entry of the manifest, which the specification
-    // gives that entry alone and no conversion.
-    let entry = "<#pass> a bridge:IsomorphicConversionTest ;";
-    let stamped = Variant::of(tiny_with_vocabularies()).replacing(
-        "fixtures/manifest.ttl",
-        entry,
-        format!("{entry}\n  bridge:stampPredicate <{EX}colour> ;"),
-    );
-    let (conversion, _) = run(&stamped, "a-predicate-no-ontology-declares.xml");
-    let paths: Vec<String> = output_findings(&conversion.findings)
-        .into_iter()
-        .map(|finding| finding.path)
-        .collect();
-    assert_eq!(
-        paths,
-        [format!("{EX}colour")],
-        "one entry's stamp is that entry's, not every conversion's"
     );
 }
