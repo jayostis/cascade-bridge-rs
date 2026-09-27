@@ -8,7 +8,7 @@ use crate::json::{self, Node, Value};
 use crate::resolver::Resolver;
 use crate::terms::BRIDGE_SCHEMA_RULE_UNNAMED;
 use oxiri::Iri;
-use regex::Regex;
+use regress::Regex;
 use std::collections::HashMap;
 
 const DRAFT_06: &str = "http://json-schema.org/draft-06/schema";
@@ -53,7 +53,8 @@ const KEYWORDS: [&str; 29] = [
 const DEPTH: usize = 1024;
 
 pub(crate) struct JsonSchema {
-    /// By the IRI each was read at, and by its `$id`.
+    /// By the IRI each was read at and by each `$id` in it, with the base that
+    /// `$id` resolves against.
     documents: HashMap<String, (String, Node)>,
     root: String,
     patterns: HashMap<String, Regex>,
@@ -110,6 +111,29 @@ fn strings_named<'a>(node: &'a Node, name: &str, into: &mut Vec<&'a str>) {
     }
 }
 
+/// A subschema's `$id`, unless a `$ref` beside it has every other member ignored.
+fn own_id(node: &Node) -> Option<&str> {
+    if member(node, "$ref").is_some() {
+        return None;
+    }
+    member(node, "$id").and_then(text)
+}
+
+/// Every object in the document, with the base its own `$id` and `$ref` resolve against.
+fn objects<'a>(node: &'a Node, outer: String, into: &mut Vec<(String, &'a Node)>) -> Result<()> {
+    let inner = match own_id(node) {
+        Some(id) => without_fragment(&resolved(&outer, id)?).to_owned(),
+        None => outer.clone(),
+    };
+    if matches!(node.value, Value::Object(_)) {
+        into.push((outer, node));
+    }
+    for (_, child) in node.children() {
+        objects(child, inner.clone(), into)?;
+    }
+    Ok(())
+}
+
 pub(crate) fn compile(iri: &str, resolver: &dyn Resolver) -> Result<JsonSchema> {
     let mut documents: HashMap<String, (String, Node)> = HashMap::new();
     let mut patterns = HashMap::new();
@@ -133,24 +157,30 @@ pub(crate) fn compile(iri: &str, resolver: &dyn Resolver) -> Result<JsonSchema> 
                 )));
             }
         }
-        let base = match member(&node, "$id").and_then(text) {
-            Some(id) => without_fragment(&resolved(&location, id)?).to_owned(),
-            None => location.clone(),
-        };
-        let mut references = Vec::new();
-        strings_named(&node, "$ref", &mut references);
-        for reference in references {
-            let target = resolved(&base, reference)?;
-            let document = without_fragment(&target);
-            if document != base && document != location {
-                pending.push(document.to_owned());
+        let mut scoped = Vec::new();
+        objects(&node, location.clone(), &mut scoped)?;
+        documents.insert(location.clone(), (location.clone(), node.clone()));
+        for (outer, object) in scoped {
+            if let Some(id) = own_id(object) {
+                let identified = resolved(&outer, id)?;
+                documents
+                    .entry(without_fragment(&identified).to_owned())
+                    .or_insert_with(|| (outer.clone(), object.clone()));
+                if let Some((_, name)) = identified.split_once('#') {
+                    if !name.is_empty() && !name.starts_with('/') {
+                        documents.insert(identified.clone(), (outer.clone(), object.clone()));
+                    }
+                }
+            }
+            if let Some(reference) = member(object, "$ref").and_then(text) {
+                pending.push(without_fragment(&resolved(&outer, reference)?).to_owned());
             }
         }
         let mut written = Vec::new();
         strings_named(&node, "pattern", &mut written);
         for pattern in written {
             if !patterns.contains_key(pattern) {
-                let compiled = Regex::new(pattern).map_err(|e| {
+                let compiled = Regex::with_flags(pattern, "u").map_err(|e| {
                     Error::msg(format!(
                         "{location}: the pattern {pattern} is not read: {e}"
                     ))
@@ -158,8 +188,6 @@ pub(crate) fn compile(iri: &str, resolver: &dyn Resolver) -> Result<JsonSchema> 
                 patterns.insert(pattern.to_owned(), compiled);
             }
         }
-        documents.insert(base.clone(), (base.clone(), node.clone()));
-        documents.insert(location, (base, node));
     }
     Ok(JsonSchema {
         documents,
@@ -309,17 +337,45 @@ impl<'s> Run<'s> {
         }
     }
 
+    /// The base `schema`'s own `$id` sets for what it holds.
+    fn scope(&self, outer: &'s str, schema: &Node) -> Result<&'s str> {
+        let Some(id) = own_id(schema) else {
+            return Ok(outer);
+        };
+        let inner = resolved(outer, id)?;
+        let inner = without_fragment(&inner);
+        self.schema
+            .documents
+            .get_key_value(inner)
+            .map(|(key, _)| key.as_str())
+            .ok_or_else(|| Error::msg(format!("the $id {inner}, a schema not read")))
+    }
+
+    /// The subschema a `$ref` names, and the base its own `$id` resolves against.
     fn reference(&self, base: &str, reference: &str) -> Result<(&'s str, &'s Node)> {
         let target = resolved(base, reference)?;
+        if let Some((outer, named)) = self.schema.documents.get(&target) {
+            return Ok((outer.as_str(), named));
+        }
         let (document, fragment) = target.split_once('#').unwrap_or((&target, ""));
-        let (base, node) = self
+        let (outer, node) = self
             .schema
             .documents
             .get(document)
             .ok_or_else(|| Error::msg(format!("a $ref to {target}, a schema not read")))?;
         let found = json::selected(node, fragment);
         match found.as_slice() {
-            [(_, reached)] => Ok((base.as_str(), *reached)),
+            [(positions, reached)] => {
+                let mut outer = outer.as_str();
+                let mut passed = node;
+                for &position in positions {
+                    outer = self.scope(outer, passed)?;
+                    passed = passed
+                        .at(&[position])
+                        .ok_or_else(|| Error::msg(format!("a $ref to {target}, not followed")))?;
+                }
+                Ok((outer, *reached))
+            }
             _ => Err(Error::msg(format!(
                 "a $ref to {target}, which names no one subschema"
             ))),
@@ -351,9 +407,10 @@ impl<'s> Run<'s> {
             }
         };
         if let Some(reference) = member(schema, "$ref").and_then(text) {
-            let (base, target) = self.reference(base, reference)?;
-            return self.validate(target, base, instance, at, depth + 1);
+            let (outer, target) = self.reference(base, reference)?;
+            return self.validate(target, outer, instance, at, depth + 1);
         }
+        let base = self.scope(base, schema)?;
         for (name, value) in members {
             if self.done() {
                 return Ok(());
@@ -404,7 +461,7 @@ impl<'s> Run<'s> {
             ("minLength", Value::String(s)) => within(s.chars().count(), bound, |n, b| n >= b),
             ("pattern", Value::String(s)) => text(value)
                 .and_then(|pattern| self.schema.patterns.get(pattern))
-                .is_none_or(|pattern| pattern.is_match(s)),
+                .is_none_or(|pattern| pattern.find(s).is_some()),
             ("maxItems", Value::Array(items)) => within(items.len(), bound, |n, b| n <= b),
             ("minItems", Value::Array(items)) => within(items.len(), bound, |n, b| n >= b),
             ("uniqueItems", Value::Array(items)) => {
@@ -488,7 +545,7 @@ impl<'s> Run<'s> {
                                 .schema
                                 .patterns
                                 .get(pattern)
-                                .is_some_and(|p| p.is_match(named))
+                                .is_some_and(|p| p.find(named).is_some())
                             {
                                 at.push(named.clone());
                                 self.apply(
@@ -517,7 +574,7 @@ impl<'s> Run<'s> {
                             self.schema
                                 .patterns
                                 .get(pattern)
-                                .is_some_and(|p| p.is_match(named))
+                                .is_some_and(|p| p.find(named).is_some())
                         }),
                         _ => false,
                     };

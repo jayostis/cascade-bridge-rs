@@ -116,3 +116,23 @@ fn refuses_a_json_document_that_is_not_json() {
     .to_string();
     assert!(refused.contains("not JSON"), "{refused}");
 }
+
+#[test]
+fn follows_no_address_this_bridge_built_from_its_own_walk() {
+    let resolver = Variant::of(tiny_json()).replacing(
+        "fixtures/in/item.json",
+        "\"title\": \"nine\"",
+        "\"title\": 5, \"title\": 6",
+    );
+    let findings = converted(&resolver, "item.json").findings;
+    let type_ = "<https://datatracker.ietf.org/doc/html/draft-wright-json-schema-validation-01#section-6.25>";
+    let not_one = "<https://ns.cascadeprotocol.org/bridge/v1-draft#addressNotOneNode>";
+    assert!(
+        findings.iter().any(|q| q.object.to_string() == type_),
+        "{findings:?}"
+    );
+    assert!(
+        !findings.iter().any(|q| q.object.to_string() == not_one),
+        "{findings:?}"
+    );
+}

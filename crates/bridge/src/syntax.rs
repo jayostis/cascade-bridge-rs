@@ -126,10 +126,11 @@ impl Syntax {
     }
 }
 
-/// Follows, within the record, each address that refines a finding's record selector.
+/// Follows, within the record, each address a findings query wrote to refine a
+/// finding's record selector.
 pub(crate) trait Addresses {
     /// Each address that selects other than one node, reported against `document`.
-    fn unresolved(&self, document: &Record, record: &str, findings: &[Quad]) -> Result<Vec<Quad>>;
+    fn unresolved(&self, document: &Record, record: &str, queried: &[Quad]) -> Result<Vec<Quad>>;
 }
 
 /// Spells alike two addresses that select one node of the whole document.

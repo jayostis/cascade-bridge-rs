@@ -157,3 +157,51 @@ fn refuses_a_schema_written_in_another_draft() {
         .to_string();
     assert!(refusal.contains("draft-06"), "{refusal}");
 }
+
+#[test]
+fn resolves_a_ref_against_the_id_of_the_subschema_it_stands_in() {
+    let package = files(&[
+        (
+            "schema.json",
+            r##"{
+                "definitions": {
+                    "a": {"$id": "sub/a.json", "properties": {"x": {"$ref": "b.json"}}},
+                    "named": {"$id": "#addr", "type": "string"}
+                },
+                "properties": {
+                    "a": {"$ref": "sub/a.json"},
+                    "n": {"$ref": "#addr"},
+                    "p": {"$ref": "#/definitions/a/properties/x"}
+                }
+            }"##,
+        ),
+        ("sub/b.json", r#"{"type": "integer"}"#),
+    ]);
+    let compiled = compile(&format!("{ROOT}schema.json"), &package).expect("the schema");
+    let within: Vec<Option<String>> = compiled
+        .errors(r#"{"a": {"x": "s"}, "n": 1, "p": "s"}"#)
+        .expect("validated")
+        .iter()
+        .map(|finding| finding.within().map(str::to_owned))
+        .collect();
+    assert_eq!(
+        within,
+        [
+            Some("/a/x".to_owned()),
+            Some("/n".to_owned()),
+            Some("/p".to_owned())
+        ]
+    );
+}
+
+#[test]
+fn reads_a_pattern_as_ecma_262_does() {
+    let schema = r#"{
+        "properties": {"digits": {"pattern": "^\\d+$"}, "ahead": {"pattern": "^(?=a)\\w$"}},
+        "patternProperties": {"^\\w$": false}
+    }"#;
+    assert_eq!(
+        findings(schema, r#"{"digits": "١٢٣", "ahead": "a", "é": 1}"#),
+        found(&[("6.8", Some("/digits"))])
+    );
+}

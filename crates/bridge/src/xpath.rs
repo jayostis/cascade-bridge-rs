@@ -479,8 +479,8 @@ pub(crate) struct Followed {
 }
 
 impl Addresses for Followed {
-    fn unresolved(&self, document: &Record, record: &str, findings: &[Quad]) -> Result<Vec<Quad>> {
-        let addresses = refinements(findings);
+    fn unresolved(&self, document: &Record, record: &str, queried: &[Quad]) -> Result<Vec<Quad>> {
+        let addresses = refinements(queried);
         if addresses.is_empty() {
             return Ok(Vec::new());
         }

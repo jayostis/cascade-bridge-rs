@@ -283,13 +283,14 @@ fn unit_converted(
     if let Some(vocabulary) = &prepared.vocabulary {
         findings.extend(vocabulary.findings(&record, &produced)?);
     }
-    findings.extend(queried(prepared, &record, unit)?);
+    let queried = queried(prepared, &record, unit)?;
     let document = Record {
         source: iri,
         selector: document,
         selector_type,
     };
-    let unresolved = followed.unresolved(&document, &unit.text, &findings)?;
+    let unresolved = followed.unresolved(&document, &unit.text, &queried)?;
+    findings.extend(queried);
     findings.extend(unresolved);
     Ok((produced, findings))
 }
