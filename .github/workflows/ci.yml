@@ -38,6 +38,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ${{ github.event.repository.name }}
+      - uses: actions/cache@v6
+        with:
+          path: ${{ github.event.repository.name }}/target/wasm-bindgen-*
+          key: package-tools-fast-${{ hashFiles(format('{0}/Cargo.lock', github.event.repository.name), format('{0}/package/build.sh', github.event.repository.name)) }}
       - uses: actions/setup-node@v5
         with:
           node-version: 22
