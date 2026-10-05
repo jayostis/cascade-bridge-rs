@@ -5,7 +5,7 @@ const files: Map<string, Uint8Array> = new Map();
 const adapter: Named = { iri: "https://example.org/adapters/catalog/", files };
 const vocabulary: Named = { iri: "https://example.org/vocabularies/", files: new Map() };
 
-const described = describe(new Uint8Array(), adapter.iri);
+const described = describe(adapter.iri, new Uint8Array());
 void described;
 
 const document: Document = {

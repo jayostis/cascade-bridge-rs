@@ -502,7 +502,7 @@ fn the_node_host_reports_the_outcome_the_native_command_reports_for_each_entry()
 fn check_imports(allowlist: &Path) -> Output {
     require_the_module();
     Command::new("node")
-        .arg(node_host_directory().join("check-imports.mjs"))
+        .arg(workspace().join("package/check-imports.mjs"))
         .arg(allowlist)
         .arg(package_directory().join("cascade_bridge_bg.wasm"))
         .current_dir(workspace())
@@ -511,7 +511,7 @@ fn check_imports(allowlist: &Path) -> Output {
 }
 
 fn allowlist() -> PathBuf {
-    node_host_directory().join("imports.txt")
+    workspace().join("package/imports.txt")
 }
 
 #[test]
@@ -568,7 +568,7 @@ fn a_mapping_neither_host_can_read_is_named_once_by_each_and_both_exit_alike() {
         .expect("the metadata");
         let iri = format!(
             "{}/{named}",
-            cascade_bridge::file_iri(&adapter).expect("the adapter's IRI")
+            cascade_bridge_cli::file_iri(&adapter).expect("the adapter's IRI")
         );
         let document = adapter.join("fixtures/in/two.xml");
         let document = document.to_string_lossy().into_owned();

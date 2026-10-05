@@ -174,12 +174,12 @@ fn guard() -> cascade_bridge::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cascade_bridge::Kind;
+    use cascade_bridge::ErrorKind;
 
     #[test]
     fn the_guard_refuses_as_a_fault_in_the_bridge_once_a_panic_is_recorded() {
         record_panic();
         let refused = guard().err().map(|error| error.kind().clone());
-        assert_eq!(refused, Some(Kind::Bridge));
+        assert_eq!(refused, Some(ErrorKind::Bridge));
     }
 }
