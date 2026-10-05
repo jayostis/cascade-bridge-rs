@@ -1,4 +1,4 @@
 target/
-pkg/
-pkg.partial/
 *.earl.ttl
+package/dist/
+package/dist.partial/
