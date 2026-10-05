@@ -213,9 +213,13 @@ fn call(case: &mut Case, call: &Value, written: &Written) -> Result<(), String> 
             let metadata = read(text(arguments, "metadata")?)?;
             let format = format(arguments)?;
             let adapter = text(arguments, "adapter")?;
-            guarded(|| describe(adapter, &metadata)?.graph(format))
-                .and_then(|graph| written.put("graph", &graph).map_err(|e| json!(e)))
-                .map(|()| json!({}))
+            match guarded(|| describe(adapter, &metadata)?.graph(format)) {
+                Ok(graph) => {
+                    written.put("graph", &graph)?;
+                    Ok(json!({}))
+                }
+                Err(failed) => Err(failed),
+            }
         }
         "load" => {
             let maps = Maps::of(arguments)?;

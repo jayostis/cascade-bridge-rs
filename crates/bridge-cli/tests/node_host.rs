@@ -761,6 +761,41 @@ fn the_library_command_answers_one_calls_file_alike_on_both_hosts() {
 }
 
 #[test]
+fn neither_host_answers_a_describe_whose_graph_cannot_be_written() {
+    let scratch = scratch();
+    let calls = serde_json::json!({ "cases": [
+        { "name": "describe", "calls": [
+            { "describe": {
+                "adapter": "https://example.org/adapters/catalog/",
+                "metadata": tiny().join("ro-crate-metadata.json").to_string_lossy(),
+                "format": "turtle" } } ] }
+    ] });
+    let file = scratch.path().join("calls.json");
+    std::fs::write(&file, calls.to_string()).expect("the calls file");
+    for host in ["native", "node"] {
+        let directory = scratch.path().join(host);
+        let blocked = directory.join("describe/1.graph");
+        std::fs::create_dir_all(&blocked).expect("a directory where the graph would go");
+        let arguments = [
+            "library",
+            &file.to_string_lossy(),
+            &directory.to_string_lossy(),
+        ];
+        let run = match host {
+            "native" => native(&arguments),
+            _ => node(&arguments),
+        };
+        let said = String::from_utf8_lossy(&run.stderr);
+        assert_eq!(run.status.code(), Some(2), "{host}: {said}");
+        assert!(said.contains("1.graph"), "{host}: {said}");
+        assert!(
+            !directory.join("describe/1.json").exists(),
+            "{host}: an answer was written"
+        );
+    }
+}
+
+#[test]
 fn neither_host_reads_a_file_outside_the_adapter_named_with_an_encoded_slash() {
     let scratch = scratch();
     let adapter = scratch.path().join("adapter");

@@ -1,7 +1,7 @@
 use crate::iri::{path_to_file_iri, percent_decode, push_encoded};
 use cascade_bridge::{ErrorKind, Files, Map, Named};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 /// A directory read into a map, its symbolic links skipped, so the map holds only
 /// files inside it.
@@ -35,7 +35,12 @@ impl Folder {
         let mut path = self.path.clone();
         for segment in key.split('/') {
             let segment = percent_decode(segment).ok_or_else(|| unread(&"not a path"))?;
-            if matches!(segment.as_str(), "." | "..") || segment.contains(['/', '\\', '\0']) {
+            let mut parts = Path::new(&segment).components();
+            let single = matches!(
+                (parts.next(), parts.next()),
+                (Some(Component::Normal(_)), None)
+            );
+            if !single || segment.contains(['/', '\\', '\0']) {
                 return Err(unread(&"not inside the folder"));
             }
             path.push(segment);
