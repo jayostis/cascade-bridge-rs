@@ -12,6 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 cascade-bridge = { path = "../bridge", version = "=0.1.0" }
+oxiri = "=0.2.11"
 
 [dev-dependencies]
 tempfile = "=3.27.0"
