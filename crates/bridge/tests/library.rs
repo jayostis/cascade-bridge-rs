@@ -2,7 +2,8 @@ use cascade_bridge::oxrdf::dataset::{CanonicalizationAlgorithm, Canonicalization
 use cascade_bridge::oxrdf::{Dataset, Quad, Term};
 use cascade_bridge::oxrdfio::{RdfFormat, RdfParser};
 use cascade_bridge::{
-    describe, Adapter, Conversion, Document, Facts, Files, Format, Kind, Map, Named, Result,
+    describe, load as load_named, Conversion, Document, ErrorKind, Facts, Files, Format, Loaded,
+    Map, Named, Result, TestOptions,
 };
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -15,6 +16,7 @@ const MAPPING: &str = "mapping/item.rq";
 const VOCABULARY_FILE: &str = "ontologies/catalog/v1/catalog.ttl";
 const OA_HAS_SOURCE: &str = "http://www.w3.org/ns/oa#hasSource";
 const EARL_TEST: &str = "http://www.w3.org/ns/earl#test";
+const DOAP_REVISION: &str = "http://usefulinc.com/ns/doap#revision";
 
 fn tests_directory() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests")
@@ -77,19 +79,23 @@ fn document(bytes: &[u8]) -> Document<'_> {
     }
 }
 
-fn kind<T>(result: Result<T>) -> Option<Kind> {
+fn kind<T>(result: Result<T>) -> Option<ErrorKind> {
     result.err().map(|error| error.kind().clone())
 }
 
-fn load(adapter: &Files, vocabulary: &Files) -> Adapter {
-    Adapter::load(named(adapter, ADAPTER), Some(named(vocabulary, VOCABULARY)))
+fn load(adapter: &Files, vocabulary: &Files) -> Loaded {
+    load_named(named(adapter, ADAPTER), Some(named(vocabulary, VOCABULARY)))
         .unwrap_or_else(|error| panic!("the adapter does not load: {error}"))
 }
 
-fn convert(adapter: &Adapter, bytes: &[u8]) -> Conversion {
+fn convert(adapter: &Loaded, bytes: &[u8]) -> Conversion {
     adapter
-        .convert(&document(bytes), Format::Turtle)
+        .convert(&document(bytes))
         .unwrap_or_else(|error| panic!("the document does not convert: {error}"))
+}
+
+fn written(bytes: Result<Vec<u8>>) -> Vec<u8> {
+    bytes.unwrap_or_else(|error| panic!("the graph is not written: {error}"))
 }
 
 fn quads(bytes: &[u8]) -> Vec<Quad> {
@@ -129,19 +135,17 @@ fn objects_of(bytes: &[u8], predicate: &str) -> Vec<String> {
         .collect()
 }
 
-fn the_first_failure(adapter: &Files, vocabulary: &Files) -> Option<Kind> {
-    match Adapter::load(named(adapter, ADAPTER), Some(named(vocabulary, VOCABULARY))) {
+fn the_first_failure(adapter: &Files, vocabulary: &Files) -> Option<ErrorKind> {
+    match load_named(named(adapter, ADAPTER), Some(named(vocabulary, VOCABULARY))) {
         Err(error) => Some(error.kind().clone()),
-        Ok(loaded) => {
-            kind(loaded.convert(&document(&fixture("fixtures/in/two.xml")), Format::Turtle))
-        }
+        Ok(loaded) => kind(loaded.convert(&document(&fixture("fixtures/in/two.xml")))),
     }
 }
 
 #[test]
 fn describes_the_tiny_adapter_from_its_metadata_alone() {
     let tiny = tiny();
-    let described = describe(&tiny["ro-crate-metadata.json"], ADAPTER)
+    let described = describe(ADAPTER, &tiny["ro-crate-metadata.json"])
         .unwrap_or_else(|error| panic!("the metadata is not described: {error}"));
     assert_eq!(described.identifier.as_deref(), Some("catalog"));
     assert_eq!(described.version.as_deref(), Some("1"));
@@ -153,7 +157,7 @@ fn describes_the_tiny_adapter_from_its_metadata_alone() {
         described.envelopes,
         [format!("{ADAPTER}ro-crate-metadata.json#envelope-catalog")]
     );
-    let to_load: BTreeSet<&str> = described.files_to_load.iter().map(String::as_str).collect();
+    let to_load: BTreeSet<&str> = described.load_files.iter().map(String::as_str).collect();
     for query in [
         "mapping/item.rq",
         "mapping/item-code.rq",
@@ -175,11 +179,11 @@ fn describes_the_tiny_adapter_from_its_metadata_alone() {
     );
     assert!(
         described
-            .files_to_test
+            .crate_files
             .iter()
             .any(|path| path == "fixtures/manifest.ttl"),
         "{:?}",
-        described.files_to_test
+        described.crate_files
     );
     let mut vocabulary_files = described.vocabulary_files.clone();
     vocabulary_files.sort();
@@ -200,21 +204,18 @@ fn loads_with_the_test_manifest_and_every_fixture_left_out_and_then_converts() {
     let two = fixture("fixtures/in/two.xml");
     let facts = fixture("fixtures/facts/catalog.ttl");
     let converted = loaded
-        .convert(
-            &Document {
-                facts: Some(Facts {
-                    iri: FACTS,
-                    bytes: &facts,
-                }),
-                ..document(&two)
-            },
-            Format::Turtle,
-        )
+        .convert(&Document {
+            facts: Some(Facts {
+                iri: FACTS,
+                bytes: &facts,
+            }),
+            ..document(&two)
+        })
         .unwrap_or_else(|error| panic!("the document does not convert: {error}"));
     assert!(
-        names_an_item(&canonical(&converted.graph)),
+        names_an_item(&canonical(&written(converted.graph(Format::Turtle)))),
         "{}",
-        String::from_utf8_lossy(&converted.graph)
+        String::from_utf8_lossy(&written(converted.graph(Format::Turtle)))
     );
 }
 
@@ -222,10 +223,15 @@ fn loads_with_the_test_manifest_and_every_fixture_left_out_and_then_converts() {
 fn one_loaded_adapter_converts_two_documents_each_to_the_graph_a_fresh_load_gives() {
     let (adapter, vocabulary) = (tiny_to_load(), vocabulary());
     let loaded = load(&adapter, &vocabulary);
-    for path in ["fixtures/in/two.xml", "fixtures/in/order.xml"] {
+    for path in [
+        "fixtures/in/two.xml",
+        "fixtures/in/output-fails-a-shape.xml",
+    ] {
         let bytes = fixture(path);
-        let again = canonical(&convert(&loaded, &bytes).graph);
-        let fresh = canonical(&convert(&load(&adapter, &vocabulary), &bytes).graph);
+        let again = canonical(&written(convert(&loaded, &bytes).graph(Format::Turtle)));
+        let fresh = canonical(&written(
+            convert(&load(&adapter, &vocabulary), &bytes).graph(Format::Turtle),
+        ));
         assert!(names_an_item(&fresh), "{path}: {fresh:?}");
         assert_eq!(again, fresh, "{path}");
     }
@@ -243,25 +249,22 @@ fn accepts_a_catalog_and_not_a_document_the_detect_query_does_not_claim() {
 #[test]
 fn a_document_that_does_not_parse_is_a_document_failure() {
     let loaded = load(&tiny_to_load(), &vocabulary());
-    let failure = kind(loaded.convert(&document(b"<catalog><item"), Format::Turtle));
-    assert_eq!(failure, Some(Kind::Document));
+    let failure = kind(loaded.convert(&document(b"<catalog><item")));
+    assert_eq!(failure, Some(ErrorKind::Document));
 }
 
 #[test]
 fn facts_that_do_not_parse_are_a_facts_failure() {
     let loaded = load(&tiny_to_load(), &vocabulary());
     let two = fixture("fixtures/in/two.xml");
-    let failure = kind(loaded.convert(
-        &Document {
-            facts: Some(Facts {
-                iri: FACTS,
-                bytes: b"this is not turtle",
-            }),
-            ..document(&two)
-        },
-        Format::Turtle,
-    ));
-    assert_eq!(failure, Some(Kind::Facts));
+    let failure = kind(loaded.convert(&Document {
+        facts: Some(Facts {
+            iri: FACTS,
+            bytes: b"this is not turtle",
+        }),
+        ..document(&two)
+    }));
+    assert_eq!(failure, Some(ErrorKind::Facts));
 }
 
 #[test]
@@ -270,7 +273,7 @@ fn a_mapping_that_does_not_parse_is_an_adapter_failure() {
     adapter.insert(MAPPING.to_owned(), b"CONSTRUCT { nonsense".to_vec());
     assert_eq!(
         the_first_failure(&adapter, &vocabulary()),
-        Some(Kind::Adapter)
+        Some(ErrorKind::Adapter)
     );
 }
 
@@ -280,7 +283,7 @@ fn a_vocabulary_file_that_does_not_parse_is_a_vocabulary_failure() {
     vocabulary.insert(VOCABULARY_FILE.to_owned(), b"this is not turtle".to_vec());
     assert_eq!(
         the_first_failure(&tiny_to_load(), &vocabulary),
-        Some(Kind::Vocabulary)
+        Some(ErrorKind::Vocabulary)
     );
 }
 
@@ -291,7 +294,7 @@ fn a_mapping_left_out_is_missing_from_the_adapter_by_its_path_and_loads_once_it_
     let vocabulary = vocabulary();
     assert_eq!(
         the_first_failure(&adapter, &vocabulary),
-        Some(Kind::Missing {
+        Some(ErrorKind::Missing {
             map: Map::Adapter,
             path: MAPPING.to_owned()
         })
@@ -303,7 +306,8 @@ fn a_mapping_left_out_is_missing_from_the_adapter_by_its_path_and_loads_once_it_
             &load(&adapter, &vocabulary),
             &fixture("fixtures/in/two.xml"),
         )
-        .graph,
+        .graph(Format::Turtle)
+        .expect("a graph written"),
     );
     assert!(names_an_item(&graph), "{graph:?}");
 }
@@ -318,7 +322,7 @@ fn a_vocabulary_file_left_out_is_missing_from_the_vocabulary_by_its_path_and_loa
         .expect("the tiny vocabulary's file");
     assert_eq!(
         the_first_failure(&adapter, &vocabulary),
-        Some(Kind::Missing {
+        Some(ErrorKind::Missing {
             map: Map::Vocabulary,
             path: VOCABULARY_FILE.to_owned()
         })
@@ -330,7 +334,8 @@ fn a_vocabulary_file_left_out_is_missing_from_the_vocabulary_by_its_path_and_loa
             &load(&adapter, &vocabulary),
             &fixture("fixtures/in/two.xml"),
         )
-        .graph,
+        .graph(Format::Turtle)
+        .expect("a graph written"),
     );
     assert!(names_an_item(&graph), "{graph:?}");
 }
@@ -340,12 +345,14 @@ fn a_document_failure_spoils_nothing_for_the_next_document() {
     let (adapter, vocabulary) = (tiny_to_load(), vocabulary());
     let loaded = load(&adapter, &vocabulary);
     assert_eq!(
-        kind(loaded.convert(&document(b"<catalog><item"), Format::Turtle)),
-        Some(Kind::Document)
+        kind(loaded.convert(&document(b"<catalog><item"))),
+        Some(ErrorKind::Document)
     );
     let two = fixture("fixtures/in/two.xml");
-    let after = canonical(&convert(&loaded, &two).graph);
-    let fresh = canonical(&convert(&load(&adapter, &vocabulary), &two).graph);
+    let after = canonical(&written(convert(&loaded, &two).graph(Format::Turtle)));
+    let fresh = canonical(&written(
+        convert(&load(&adapter, &vocabulary), &two).graph(Format::Turtle),
+    ));
     assert!(names_an_item(&fresh), "{fresh:?}");
     assert_eq!(after, fresh);
 }
@@ -358,31 +365,36 @@ fn names_no_file_iri_in_the_graph_the_findings_or_the_report_and_every_entry_und
     let two = fixture("fixtures/in/two.xml");
     let facts = fixture("fixtures/facts/catalog.ttl");
     let converted = loaded
-        .convert(
-            &Document {
-                facts: Some(Facts {
-                    iri: FACTS,
-                    bytes: &facts,
-                }),
-                ..document(&two)
-            },
-            Format::Turtle,
-        )
+        .convert(&Document {
+            facts: Some(Facts {
+                iri: FACTS,
+                bytes: &facts,
+            }),
+            ..document(&two)
+        })
         .unwrap_or_else(|error| panic!("the document does not convert: {error}"));
-    let graph = String::from_utf8_lossy(&converted.graph);
-    let findings = String::from_utf8_lossy(&converted.findings);
-    assert!(names_an_item(&canonical(&converted.graph)), "{graph}");
+    let (graph_bytes, findings_bytes) = (
+        written(converted.graph(Format::Turtle)),
+        written(converted.findings(Format::Turtle, None)),
+    );
+    let graph = String::from_utf8_lossy(&graph_bytes);
+    let findings = String::from_utf8_lossy(&findings_bytes);
+    assert!(names_an_item(&canonical(&graph_bytes)), "{graph}");
     assert!(!graph.contains("file:"), "{graph}");
     assert!(!findings.contains("file:"), "{findings}");
-    let sources = objects_of(&converted.findings, OA_HAS_SOURCE);
+    let sources = objects_of(&findings_bytes, OA_HAS_SOURCE);
     assert!(
         !sources.is_empty() && sources.iter().all(|source| source == DOCUMENT),
         "each finding names the document by the IRI given: {sources:?}"
     );
 
     let tiny = tiny();
-    let report = cascade_bridge::test(named(&tiny, ADAPTER), Some(named(&vocabulary, VOCABULARY)))
-        .unwrap_or_else(|error| panic!("the adapter is not tested: {error}"));
+    let report = cascade_bridge::test(
+        named(&tiny, ADAPTER),
+        Some(named(&vocabulary, VOCABULARY)),
+        TestOptions::default(),
+    )
+    .unwrap_or_else(|error| panic!("the adapter is not tested: {error}"));
     let earl = String::from_utf8_lossy(&report.earl);
     assert!(!earl.contains("file:"), "{earl}");
     let tested: BTreeSet<String> = objects_of(&report.earl, EARL_TEST).into_iter().collect();
@@ -400,4 +412,24 @@ fn names_no_file_iri_in_the_graph_the_findings_or_the_report_and_every_entry_und
     .map(|name| format!("{ADAPTER}fixtures/manifest.ttl#{name}"))
     .collect();
     assert_eq!(tested, entries, "{earl}");
+}
+
+#[test]
+fn reports_this_bridge_at_its_own_version() {
+    let (tiny, vocabulary) = (tiny(), vocabulary());
+    let report = cascade_bridge::test(
+        named(&tiny, ADAPTER),
+        Some(named(&vocabulary, VOCABULARY)),
+        TestOptions::default(),
+    )
+    .unwrap_or_else(|error| panic!("the adapter is not tested: {error}"));
+    let revisions: Vec<String> = quads(&report.earl)
+        .into_iter()
+        .filter(|quad| quad.predicate.as_str() == DOAP_REVISION)
+        .map(|quad| match quad.object {
+            Term::Literal(revision) => revision.value().to_owned(),
+            other => panic!("a revision that is not a literal: {other}"),
+        })
+        .collect();
+    assert_eq!(revisions, [env!("CARGO_PKG_VERSION")]);
 }
