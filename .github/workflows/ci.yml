@@ -27,8 +27,8 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      # Checked out and cached before start, which checks out only what is missing and
-      # whose first act is the release build.
+      # Checked out, cached and built before start, which checks out only what is missing
+      # and finds the package already built.
       - uses: actions/checkout@v7
         with:
           path: ${{ github.event.repository.name }}
@@ -38,6 +38,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ${{ github.event.repository.name }}
+          key: ${{ hashFiles(format('{0}/Cargo.toml', github.event.repository.name)) }}
+      # build.sh fetches its tools into target/, which rust-cache does not keep.
       - uses: actions/cache@v6
         with:
           path: ${{ github.event.repository.name }}/target/wasm-bindgen-*
@@ -45,8 +47,14 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
+      - run: sh package/build.sh --fast
+        working-directory: ${{ github.event.repository.name }}
       - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
-      - run: cargo test --locked -p cascade-bridge-cli --test specification_vector -- --ignored
+      - run: cargo test --locked -p cascade-bridge-cli --test node_host --test specification_vector -- --include-ignored
+        working-directory: ${{ github.event.repository.name }}
+      - run: node --test package/tests/
+        working-directory: ${{ github.event.repository.name }}
+      - run: npx --yes typescript@7.0.2 --noEmit --strict package/tests/consumer.ts
         working-directory: ${{ github.event.repository.name }}
 
   ready-to-merge:
