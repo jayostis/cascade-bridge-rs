@@ -417,10 +417,13 @@ fn the_node_host_exits_two_and_says_why_when_the_engine_traps() {
 }
 
 #[test]
-fn an_adapter_under_a_folder_named_with_a_space_and_a_non_ascii_letter_converts_alike_on_both_hosts(
+fn an_adapter_under_a_folder_named_with_a_space_a_non_ascii_letter_and_sub_delimiters_converts_alike_on_both_hosts(
 ) {
     let scratch = scratch();
-    let adapter = scratch.path().join("une données").join("tiny-adapter");
+    let adapter = scratch
+        .path()
+        .join("une données (old)+@,;=&!")
+        .join("tiny-adapter");
     copied_to(&tiny(), &adapter);
     let vocabularies = vocabularies().to_string_lossy().into_owned();
     converts_as_the_native_command_does(&adapter, "two.xml", &["--vocabularies", &vocabularies]);
@@ -755,4 +758,73 @@ fn the_library_command_answers_one_calls_file_alike_on_both_hosts() {
         "{native_results:#?}"
     );
     assert_eq!(&held["node"], native_results);
+}
+
+#[test]
+fn neither_host_reads_a_file_outside_the_adapter_named_with_an_encoded_slash() {
+    let scratch = scratch();
+    let adapter = scratch.path().join("adapter");
+    copied_to(&tiny(), &adapter);
+    std::fs::rename(
+        adapter.join("mapping/detect.rq"),
+        scratch.path().join("secret.rq"),
+    )
+    .expect("the query moved beside the adapter");
+    replaced_once(
+        &adapter,
+        "ro-crate-metadata.json",
+        "\"mapping/detect.rq\"",
+        "\"..%2Fsecret.rq\"",
+    );
+    let document = adapter.join("fixtures/in/two.xml");
+    let document = document.to_string_lossy().into_owned();
+    let adapter = adapter.to_string_lossy().into_owned();
+    for (host, run) in [
+        ("native", native(&["convert", &adapter, &document])),
+        ("node", node(&["convert", &adapter, &document])),
+    ] {
+        let said = String::from_utf8_lossy(&run.stderr);
+        assert_eq!(run.status.code(), Some(2), "{host}: {said}");
+        assert!(said.contains("not inside"), "{host}: {said}");
+    }
+}
+
+#[test]
+fn both_hosts_convert_with_the_adapter_s_own_schema_of_the_xml_namespace_as_they_test_with_it() {
+    let scratch = scratch();
+    let adapter = scratch.path().join("adapter");
+    copied_to(&tiny(), &adapter);
+    replaced_once(
+        &adapter,
+        "schema/item.xsd",
+        "<xs:element name=\"item\"",
+        "<xs:import namespace=\"http://www.w3.org/XML/1998/namespace\" schemaLocation=\"xml.xsd\"/>\n  <xs:element name=\"item\"",
+    );
+    replaced_once(
+        &adapter,
+        "schema/item.xsd",
+        "<xs:attribute name=\"internal\" type=\"xs:string\"/>",
+        "<xs:attribute name=\"internal\" type=\"xs:string\"/>\n    <xs:attribute ref=\"xml:lang\"/>",
+    );
+    replaced_once(
+        &adapter,
+        "fixtures/in/two.xml",
+        "<item id=\"1\">",
+        "<item id=\"1\" xml:lang=\"en\">",
+    );
+    std::fs::write(
+        adapter.join("schema/xml.xsd"),
+        "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" targetNamespace=\"http://www.w3.org/XML/1998/namespace\">\n  <xs:attribute name=\"lang\">\n    <xs:simpleType>\n      <xs:restriction base=\"xs:language\">\n        <xs:enumeration value=\"fr\"/>\n      </xs:restriction>\n    </xs:simpleType>\n  </xs:attribute>\n</xs:schema>\n",
+    )
+    .expect("the adapter's own schema of the XML namespace");
+    let vocabularies = vocabularies().to_string_lossy().into_owned();
+    let found = converts_as_the_native_command_does(
+        &adapter,
+        "two.xml",
+        &["--vocabularies", &vocabularies],
+    );
+    assert!(
+        names(&found, "http://www.w3.org/ns/shacl#Violation"),
+        "the item whose xml:lang only the adapter's schema refuses: {found:?}"
+    );
 }

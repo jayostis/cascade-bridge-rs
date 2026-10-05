@@ -11,7 +11,6 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { pathToFileURL } from "node:url";
 import { Adapter, describe, test } from "../../package/dist/node.js";
 
 const USAGE = `usage: cascade-bridge test <adapter-dir> [--vocabularies <directory>] [--earl <out.ttl>] [--datasets]
@@ -35,16 +34,42 @@ function at(path, f) {
   }
 }
 
+function encoded(text) {
+  let out = "";
+  for (const byte of new TextEncoder().encode(text)) {
+    const kept = byte < 0x80 && /[A-Za-z0-9\-._~/:]/.test(String.fromCharCode(byte));
+    out += kept ? String.fromCharCode(byte) : `%${byte.toString(16).toUpperCase().padStart(2, "0")}`;
+  }
+  return out;
+}
+
+// Spelled as the native host spells it, so both hosts name a path alike.
+function fileIri(path) {
+  const text = path.replaceAll("\\", "/");
+  const unc = text.startsWith("//?/UNC/")
+    ? text.slice("//?/UNC/".length)
+    : text.startsWith("//") && !text.startsWith("//?/")
+      ? text.slice(2)
+      : undefined;
+  let server = "";
+  let rest = text.startsWith("//?/") ? text.slice("//?/".length) : text;
+  if (unc !== undefined) {
+    const slash = unc.indexOf("/");
+    [server, rest] = slash < 0 ? [unc, ""] : [unc.slice(0, slash), unc.slice(slash + 1)];
+  }
+  return `file://${encoded(server)}${rest.startsWith("/") ? "" : "/"}${encoded(rest)}`;
+}
+
 function iriOf(path) {
-  return pathToFileURL(at(path, () => realpathSync.native(path))).href;
+  return fileIri(at(path, () => realpathSync.native(path)));
 }
 
 // The IRI the file at `path` will have once it is written, read as it would be then.
 function iriOfWritten(path) {
   try {
-    return pathToFileURL(realpathSync.native(path)).href;
+    return fileIri(realpathSync.native(path));
   } catch {
-    return pathToFileURL(join(at(path, () => realpathSync.native(dirname(path))), basename(path))).href;
+    return fileIri(join(at(path, () => realpathSync.native(dirname(path))), basename(path)));
   }
 }
 
@@ -52,7 +77,7 @@ function iriOfWritten(path) {
 class Folder {
   constructor(directory) {
     this.path = at(directory, () => realpathSync.native(directory));
-    this.iri = `${pathToFileURL(this.path).href}/`;
+    this.iri = `${fileIri(this.path)}/`;
     this.files = new Map();
   }
 
@@ -69,6 +94,9 @@ class Folder {
         decoded = decodeURIComponent(segment);
       } catch {
         throw unread("not a path");
+      }
+      if (decoded === "." || decoded === ".." || /[/\\\0]/.test(decoded)) {
+        throw unread("not inside the folder");
       }
       path = join(path, decoded);
       let linked;
@@ -106,7 +134,7 @@ class Folder {
         if (entry.isDirectory() && !(directory === this.path && entry.name === ".git")) {
           pending.push(path);
         } else if (entry.isFile()) {
-          const key = pathToFileURL(path).href.slice(this.iri.length);
+          const key = fileIri(path).slice(this.iri.length);
           this.files.set(key, new Uint8Array(at(path, () => readFileSync(path))));
         }
       }
@@ -344,7 +372,7 @@ function runTest(parsed) {
 
 function runConvert(parsed) {
   const [inputs, description] = opened(parsed.directory, parsed.vocabularies);
-  inputs.adapter.with(description.loadFiles);
+  inputs.adapter.withEveryFile();
   const adapter = complete(inputs, (named, vocabulary) => Adapter.load(named, vocabulary));
   try {
     const bytes = at(parsed.document, () => new Uint8Array(readFileSync(parsed.document)));

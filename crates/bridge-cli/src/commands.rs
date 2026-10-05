@@ -222,9 +222,8 @@ fn crate_named(adapter: &str, named: &str) -> Result<String, String> {
 }
 
 fn convert(arguments: &Convert) -> Result<u8, String> {
-    let (mut inputs, description) =
-        opened(&arguments.directory, arguments.vocabularies.as_deref())?;
-    inputs.adapter = inputs.adapter.with(&description.load_files);
+    let (mut inputs, _) = opened(&arguments.directory, arguments.vocabularies.as_deref())?;
+    inputs.adapter = inputs.adapter.with_every_file()?;
     let loaded = inputs.complete(load)?;
     let bytes = read(&arguments.document)?;
     let iri = iri_of(&arguments.document)?;

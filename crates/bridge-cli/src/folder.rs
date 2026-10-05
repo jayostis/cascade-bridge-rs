@@ -32,9 +32,12 @@ impl Folder {
     /// The file at `key`, a path as a map is keyed.
     pub fn read(&self, key: &str) -> Result<Vec<u8>, String> {
         let unread = |reason: &dyn std::fmt::Display| format!("{}{key}: {reason}", self.iri);
-        let decoded = percent_decode(key).ok_or_else(|| unread(&"not a path"))?;
         let mut path = self.path.clone();
-        for segment in decoded.split('/') {
+        for segment in key.split('/') {
+            let segment = percent_decode(segment).ok_or_else(|| unread(&"not a path"))?;
+            if matches!(segment.as_str(), "." | "..") || segment.contains(['/', '\\', '\0']) {
+                return Err(unread(&"not inside the folder"));
+            }
             path.push(segment);
             let linked = fs::symlink_metadata(&path)
                 .map_err(|e| unread(&e))?
