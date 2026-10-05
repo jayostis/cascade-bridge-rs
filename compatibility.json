@@ -4,12 +4,21 @@
     {
       "name": "native",
       "setup": ["cargo", "build", "--release", "--locked", "-p", "cascade-bridge-cli"],
-      "command": ["cargo", "run", "--release", "--locked", "-q", "-p", "cascade-bridge-cli", "--"]
+      "command": ["cargo", "run", "--release", "--locked", "-q", "-p", "cascade-bridge-cli", "--"],
+      "release": {
+        "asset": "cascade-bridge-x86_64-unknown-linux-gnu",
+        "path": "target/release-asset/cascade-bridge",
+        "command": ["target/release-asset/cascade-bridge"]
+      }
     },
     {
       "name": "node",
       "setup": ["sh", "package/build.sh", "--fast"],
-      "command": ["node", "hosts/node/cascade-bridge.mjs"]
+      "command": ["node", "hosts/node/cascade-bridge.mjs"],
+      "release": {
+        "asset": "cascade-bridge-rs-*.tgz",
+        "path": "package/dist"
+      }
     }
   ],
   "mustPassWith": [
