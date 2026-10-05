@@ -164,3 +164,22 @@ pub fn file_iri_to_path(iri: &str) -> Option<String> {
 pub fn authority(iri: &str) -> Option<String> {
     cascade_bridge::authority(iri).map(str::to_owned)
 }
+
+fn record_panic() {}
+
+fn guard() -> cascade_bridge::Result<()> {
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cascade_bridge::Kind;
+
+    #[test]
+    fn the_guard_refuses_as_a_fault_in_the_bridge_once_a_panic_is_recorded() {
+        record_panic();
+        let refused = guard().err().map(|error| error.kind().clone());
+        assert_eq!(refused, Some(Kind::Bridge));
+    }
+}

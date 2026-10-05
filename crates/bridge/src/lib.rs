@@ -13,6 +13,7 @@ mod error;
 mod fixtures;
 mod harness;
 mod json;
+mod library;
 mod lift;
 mod load;
 mod query;
@@ -27,7 +28,11 @@ mod validate;
 mod vocabulary;
 mod xpath;
 
-pub use error::{Error, Result};
+pub use error::{Error, Kind, Map, Result};
+pub use library::{
+    describe, test, Adapter, Conversion, Description, Document, Facts, Files, Format, Named,
+    TestReport,
+};
 pub use oxrdf;
 pub use oxrdfio;
 pub use resolver::{

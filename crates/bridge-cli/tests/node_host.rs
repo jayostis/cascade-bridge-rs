@@ -23,11 +23,15 @@ fn node_host_directory() -> PathBuf {
     workspace().join("hosts/node")
 }
 
+fn package_directory() -> PathBuf {
+    workspace().join("package/dist")
+}
+
 fn require_the_module() {
-    let module = node_host_directory().join("pkg/cascade_bridge_wasm.js");
+    let module = package_directory().join("node.js");
     assert!(
         module.is_file(),
-        "no node host module at {}: run `sh hosts/node/setup.sh` first",
+        "no package entry at {}: run `sh package/build.sh` first",
         module.display()
     );
 }
@@ -380,23 +384,46 @@ fn the_node_host_exits_as_the_native_command_does_when_standard_output_is_closed
 #[test]
 fn the_node_host_exits_two_and_says_why_when_the_engine_traps() {
     let scratch = scratch();
-    let host = scratch.path().join("cascade-bridge.mjs");
-    std::fs::copy(node_host_directory().join("cascade-bridge.mjs"), &host).expect("the host");
-    std::fs::create_dir(scratch.path().join("pkg")).expect("the module's directory");
+    let host = scratch.path().join("hosts/node");
+    copied_to(&node_host_directory(), &host);
+    let package = scratch.path().join("package/dist");
+    std::fs::create_dir_all(&package).expect("the package's directory");
+    std::fs::write(package.join("package.json"), "{ \"type\": \"module\" }\n")
+        .expect("the package's manifest");
     std::fs::write(
-        scratch.path().join("pkg/cascade_bridge_wasm.js"),
-        "exports.run = () => { throw new WebAssembly.RuntimeError(\"unreachable\"); };\n",
+        package.join("node.js"),
+        "const trap = () => { throw new WebAssembly.RuntimeError(\"unreachable\"); };\n\
+         export const describe = trap;\n\
+         export const test = trap;\n\
+         export class Adapter { static load() { trap(); } }\n\
+         export class BridgeError extends Error {}\n",
     )
-    .expect("a module whose engine traps");
+    .expect("a package whose engine traps");
+    let adapter = tiny().to_string_lossy().into_owned();
+    let vocabularies = vocabularies().to_string_lossy().into_owned();
     let run = Command::new("node")
-        .arg(&host)
-        .arg("test")
+        .arg(host.join("cascade-bridge.mjs"))
+        .args(["test", &adapter, "--vocabularies", &vocabularies])
         .current_dir(scratch.path())
         .output()
         .expect("run node");
     let said = String::from_utf8_lossy(&run.stderr);
     assert_eq!(run.status.code(), Some(2), "{said}");
-    assert_eq!(said, "cascade-bridge: unreachable\n");
+    let reason = said.strip_prefix("cascade-bridge: ").unwrap_or(&said);
+    assert!(
+        reason.contains("bridge"),
+        "the trap is said to be a fault in the Bridge: {said}"
+    );
+}
+
+#[test]
+fn an_adapter_under_a_folder_named_with_a_space_and_a_non_ascii_letter_converts_alike_on_both_hosts(
+) {
+    let scratch = scratch();
+    let adapter = scratch.path().join("une données").join("tiny-adapter");
+    copied_to(&tiny(), &adapter);
+    let vocabularies = vocabularies().to_string_lossy().into_owned();
+    converts_as_the_native_command_does(&adapter, "two.xml", &["--vocabularies", &vocabularies]);
 }
 
 fn outcomes(report: &Path) -> BTreeMap<String, String> {
@@ -477,6 +504,7 @@ fn check_imports(allowlist: &Path) -> Output {
     Command::new("node")
         .arg(node_host_directory().join("check-imports.mjs"))
         .arg(allowlist)
+        .arg(package_directory().join("cascade_bridge_bg.wasm"))
         .current_dir(workspace())
         .output()
         .expect("run node")
@@ -487,7 +515,7 @@ fn allowlist() -> PathBuf {
 }
 
 #[test]
-fn the_import_check_passes_on_the_module_the_node_host_loads() {
+fn the_import_check_passes_on_the_package_s_module() {
     let run = check_imports(&allowlist());
     assert!(
         run.status.success(),

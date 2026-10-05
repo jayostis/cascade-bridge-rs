@@ -1,6 +1,22 @@
 // A harness puts an error's sentence in an entry's description: write it to be read there.
 use std::fmt;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Kind {
+    Document,
+    Facts,
+    Adapter,
+    Vocabulary,
+    Missing { map: Map, path: String },
+    Bridge,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Map {
+    Adapter,
+    Vocabulary,
+}
+
 #[derive(Debug)]
 pub struct Error {
     message: String,
@@ -24,6 +40,11 @@ impl Error {
 
     pub(crate) fn is_missing(&self) -> bool {
         self.missing
+    }
+
+    pub fn kind(&self) -> &Kind {
+        static BRIDGE: Kind = Kind::Bridge;
+        &BRIDGE
     }
 }
 

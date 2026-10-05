@@ -44,7 +44,7 @@ So:
   `meets_a_real_adapter_only_through_the_compatibility_run`. An engine tested
   against the adapters it has met passes those adapters, not the contract.
 - **The library never touches a filesystem**:
-  `lets_only_the_resolver_name_the_filesystem`. A host that is not a
+  `names_no_filesystem_outside_its_test_fixtures`. A host that is not a
   directory supplies bytes by IRI instead.
 - **Nothing is fetched.** The JSON-LD context is bundled in
   `crates/bridge/src/contexts/`.
