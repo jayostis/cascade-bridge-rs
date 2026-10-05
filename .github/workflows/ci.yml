@@ -38,6 +38,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ${{ github.event.repository.name }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
       - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
       - run: cargo test --locked -p cascade-bridge-cli --test specification_vector -- --ignored
         working-directory: ${{ github.event.repository.name }}

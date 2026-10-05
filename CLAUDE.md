@@ -44,8 +44,8 @@ So:
   `meets_a_real_adapter_only_through_the_compatibility_run`. An engine tested
   against the adapters it has met passes those adapters, not the contract.
 - **The library never touches a filesystem**:
-  `names_no_filesystem_outside_its_test_fixtures`. A host that is not a
-  directory supplies bytes by IRI instead.
+  `names_no_filesystem_outside_its_test_fixtures`. A host hands it maps of files
+  instead, each keyed by path under the IRI its paths resolve against.
 - **Nothing is fetched.** The JSON-LD context is bundled in
   `crates/bridge/src/contexts/`.
 - **Each unit gets a store of its own**, so no query can reach into another
@@ -58,9 +58,9 @@ So:
 ## Conventions
 
 - `cargo fmt --all`, `cargo clippy --all-targets -- -D warnings`,
-  `sh hosts/node/setup.sh`, `cargo test`. CI runs all four, and
-  the specification's vector, `specification_vector.rs`, with `--ignored`
-  where it has checked out the specification. setup.sh is the one build step:
-  it builds the module the node host tests load, and `cargo test` never builds
-  or installs anything.
+  `sh package/build.sh`, `cargo test`, `node --test package/tests/`. CI runs
+  them all, and the specification's vector, `specification_vector.rs`, with
+  `--ignored` where it has checked out the specification. build.sh is the one
+  build step: it builds the package in `package/dist` that the Node tests load,
+  and `cargo test` never builds or installs anything.
 - Conventional commits. Impersonal.

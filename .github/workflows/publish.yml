@@ -1,0 +1,61 @@
+name: publish
+
+# A merge to main is the only trigger, so no pull request ever publishes.
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: publish-${{ github.sha }}
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/cache@v6
+        with:
+          path: |
+            target/wasm-bindgen-*
+            target/binaryen-*
+          key: package-tools-${{ hashFiles('Cargo.lock', 'package/build.sh') }}
+      - id: exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "build-$GITHUB_SHA" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.exists.outputs.release == 'false'
+        run: sh package/build.sh
+      - if: steps.exists.outputs.release == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        working-directory: package/dist
+        run: |
+          npm pack --json > ../pack.json
+          tarball=$(node -e 'console.log(require("../pack.json")[0].filename)')
+          integrity=$(node -e 'console.log(require("../pack.json")[0].integrity)')
+          sources=$(node -e 'console.log(require("./package.json").cascadeBridge.sources)')
+          notes=$(printf 'Commit: %s\nSources: %s\nIntegrity: %s\n' "$GITHUB_SHA" "$sources" "$integrity")
+          gh release create "build-$GITHUB_SHA" "$tarball" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "build-$GITHUB_SHA" \
+            --notes "$notes" \
+            --prerelease \
+            --latest=false

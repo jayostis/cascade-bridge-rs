@@ -8,6 +8,10 @@ It runs a Cascade Bridge Adapter, a data package for one source format, and
 executes the adapter's test manifest. `cascade-bridge` with no arguments says
 how.
 
+Every merge to `main` publishes the npm package `cascade-bridge-rs`, the library
+built for WebAssembly, as a pre-release on the
+[releases page](https://github.com/jayostis/cascade-bridge-rs/releases).
+
 ## Status: DRAFT
 
 No compatibility is promised. Which version of every repository a run uses is
