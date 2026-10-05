@@ -1,4 +1,4 @@
-use super::lift_slice;
+use super::{document_selector, lift_slice};
 
 fn selectors(xml: &[u8], record: &str) -> Vec<String> {
     lift_slice(xml, Some(record))
@@ -67,4 +67,18 @@ fn names_an_element_in_no_namespace_under_one_in_a_namespace_by_its_name() {
 #[test]
 fn writes_a_record_that_is_the_document_element_as_one_step_with_no_index() {
     assert_eq!(selectors(br#"<item id="9"/>"#, "item"), ["/item"]);
+}
+
+#[test]
+fn selects_the_element_the_envelope_describes_where_the_document_has_none() {
+    assert_eq!(
+        document_selector(None, Some("catalog")),
+        "/catalog",
+        "a finding about the document selects the envelope's document root element"
+    );
+    assert_eq!(
+        document_selector(Some("/other".to_owned()), Some("catalog")),
+        "/other"
+    );
+    assert_eq!(document_selector(None, None), "/*");
 }

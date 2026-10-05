@@ -1,0 +1,1 @@
+{"zero": 0, "negativeZero": -0, "decimal": 1.50, "exponent": 1E+2, "small": 2.5e-3, "big": 123456789012345678901234567890, "yes": true, "no": false, "empty": "", "padded": "  kept  "}

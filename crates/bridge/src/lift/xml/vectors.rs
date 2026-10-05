@@ -213,7 +213,7 @@ fn writes_a_record_out_with_the_comments_and_instructions_it_held() {
         .expect("a unit")
         .expect("a unit");
     assert_eq!(
-        unit.xml,
+        unit.text,
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?><item>before<!-- inside --><?say it?>after<e></e></item>"
     );
     assert_graph(

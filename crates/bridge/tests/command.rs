@@ -324,3 +324,32 @@ fn convert_reads_no_document_where_the_adapter_does_not_load() {
         host.said()
     );
 }
+
+fn list_in_the_tiny_json_adapter() -> (DirectoryResolver, String) {
+    let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/tiny-json-adapter");
+    let list = directory.join("fixtures/in/list.json");
+    (
+        DirectoryResolver::new(&directory).expect("resolver"),
+        list.to_string_lossy().into_owned(),
+    )
+}
+
+#[test]
+fn convert_reads_the_document_in_the_envelope_named_as_the_crate_names_it() {
+    let (adapter, list) = list_in_the_tiny_json_adapter();
+    let mut host = Recorder::of(adapter);
+    let status = host.run(&["convert", "adapter", &list, "--envelope", "#envelope-item"]);
+    let said = host.printed("err");
+    assert_eq!(status, 0, "{said}");
+    assert!(said.contains(" 1 record(s)"), "{said}");
+}
+
+#[test]
+fn convert_refuses_an_envelope_the_adapter_does_not_declare() {
+    let (adapter, list) = list_in_the_tiny_json_adapter();
+    let mut host = Recorder::of(adapter);
+    let status = host.run(&["convert", "adapter", &list, "--envelope", "#envelope-none"]);
+    let said = host.printed("err");
+    assert_eq!(status, 2, "{said}");
+    assert!(said.contains("declares no envelope"), "{said}");
+}

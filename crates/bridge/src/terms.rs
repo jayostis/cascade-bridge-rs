@@ -23,6 +23,9 @@ terms! {
     OA_HAS_BODY = "http://www.w3.org/ns/oa#", "hasBody";
     OA_REFINED_BY = "http://www.w3.org/ns/oa#", "refinedBy";
     OA_XPATH_SELECTOR = "http://www.w3.org/ns/oa#", "XPathSelector";
+    OA_FRAGMENT_SELECTOR = "http://www.w3.org/ns/oa#", "FragmentSelector";
+    DCTERMS_CONFORMS_TO = "http://purl.org/dc/terms/", "conformsTo";
+    JSON_POINTER = "https://www.rfc-editor.org/rfc/", "rfc6901";
     OA_MOTIVATED_BY = "http://www.w3.org/ns/oa#", "motivatedBy";
     OA_CLASSIFYING = "http://www.w3.org/ns/oa#", "classifying";
 
@@ -54,6 +57,10 @@ terms! {
     BRIDGE_TABLE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "table";
     BRIDGE_ENVELOPE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "envelope";
     BRIDGE_DOC_ROOT_ELEMENT_NAME = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "docRootElementName";
+    BRIDGE_DOC_ROOT_MEMBER_NAME = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "docRootMemberName";
+    BRIDGE_DOC_ROOT_MEMBER_VALUE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "docRootMemberValue";
+    BRIDGE_JSON_PATH_OF_EACH_RECORD = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "jsonPathOfEachRecord";
+    BRIDGE_SOURCE_MEDIA_TYPE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "sourceMediaType";
     BRIDGE_SOURCE_SCHEMA = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "sourceSchema";
     BRIDGE_VOCABULARY_FILE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "vocabularyFile";
     BRIDGE_PREDICATE_NOT_DECLARED = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "predicateNotDeclared";
