@@ -584,3 +584,175 @@ fn a_mapping_neither_host_can_read_is_named_once_by_each_and_both_exit_alike() {
         }
     }
 }
+
+fn files_under(
+    root: &Path,
+    directory: &Path,
+    into: &mut serde_json::Map<String, serde_json::Value>,
+) {
+    for entry in std::fs::read_dir(directory).expect("a directory") {
+        let path = entry.expect("an entry").path();
+        let key = path
+            .strip_prefix(root)
+            .expect("under the root")
+            .to_string_lossy()
+            .replace('\\', "/");
+        if path.is_dir() {
+            files_under(root, &path, into);
+        } else {
+            into.insert(key, serde_json::json!(path.to_string_lossy()));
+        }
+    }
+}
+
+fn map_of(directory: &Path, iri: &str, withheld: &[&str]) -> serde_json::Value {
+    let mut files = serde_json::Map::new();
+    files_under(directory, directory, &mut files);
+    files.retain(|key, _| !withheld.iter().any(|left| key.starts_with(left)));
+    serde_json::json!({ "iri": iri, "files": files })
+}
+
+/// The answers, kinds and graphs a results directory holds, each graph canonicalised.
+fn results(directory: &Path) -> BTreeMap<String, String> {
+    let mut held = BTreeMap::new();
+    for case in std::fs::read_dir(directory).expect("the results") {
+        let case = case.expect("a case").path();
+        for written in std::fs::read_dir(&case).expect("a case's results") {
+            let written = written.expect("a result").path();
+            let name = format!(
+                "{}/{}",
+                case.file_name().expect("a case name").to_string_lossy(),
+                written.file_name().expect("a file name").to_string_lossy()
+            );
+            let bytes = std::fs::read(&written).expect("a result");
+            let said = match written.extension().and_then(|e| e.to_str()) {
+                Some("json") => {
+                    let mut answer: serde_json::Value =
+                        serde_json::from_slice(&bytes).expect("a JSON result");
+                    if let Some(failure) = answer.get_mut("failure") {
+                        failure
+                            .as_object_mut()
+                            .expect("a failure")
+                            .remove("message");
+                    }
+                    answer.to_string()
+                }
+                Some("report") => format!("{:?}", outcomes(&written)),
+                _ => format!(
+                    "{:?}",
+                    canonical(&bytes, RdfFormat::Turtle, "https://example.org/base")
+                ),
+            };
+            held.insert(name, said);
+        }
+    }
+    held
+}
+
+#[test]
+fn the_library_command_answers_one_calls_file_alike_on_both_hosts() {
+    let scratch = scratch();
+    let adapter_iri = "https://example.org/adapters/catalog/";
+    let vocabulary = map_of(&vocabularies(), "https://example.org/vocabularies/", &[]);
+    let to_load = map_of(&tiny(), adapter_iri, &["fixtures/"]);
+    let lacking = map_of(&tiny(), adapter_iri, &["fixtures/", "mapping/item.rq"]);
+    let whole = map_of(&tiny(), adapter_iri, &[]);
+    let not_xml = scratch.path().join("not-xml.xml");
+    std::fs::write(&not_xml, "<catalog><item").expect("a document that does not parse");
+    let document = |path: &Path| {
+        serde_json::json!({
+            "iri": "https://example.org/documents/catalog.xml",
+            "path": path.to_string_lossy(),
+        })
+    };
+    let two = document(&tiny().join("fixtures/in/two.xml"));
+    let mut with_facts = two.clone();
+    with_facts["facts"] = serde_json::json!({
+        "iri": "https://example.org/facts/catalog.ttl",
+        "path": tiny().join("fixtures/facts/catalog.ttl").to_string_lossy(),
+    });
+    let calls = serde_json::json!({ "cases": [
+        { "name": "describe", "calls": [
+            { "describe": {
+                "adapter": adapter_iri,
+                "metadata": tiny().join("ro-crate-metadata.json").to_string_lossy(),
+                "format": "turtle" } } ] },
+        { "name": "convert", "calls": [
+            { "convert": { "document": two, "format": "turtle" } },
+            { "load": { "adapter": to_load, "vocabulary": vocabulary } },
+            { "ask": { "document": two } },
+            { "convert": { "document": document(&not_xml), "format": "turtle" } },
+            { "convert": { "document": with_facts, "format": "ntriples" } } ] },
+        { "name": "missing", "calls": [
+            { "load": { "adapter": lacking, "vocabulary": vocabulary } },
+            { "load": { "adapter": to_load } },
+            { "convert": { "document": two, "format": "turtle" } } ] },
+        { "name": "test", "calls": [
+            { "test": { "adapter": whole, "vocabulary": vocabulary } },
+            { "test": { "adapter": whole } } ] }
+    ] });
+    let file = scratch.path().join("calls.json");
+    std::fs::write(&file, calls.to_string()).expect("the calls file");
+    let mut held = BTreeMap::new();
+    for host in ["native", "node"] {
+        let directory = scratch.path().join(host);
+        std::fs::create_dir(&directory).expect("an empty results directory");
+        let arguments = [
+            "library",
+            &file.to_string_lossy(),
+            &directory.to_string_lossy(),
+        ];
+        let run = match host {
+            "native" => native(&arguments),
+            _ => node(&arguments),
+        };
+        assert_eq!(
+            run.status.code(),
+            Some(0),
+            "{host}: {}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        held.insert(host, results(&directory));
+    }
+    let native_results = &held["native"];
+    for (written, said) in [
+        ("convert/2.json", "{}"),
+        ("convert/3.json", r#"{"answer":true}"#),
+        (
+            "convert/4.json",
+            r#"{"failure":{"kind":"documentFailure"}}"#,
+        ),
+        (
+            "missing/1.json",
+            r#"{"failure":{"kind":"fileMissingFailure","map":"adapter","path":"mapping/item.rq"}}"#,
+        ),
+        ("test/2.json", r#"{"failure":{"kind":"vocabularyFailure"}}"#),
+    ] {
+        assert_eq!(
+            native_results.get(written).map(String::as_str),
+            Some(said),
+            "{written}: {native_results:#?}"
+        );
+    }
+    for written in [
+        "describe/1.graph",
+        "convert/5.graph",
+        "convert/5.findings",
+        "missing/3.graph",
+        "test/1.report",
+    ] {
+        assert!(
+            native_results.contains_key(written),
+            "{written}: {native_results:#?}"
+        );
+    }
+    assert!(
+        !native_results.contains_key("convert/1.json"),
+        "{native_results:#?}"
+    );
+    assert!(
+        !native_results.contains_key("missing/3.findings"),
+        "{native_results:#?}"
+    );
+    assert_eq!(&held["node"], native_results);
+}

@@ -182,6 +182,7 @@ version = "0.1.0"
 dependencies = [
  "cascade-bridge",
  "oxiri 0.2.11",
+ "serde_json",
  "tempfile",
 ]
 
