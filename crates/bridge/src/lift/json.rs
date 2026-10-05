@@ -21,7 +21,7 @@ pub(crate) struct Lift<'a> {
 pub(crate) fn lift<'a>(text: &'a str, reading: &Reading<'_>, paths: Paths) -> Result<Lift<'a>> {
     let root = json::parse(text)?;
     if !root.is_container() {
-        return Err(Error::msg(
+        return Err(Error::document(
             "the document's value is neither an object nor an array, and the JSON lift lifts \
              nothing from it",
         ));

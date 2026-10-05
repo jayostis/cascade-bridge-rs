@@ -1,13 +1,13 @@
-use crate::error::{Error, Result};
+use crate::error::{Error, ErrorKind, Explained, Result};
 use crate::resolver::Resolver;
 use crate::terms::{
-    BRIDGE_ADAPTER, BRIDGE_DETECT_QUERY, BRIDGE_DOCUMENT_SCHEMA, BRIDGE_DOCUMENT_TABLE_QUERY,
-    BRIDGE_DOC_ROOT_ELEMENT_NAME, BRIDGE_DOC_ROOT_MEMBER_NAME, BRIDGE_DOC_ROOT_MEMBER_VALUE,
-    BRIDGE_ELEMENT_NAME_OF_EACH_RECORD, BRIDGE_ENVELOPE, BRIDGE_FINDINGS_QUERY, BRIDGE_GAP_SCHEME,
-    BRIDGE_JSON_PATH_OF_EACH_RECORD, BRIDGE_MAPPING, BRIDGE_REQUIRES_PROFILE,
-    BRIDGE_SOURCE_ACCOUNTING, BRIDGE_SOURCE_MEDIA_TYPE, BRIDGE_SOURCE_SCHEMA, BRIDGE_TABLE,
-    BRIDGE_TEST_MANIFEST, BRIDGE_VOCABULARY_FILE, RDF_FIRST, RDF_NIL, RDF_REST, RDF_TYPE,
-    SCHEMA_ABOUT, SCHEMA_IDENTIFIER, SCHEMA_NAME, SCHEMA_VERSION,
+    BRIDGE_ADAPTER, BRIDGE_CASCADE_VOCABULARY_PIN, BRIDGE_DETECT_QUERY, BRIDGE_DOCUMENT_SCHEMA,
+    BRIDGE_DOCUMENT_TABLE_QUERY, BRIDGE_DOC_ROOT_ELEMENT_NAME, BRIDGE_DOC_ROOT_MEMBER_NAME,
+    BRIDGE_DOC_ROOT_MEMBER_VALUE, BRIDGE_ELEMENT_NAME_OF_EACH_RECORD, BRIDGE_ENVELOPE,
+    BRIDGE_FINDINGS_QUERY, BRIDGE_GAP_SCHEME, BRIDGE_JSON_PATH_OF_EACH_RECORD, BRIDGE_MAPPING,
+    BRIDGE_REQUIRES_PROFILE, BRIDGE_SOURCE_ACCOUNTING, BRIDGE_SOURCE_MEDIA_TYPE,
+    BRIDGE_SOURCE_SCHEMA, BRIDGE_TABLE, BRIDGE_TEST_MANIFEST, BRIDGE_VOCABULARY_FILE, RDF_FIRST,
+    RDF_NIL, RDF_REST, RDF_TYPE, SCHEMA_ABOUT, SCHEMA_IDENTIFIER, SCHEMA_NAME, SCHEMA_VERSION,
 };
 use oxrdf::{Graph, NamedNode, NamedOrBlankNode, Term, Triple};
 use oxrdfio::{JsonLdProfile, JsonLdProfileSet, LoadedDocument, RdfFormat, RdfParser};
@@ -65,7 +65,8 @@ pub(crate) struct Adapter {
     pub(crate) detect_query: Option<String>,
     pub(crate) tables: Vec<String>,
     pub(crate) envelopes: Vec<Envelope>,
-    pub(crate) manifest: String,
+    pub(crate) manifest: Option<String>,
+    pub(crate) cascade_vocabulary_pin: Option<String>,
 }
 
 pub(crate) fn subject(iri: &str) -> Result<NamedOrBlankNode> {
@@ -122,7 +123,7 @@ pub(crate) fn value(
 pub(crate) fn one(graph: &Graph, s: &NamedOrBlankNode, predicate: &str) -> Result<Option<String>> {
     let objects = objects(graph, s, predicate)?;
     if let [first, second, ..] = objects.as_slice() {
-        return Err(Error::msg(format!(
+        return Err(Error::adapter(format!(
             "{s} declares the {predicate} {first} and {second}; it declares at most one"
         )));
     }
@@ -155,7 +156,7 @@ pub(crate) fn list(graph: &Graph, head: Option<&Term>) -> Result<Vec<Term>> {
             break;
         }
         if !passed.insert(current.clone()) {
-            return Err(Error::msg(format!(
+            return Err(Error::adapter(format!(
                 "the RDF list loops back on itself at {current}"
             )));
         }
@@ -171,7 +172,12 @@ pub(crate) fn list(graph: &Graph, head: Option<&Term>) -> Result<Vec<Term>> {
 
 pub(crate) type Prefixes = Vec<(String, String)>;
 
-fn parse_into(graph: &mut Graph, bytes: &[u8], base: &str, format: RdfFormat) -> Result<Prefixes> {
+pub(crate) fn parse_into(
+    graph: &mut Graph,
+    bytes: &[u8],
+    base: &str,
+    format: RdfFormat,
+) -> Result<Prefixes> {
     let mut parser = RdfParser::from_format(format)
         .with_base_iri(base)?
         // Two files in one graph must not share a blank node label by accident.
@@ -179,7 +185,7 @@ fn parse_into(graph: &mut Graph, bytes: &[u8], base: &str, format: RdfFormat) ->
         .for_slice(bytes)
         .with_document_loader(context);
     for quad in parser.by_ref() {
-        let quad = quad.map_err(|e| Error::msg(format!("{base}: {e}")))?;
+        let quad = quad.map_err(|e| Error::bridge(format!("{base}: {e}")))?;
         graph.insert(&Triple::new(quad.subject, quad.predicate, quad.object));
     }
     Ok(parser
@@ -194,12 +200,24 @@ pub(crate) fn turtle(bytes: &[u8], iri: &str) -> Result<(Graph, Prefixes)> {
     Ok((graph, prefixes))
 }
 
+pub(crate) const CRATE: &str = "ro-crate-metadata.json";
+
 pub(crate) fn load_adapter(resolver: &dyn Resolver) -> Result<Adapter> {
-    let crate_iri = format!("{}ro-crate-metadata.json", resolver.root());
+    let metadata = resolver.read(&format!("{}{CRATE}", resolver.root()))?;
+    adapter_of(&metadata, resolver.root())
+}
+
+/// The adapter a crate's metadata describes, its IRIs resolved against `root`.
+pub(crate) fn adapter_of(metadata: &[u8], root: &str) -> Result<Adapter> {
+    crate_read(metadata, root).explained_by(ErrorKind::Adapter)
+}
+
+fn crate_read(metadata: &[u8], root: &str) -> Result<Adapter> {
+    let crate_iri = format!("{root}{CRATE}");
     let mut graph = Graph::new();
     parse_into(
         &mut graph,
-        &resolver.read(&crate_iri)?,
+        metadata,
         &crate_iri,
         RdfFormat::JsonLd {
             profile: JsonLdProfileSet::empty(),
@@ -208,26 +226,17 @@ pub(crate) fn load_adapter(resolver: &dyn Resolver) -> Result<Adapter> {
 
     let descriptor = subject(&crate_iri)?;
     let root = one(&graph, &descriptor, SCHEMA_ABOUT)?.ok_or_else(|| {
-        Error::msg("the crate's metadata descriptor names no root entity (about)")
+        Error::adapter("the crate's metadata descriptor names no root entity (about)")
     })?;
     let root_subject = subject(&root)?;
     if !values(&graph, &root_subject, RDF_TYPE)?
         .iter()
         .any(|t| t == BRIDGE_ADAPTER)
     {
-        return Err(Error::msg(format!(
+        return Err(Error::adapter(format!(
             "the crate's root entity {root} is not a bridge:Adapter"
         )));
     }
-
-    let manifest = one(&graph, &root_subject, BRIDGE_TEST_MANIFEST)?
-        .ok_or_else(|| Error::msg("the adapter names no bridge:testManifest"))?;
-    parse_into(
-        &mut graph,
-        &resolver.read(&manifest)?,
-        &manifest,
-        RdfFormat::Turtle,
-    )?;
 
     let mut envelopes = Vec::new();
     for iri in values(&graph, &root_subject, BRIDGE_ENVELOPE)? {
@@ -264,7 +273,8 @@ pub(crate) fn load_adapter(resolver: &dyn Resolver) -> Result<Adapter> {
         detect_query: one(&graph, &root_subject, BRIDGE_DETECT_QUERY)?,
         tables: values(&graph, &root_subject, BRIDGE_TABLE)?,
         envelopes,
-        manifest,
+        manifest: one(&graph, &root_subject, BRIDGE_TEST_MANIFEST)?,
+        cascade_vocabulary_pin: one(&graph, &root_subject, BRIDGE_CASCADE_VOCABULARY_PIN)?,
         root,
         graph,
     })

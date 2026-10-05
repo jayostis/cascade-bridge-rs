@@ -59,7 +59,7 @@ pub fn read_at_its_own_iri(path: &Path, format: RdfFormat) -> Vec<Quad> {
     quads(
         &std::fs::read(path).expect("the written file"),
         format,
-        &cascade_bridge::file_iri(path).expect("the file's IRI"),
+        &cascade_bridge_cli::file_iri(path).expect("the file's IRI"),
     )
 }
 

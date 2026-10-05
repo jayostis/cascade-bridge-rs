@@ -20,8 +20,8 @@ pub(crate) enum Syntax {
 impl Syntax {
     /// By the type, or by its structured syntax suffix (RFC 6839); parameters aside.
     pub(crate) fn of(media_type: Option<&str>) -> Result<Self> {
-        let named =
-            media_type.ok_or_else(|| Error::msg("the adapter names no bridge:sourceMediaType"))?;
+        let named = media_type
+            .ok_or_else(|| Error::adapter("the adapter names no bridge:sourceMediaType"))?;
         let essence = named
             .split(';')
             .next()
@@ -34,7 +34,7 @@ impl Syntax {
         if essence == "application/json" || essence.ends_with("+json") {
             return Ok(Self::Json);
         }
-        Err(Error::msg(format!(
+        Err(Error::adapter(format!(
             "the adapter's bridge:sourceMediaType is {named}; this Bridge lifts XML \
              (application/xml, text/xml or a type with the +xml suffix) and JSON \
              (application/json or a type with the +json suffix)"
@@ -49,7 +49,9 @@ impl Syntax {
                 .element_name_of_each_record
                 .clone()
                 .map(Some)
-                .ok_or_else(|| Error::msg("the adapter names no bridge:elementNameOfEachRecord")),
+                .ok_or_else(|| {
+                    Error::adapter("the adapter names no bridge:elementNameOfEachRecord")
+                }),
             Self::Json => Ok(None),
         }
     }
@@ -63,7 +65,7 @@ impl Syntax {
             Self::Json => {
                 if let Some(path) = &envelope.json_path_of_each_record {
                     json::path(path)
-                        .map_err(|e| Error::msg(format!("envelope {}: {e}", envelope.iri)))?;
+                        .map_err(|e| Error::adapter(format!("envelope {}: {e}", envelope.iri)))?;
                 }
                 Ok(Admission {
                     root: envelope.doc_root_member_name.clone(),
@@ -99,7 +101,7 @@ impl Syntax {
 
     pub(crate) fn schema(self, iri: &str, resolver: &dyn Resolver) -> Result<Box<dyn Schema>> {
         match self {
-            Self::Xml if iri.contains('#') => Err(Error::msg(format!(
+            Self::Xml if iri.contains('#') => Err(Error::adapter(format!(
                 "{iri} names a part of an XML Schema; an XML Schema is named whole, without a fragment"
             ))),
             Self::Xml => Ok(Box::new(xsd::compile(iri, resolver)?)),

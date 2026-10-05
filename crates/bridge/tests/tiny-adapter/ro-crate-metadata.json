@@ -64,6 +64,12 @@
       "bridge:documentSchema": { "@id": "schema/catalog.xsd" }
     },
     {
+      "@id": "fixtures/manifest.ttl",
+      "@type": "File",
+      "name": "the tiny adapter's test manifest",
+      "encodingFormat": "text/turtle"
+    },
+    {
       "@id": "vocab/catalog-accounting.ttl",
       "@type": "File",
       "name": "what the catalog adapter does with each path of a record",

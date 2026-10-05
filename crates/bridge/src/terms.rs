@@ -43,6 +43,7 @@ terms! {
     SKOS_NOTATION = "http://www.w3.org/2004/02/skos/core#", "notation";
 
     SCHEMA_ABOUT = "http://schema.org/", "about";
+    SCHEMA_MEDIA_OBJECT = "http://schema.org/", "MediaObject";
     SCHEMA_NAME = "http://schema.org/", "name";
     SCHEMA_IDENTIFIER = "http://schema.org/", "identifier";
     SCHEMA_ENCODING_FORMAT = "http://schema.org/", "encodingFormat";
@@ -65,6 +66,9 @@ terms! {
     BRIDGE_SOURCE_MEDIA_TYPE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "sourceMediaType";
     BRIDGE_SOURCE_SCHEMA = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "sourceSchema";
     BRIDGE_VOCABULARY_FILE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "vocabularyFile";
+    BRIDGE_CASCADE_VOCABULARY_PIN = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "cascadeVocabularyPin";
+    BRIDGE_LOAD_FILE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "loadFile";
+    BRIDGE_CRATE_FILE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "crateFile";
     BRIDGE_PREDICATE_NOT_DECLARED = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "predicateNotDeclared";
     BRIDGE_DOCUMENT_SCHEMA = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "documentSchema";
     BRIDGE_THIS_RECORD = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "thisRecord";

@@ -1,7 +1,7 @@
 // An error's address comes from the element events: ValidationError::element_path
 // holds bare local names.
 use super::{Schema, SchemaFinding};
-use crate::error::{Error, Result};
+use crate::error::{Error, ErrorKind, Result};
 use crate::lift::xml::{Step, UTF_8_DECLARATION};
 use crate::resolver::Resolver;
 use crate::terms::BRIDGE_SCHEMA_RULE_UNNAMED;
@@ -170,12 +170,12 @@ impl Schema for Xsd {
             findings: Rc::clone(&findings),
         });
         drive_quick_xml_with(document.as_bytes(), &mut runtime, &self.set, &mut walked)
-            .map_err(|e| Error::msg(e.to_string()))?;
+            .map_err(|e| Error::document(e.to_string()))?;
         // Driven this way the run is not ended for us, and a diagnostic an
         // end-of-document check draws is drawn here or nowhere.
         runtime
             .end_validation()
-            .map_err(|e| Error::msg(e.to_string()))?;
+            .map_err(|e| Error::document(e.to_string()))?;
         let broken = std::mem::take(&mut *findings.borrow_mut());
         Ok(broken)
     }
@@ -193,20 +193,21 @@ pub(crate) fn compile(iri: &str, resolver: &dyn Resolver) -> Result<Xsd> {
             continue;
         }
         let bytes = match (resolver.read(&location), copy) {
-            (Err(error), Some(copy)) if error.is_missing() => {
+            (Err(error), Some(copy)) if matches!(error.kind(), ErrorKind::Missing { .. }) => {
                 answered_by_the_bridge.insert(read_as, copy.to_owned());
                 continue;
             }
             (bytes, _) => bytes?,
         };
-        let text = String::from_utf8(bytes).map_err(|e| Error::msg(format!("{location}: {e}")))?;
+        let text =
+            String::from_utf8(bytes).map_err(|e| Error::adapter(format!("{location}: {e}")))?;
         let base =
-            Iri::parse(location.clone()).map_err(|e| Error::msg(format!("{location}: {e}")))?;
-        let directed = directives(&text).map_err(|e| Error::msg(format!("{location}: {e}")))?;
+            Iri::parse(location.clone()).map_err(|e| Error::adapter(format!("{location}: {e}")))?;
+        let directed = directives(&text).map_err(|e| Error::adapter(format!("{location}: {e}")))?;
         for Directive { namespace, named } in directed {
             let joined = base
                 .resolve(&named)
-                .map_err(|e| Error::msg(format!("{location} names {named}: {e}")))?
+                .map_err(|e| Error::adapter(format!("{location} names {named}: {e}")))?
                 .into_inner();
             let copy = namespace
                 .filter(|namespace| SUPPLIED_BY_THE_BRIDGE.contains(&namespace.as_str()))
@@ -223,7 +224,7 @@ pub(crate) fn compile(iri: &str, resolver: &dyn Resolver) -> Result<Xsd> {
 
     let primary = read
         .get(&key(iri))
-        .ok_or_else(|| Error::msg(format!("{iri} was not read")))?
+        .ok_or_else(|| Error::adapter(format!("{iri} was not read")))?
         .clone();
     let unanswered = Arc::new(Mutex::new(Vec::new()));
     let loader = Preloaded {
@@ -237,13 +238,13 @@ pub(crate) fn compile(iri: &str, resolver: &dyn Resolver) -> Result<Xsd> {
         unanswered: Arc::clone(&unanswered),
     };
     let compiled = SchemaSetBuilder::with_loader(Box::new(loader))
-        .add_bytes(primary.as_bytes(), iri)
+        .add_bytes(primary.as_bytes(), &unfetched(iri))
         .and_then(|builder| builder.compile())
-        .map_err(|e| Error::msg(format!("{iri}: {e}")))?;
+        .map_err(|e| Error::adapter(format!("{iri}: {e}")))?;
 
     let unanswered = unanswered.lock().expect("no other thread holds the loader");
     if !unanswered.is_empty() {
-        return Err(Error::msg(format!(
+        return Err(Error::adapter(format!(
             "{iri} names a schema this Bridge did not read: {}",
             unanswered.join(", ")
         )));
@@ -319,7 +320,20 @@ fn key(location: &str) -> String {
             other => segments.push(other),
         }
     }
-    format!("{}///{}", all[at].to_ascii_lowercase(), segments.join("/"))
+    let scheme = all[at].to_ascii_lowercase();
+    let scheme = scheme.strip_prefix(UNFETCHED).unwrap_or(&scheme);
+    format!("{scheme}///{}", segments.join("/"))
+}
+
+/// The schema library refuses an http or https location before it asks the loader.
+const UNFETCHED: &str = "unfetched-";
+
+fn unfetched(iri: &str) -> String {
+    if iri.starts_with("http://") || iri.starts_with("https://") {
+        format!("{UNFETCHED}{iri}")
+    } else {
+        iri.to_owned()
+    }
 }
 
 fn is_scheme(segment: &str) -> bool {

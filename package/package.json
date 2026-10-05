@@ -1,0 +1,29 @@
+{
+  "name": "cascade-bridge-rs",
+  "version": "0.0.0",
+  "description": "Cascade Bridge for Rust, built for WebAssembly: describe, load, accepts, convert and test over maps of files.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jayostis/cascade-bridge-rs.git"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./cascade_bridge.d.ts",
+      "node": "./node.js",
+      "default": "./cascade_bridge.js"
+    }
+  },
+  "types": "./cascade_bridge.d.ts",
+  "engines": {
+    "node": ">=22"
+  },
+  "files": [
+    "node.js",
+    "cascade_bridge.js",
+    "cascade_bridge.d.ts",
+    "cascade_bridge_bg.wasm",
+    "LICENSE"
+  ]
+}

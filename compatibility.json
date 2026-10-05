@@ -8,7 +8,7 @@
     },
     {
       "name": "node",
-      "setup": ["sh", "hosts/node/setup.sh"],
+      "setup": ["sh", "package/build.sh"],
       "command": ["node", "hosts/node/cascade-bridge.mjs"]
     }
   ],

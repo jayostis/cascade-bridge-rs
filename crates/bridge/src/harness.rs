@@ -1,6 +1,8 @@
 use crate::annotation;
-use crate::error::{Error, Result};
-use crate::load::{as_subject, list, objects, one, subject, term_value, values, Adapter};
+use crate::error::{Error, ErrorKind, Explained, Result};
+use crate::load::{
+    as_subject, list, objects, one, parse_into, subject, term_value, values, Adapter,
+};
 use crate::rdf::{canonical_lines, canonical_parts};
 use crate::records::Supplied;
 use crate::resolver::Resolver;
@@ -12,7 +14,7 @@ use crate::terms::{
     BRIDGE_SPARQL_1_1, MF_ACTION, MF_ENTRIES, MF_NAME, MF_RESULT, PROV_AGENT,
     PROV_QUALIFIED_ASSOCIATION, PROV_SPECIALIZATION_OF, RDF_TYPE,
 };
-use oxigraph::model::{NamedOrBlankNode, Quad, Term};
+use oxigraph::model::{Graph, NamedOrBlankNode, Quad, Term};
 use oxrdfio::{RdfFormat, RdfParser};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::time::Duration;
@@ -22,7 +24,7 @@ use web_time::Instant;
 pub(crate) const OFFERED_PROFILES: [&str; 1] = [BRIDGE_SPARQL_1_1];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum Outcome {
+pub enum Outcome {
     Passed,
     Failed,
     CantTell,
@@ -31,7 +33,7 @@ pub(crate) enum Outcome {
 }
 
 impl Outcome {
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Passed => "passed",
             Self::Failed => "failed",
@@ -116,13 +118,13 @@ fn graph_at(bytes: &[u8], iri: &str) -> Result<Vec<Quad>> {
         .with_base_iri(iri)?
         .for_slice(bytes)
     {
-        quads.push(quad.map_err(|e| Error::msg(format!("{iri}: {e}")))?);
+        quads.push(quad.map_err(|e| Error::adapter(format!("{iri}: {e}")))?);
     }
     Ok(quads)
 }
 
 struct Entry<'a> {
-    adapter: &'a Adapter,
+    graph: &'a Graph,
     resolver: &'a dyn Resolver,
     setup: &'a Prepared,
     node: NamedOrBlankNode,
@@ -131,7 +133,7 @@ struct Entry<'a> {
 impl Entry<'_> {
     /// The conversion an action, or one bridge:conversion of it, describes, and the bytes it read.
     fn converted(&self, action: Option<&NamedOrBlankNode>) -> Result<(Conversion, Vec<u8>)> {
-        let graph = &self.adapter.graph;
+        let graph = self.graph;
         let said = |predicate| {
             action
                 .map(|a| one(graph, a, predicate))
@@ -139,7 +141,7 @@ impl Entry<'_> {
                 .map(Option::flatten)
         };
         let input = said(BRIDGE_INPUT)?
-            .ok_or_else(|| Error::msg("the entry's action names no bridge:input"))?;
+            .ok_or_else(|| Error::adapter("the entry's action names no bridge:input"))?;
         let envelope = said(BRIDGE_ENVELOPE)?;
         let facts = said(BRIDGE_FACTS)?
             .map(|iri| Ok::<_, Error>((self.resolver.read(&iri)?, iri)))
@@ -160,7 +162,7 @@ impl Entry<'_> {
     /// The one record a conversion names: of the version whose arrival stood at its
     /// bridge:selector, or, where it names none, of the one version arriving at all.
     fn record_named(&self, conversion: &NamedOrBlankNode) -> Result<String> {
-        let graph = &self.adapter.graph;
+        let graph = self.graph;
         let selector = one(graph, conversion, BRIDGE_SELECTOR)?;
         let (run, _) = self.converted(Some(conversion))?;
         let said = |subject: &NamedOrBlankNode, predicate: &str| -> Vec<String> {
@@ -184,7 +186,7 @@ impl Entry<'_> {
             .collect();
         match (records.len(), records.first()) {
             (1, Some(record)) => Ok(record.clone()),
-            (named, _) => Err(Error::msg(format!(
+            (named, _) => Err(Error::adapter(format!(
                 "a conversion{} names {named} record(s); each conversion of an identity relation test names one",
                 selector.map_or_else(String::new, |at| format!(" at {at}"))
             ))),
@@ -192,7 +194,7 @@ impl Entry<'_> {
     }
 
     fn related(&self, action: Option<&NamedOrBlankNode>) -> Result<(Outcome, String)> {
-        let graph = &self.adapter.graph;
+        let graph = self.graph;
         let conversions: Vec<NamedOrBlankNode> = action
             .map(|a| objects(graph, a, BRIDGE_CONVERSION))
             .transpose()?
@@ -201,7 +203,7 @@ impl Entry<'_> {
             .filter_map(as_subject)
             .collect();
         let [first, second] = conversions.as_slice() else {
-            return Err(Error::msg(format!(
+            return Err(Error::adapter(format!(
                 "the entry's action names {} bridge:conversion; an identity relation test names two",
                 conversions.len()
             )));
@@ -219,7 +221,7 @@ impl Entry<'_> {
             Some("true" | "1") => true,
             Some("false" | "0") => false,
             _ => {
-                return Err(Error::msg(
+                return Err(Error::adapter(
                     "the entry's result carries no bridge:sameRecord",
                 ))
             }
@@ -240,7 +242,7 @@ impl Entry<'_> {
     }
 
     fn judge(&self, type_iri: &str) -> Result<(Outcome, String)> {
-        let graph = &self.adapter.graph;
+        let graph = self.graph;
         let action = objects(graph, &self.node, MF_ACTION)?
             .first()
             .and_then(as_subject);
@@ -274,7 +276,7 @@ impl Entry<'_> {
             .map(|r| one(graph, r, BRIDGE_EXPECTED_GRAPH))
             .transpose()?
             .flatten()
-            .ok_or_else(|| Error::msg("the entry's result names no bridge:expectedGraph"))?;
+            .ok_or_else(|| Error::adapter("the entry's result names no bridge:expectedGraph"))?;
         let annotations = run.annotations();
         let expected = graph_at(&self.resolver.read(&graph_iri)?, &graph_iri)?;
         let expected = canonical_lines(without_the_release(expected))?;
@@ -352,13 +354,29 @@ impl Entry<'_> {
     }
 }
 
+fn is_missing(error: &Error) -> bool {
+    matches!(error.kind(), ErrorKind::Missing { .. })
+}
+
 pub(crate) fn run_manifest(
     adapter: &Adapter,
     resolver: &dyn Resolver,
     options: RunOptions,
 ) -> Result<Vec<EntryResult>> {
-    let graph = &adapter.graph;
-    let manifest = subject(&adapter.manifest)?;
+    let manifest = adapter
+        .manifest
+        .as_deref()
+        .ok_or_else(|| Error::adapter("the adapter names no bridge:testManifest"))?;
+    let mut graph = adapter.graph.clone();
+    parse_into(
+        &mut graph,
+        &resolver.read(manifest)?,
+        manifest,
+        RdfFormat::Turtle,
+    )
+    .explained_by(ErrorKind::Adapter)?;
+    let graph = &graph;
+    let manifest = subject(manifest)?;
     let entries = list(graph, objects(graph, &manifest, MF_ENTRIES)?.first())?;
 
     let unoffered: Vec<String> = adapter
@@ -367,7 +385,10 @@ pub(crate) fn run_manifest(
         .filter(|p| !OFFERED_PROFILES.contains(&p.as_str()))
         .cloned()
         .collect();
-    let setup = unoffered.is_empty().then(|| prepare(adapter, resolver));
+    let setup = match unoffered.is_empty().then(|| prepare(adapter, resolver)) {
+        Some(Err(e)) if is_missing(&e) => return Err(e),
+        setup => setup,
+    };
 
     let mut results = Vec::new();
     for entry in entries {
@@ -442,13 +463,14 @@ pub(crate) fn run_manifest(
             }
             (Some(Ok(setup)), Some(node), None) => {
                 let entry = Entry {
-                    adapter,
+                    graph,
                     resolver,
                     setup,
                     node: node.clone(),
                 };
                 match entry.judge(&type_iri) {
                     Ok(verdict) => verdict,
+                    Err(e) if is_missing(&e) => return Err(e),
                     Err(e) => (Outcome::Failed, format!("error: {e}")),
                 }
             }

@@ -1,9 +1,11 @@
 #![allow(dead_code)]
 
+use crate::library::{Files, Named};
 use crate::load::load_adapter;
 use crate::records::Supplied;
+use crate::resolver::{Maps, Resolver};
 use crate::run::{convert, prepare, Conversion, Source};
-use crate::{DirectoryResolver, Resolver, Result};
+use crate::Result;
 use oxrdf::{Quad, Term};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -48,25 +50,103 @@ pub fn tiny_directory() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/tiny-adapter")
 }
 
-pub fn vocabularies_directory() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/tiny-vocabularies")
+pub const TINY: &str = "https://example.org/tiny-adapter/";
+pub const TINY_JSON: &str = "https://example.org/tiny-json-adapter/";
+pub const VOCABULARIES: &str = "https://example.org/tiny-vocabularies/";
+
+fn files_under(root: &Path, directory: &Path, files: &mut Files) {
+    for entry in fs::read_dir(directory).expect("a directory of the fixture") {
+        let path = entry.expect("an entry").path();
+        if path.is_dir() {
+            files_under(root, &path, files);
+            continue;
+        }
+        let key = path
+            .strip_prefix(root)
+            .expect("under the fixture")
+            .to_string_lossy()
+            .replace('\\', "/");
+        files.insert(key, fs::read(&path).expect("a file of the fixture"));
+    }
 }
 
-pub fn tiny() -> DirectoryResolver {
-    DirectoryResolver::new(tiny_directory()).expect("resolver")
+pub fn files(directory: &str) -> Files {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join(directory);
+    let mut files = Files::new();
+    files_under(&root, &root, &mut files);
+    files
 }
 
-pub fn tiny_json() -> DirectoryResolver {
-    DirectoryResolver::new(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/tiny-json-adapter"),
-    )
-    .expect("resolver")
+/// An adapter's files, and a vocabulary's where one is given, each under its IRI.
+pub struct Fixture {
+    iri: String,
+    files: Files,
+    vocabulary: Option<(String, Files)>,
 }
 
-pub fn tiny_with_vocabularies() -> DirectoryResolver {
-    tiny()
-        .with_vocabularies(vocabularies_directory())
-        .expect("the vocabularies directory")
+impl Fixture {
+    fn maps(&self) -> Maps<'_> {
+        Maps {
+            adapter: Named {
+                iri: &self.iri,
+                files: &self.files,
+            },
+            vocabulary: self
+                .vocabulary
+                .as_ref()
+                .map(|(iri, files)| Named { iri, files }),
+        }
+    }
+
+    pub fn at(self, iri: &str) -> Self {
+        Self {
+            iri: iri.to_owned(),
+            ..self
+        }
+    }
+}
+
+impl Resolver for Fixture {
+    fn root(&self) -> &str {
+        &self.iri
+    }
+
+    fn vocabularies(&self) -> Option<&str> {
+        self.vocabulary.as_ref().map(|(iri, _)| iri.as_str())
+    }
+
+    fn read(&self, iri: &str) -> Result<Vec<u8>> {
+        self.maps().read(iri)
+    }
+
+    fn read_vocabulary(&self, iri: &str) -> Result<Vec<u8>> {
+        self.maps().read_vocabulary(iri)
+    }
+}
+
+pub fn tiny() -> Fixture {
+    Fixture {
+        iri: TINY.to_owned(),
+        files: files("tiny-adapter"),
+        vocabulary: None,
+    }
+}
+
+pub fn tiny_json() -> Fixture {
+    Fixture {
+        iri: TINY_JSON.to_owned(),
+        files: files("tiny-json-adapter"),
+        vocabulary: None,
+    }
+}
+
+pub fn tiny_with_vocabularies() -> Fixture {
+    Fixture {
+        vocabulary: Some((VOCABULARIES.to_owned(), files("tiny-vocabularies"))),
+        ..tiny()
+    }
 }
 
 /// The whole run, from the crate to the conversion: which stage refuses is not a test's
@@ -221,129 +301,93 @@ pub fn step(local: &str) -> String {
     format!("*[local-name()='{local}' and namespace-uri()='{CATALOG}']")
 }
 
-enum Edit {
-    Replace {
-        file: String,
-        from: String,
-        to: String,
-        times: Option<usize>,
-    },
-    Whole {
-        file: String,
-        body: String,
-    },
-}
-
-/// An adapter with files rewritten as they are read; a file is named by the end of its IRI.
+/// An adapter with files rewritten; a file is named by the end of its path.
 pub struct Variant {
-    directory: DirectoryResolver,
-    edits: Vec<Edit>,
+    fixture: Fixture,
 }
 
 impl Variant {
-    pub fn of(directory: DirectoryResolver) -> Self {
-        Self {
-            directory,
-            edits: Vec::new(),
+    pub fn of(fixture: Fixture) -> Self {
+        Self { fixture }
+    }
+
+    fn named<'a>(&'a mut self, file: &'a str) -> impl Iterator<Item = &'a mut Vec<u8>> + 'a {
+        let Fixture {
+            files, vocabulary, ..
+        } = &mut self.fixture;
+        files
+            .iter_mut()
+            .chain(
+                vocabulary
+                    .iter_mut()
+                    .flat_map(|(_, files)| files.iter_mut()),
+            )
+            .filter(move |(path, _)| path.ends_with(file))
+            .map(|(_, bytes)| bytes)
+    }
+
+    fn replaced(mut self, file: &str, from: &str, to: &str, times: Option<usize>) -> Self {
+        let mut edited = 0;
+        for bytes in self.named(file) {
+            let text = String::from_utf8(std::mem::take(bytes)).expect("utf-8");
+            let found = text.matches(from).count();
+            match times {
+                Some(times) => assert_eq!(found, times, "{file} carries {from}"),
+                None => assert!(found > 0, "{file} does not carry {from}"),
+            }
+            *bytes = text.replace(from, to).into_bytes();
+            edited += 1;
         }
+        assert!(edited > 0, "no file of the fixture is {file}");
+        self
     }
 
     /// Every `from` in the file becomes `to`; a file without one is a guard
     /// that failed.
-    pub fn replacing(mut self, file: &str, from: &str, to: impl Into<String>) -> Self {
-        self.edits.push(Edit::Replace {
-            file: file.to_owned(),
-            from: from.to_owned(),
-            to: to.into(),
-            times: None,
-        });
-        self
+    pub fn replacing(self, file: &str, from: &str, to: impl Into<String>) -> Self {
+        self.replaced(file, from, &to.into(), None)
     }
 
     pub fn replacing_exactly(
-        mut self,
+        self,
         file: &str,
         from: &str,
         to: impl Into<String>,
         times: usize,
     ) -> Self {
-        self.edits.push(Edit::Replace {
-            file: file.to_owned(),
-            from: from.to_owned(),
-            to: to.into(),
-            times: Some(times),
-        });
-        self
+        self.replaced(file, from, &to.into(), Some(times))
     }
 
+    /// The file's whole body, added to the adapter where no file is named so.
     pub fn with(mut self, file: &str, body: impl Into<String>) -> Self {
-        self.edits.push(Edit::Whole {
-            file: file.to_owned(),
-            body: body.into(),
-        });
+        let body = body.into().into_bytes();
+        let mut edited = 0;
+        for bytes in self.named(file) {
+            bytes.clone_from(&body);
+            edited += 1;
+        }
+        if edited == 0 {
+            self.fixture.files.insert(file.to_owned(), body);
+        }
         self
     }
 }
 
 impl Resolver for Variant {
     fn root(&self) -> &str {
-        self.directory.root()
+        self.fixture.root()
     }
 
     fn vocabularies(&self) -> Option<&str> {
-        self.directory.vocabularies()
+        self.fixture.vocabularies()
     }
 
     fn read(&self, iri: &str) -> Result<Vec<u8>> {
-        self.edited(iri, || self.directory.read(iri))
+        self.fixture.read(iri)
     }
 
     fn read_vocabulary(&self, iri: &str) -> Result<Vec<u8>> {
-        self.edited(iri, || self.directory.read_vocabulary(iri))
-    }
-}
-
-impl Variant {
-    fn edited(&self, iri: &str, on_disk: impl Fn() -> Result<Vec<u8>>) -> Result<Vec<u8>> {
-        let mut text: Option<String> = None;
-        for edit in &self.edits {
-            match edit {
-                Edit::Whole { file, body } if iri.ends_with(file.as_str()) => {
-                    // Served only where the directory would read a file: it may
-                    // be missing there, and a replaced file often is, but a
-                    // refusal of the path stands.
-                    if let Err(refused) = on_disk() {
-                        let missing = refused.to_string();
-                        if !missing.contains("(os error 2)") && !missing.contains("(os error 3)") {
-                            return Err(refused);
-                        }
-                    }
-                    text = Some(body.clone());
-                }
-                Edit::Replace {
-                    file,
-                    from,
-                    to,
-                    times,
-                } if iri.ends_with(file.as_str()) => {
-                    let current = match text.take() {
-                        Some(current) => current,
-                        None => String::from_utf8(on_disk()?).expect("utf-8"),
-                    };
-                    let found = current.matches(from.as_str()).count();
-                    match times {
-                        Some(times) => assert_eq!(found, *times, "{file} carries {from}"),
-                        None => assert!(found > 0, "{file} does not carry {from}"),
-                    }
-                    text = Some(current.replace(from.as_str(), to));
-                }
-                _ => {}
-            }
-        }
-        match text {
-            Some(text) => Ok(text.into_bytes()),
-            None => on_disk(),
-        }
+        self.fixture.read_vocabulary(iri)
     }
 }
 

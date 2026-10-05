@@ -168,14 +168,14 @@ fn meets_the_specification_s_synthetic_adapter_only_through_its_vector() {
     assert_eq!(offenders, Vec::<String>::new());
 }
 
-const ALLOWED: [&str; 2] = ["resolver.rs", "fixtures.rs"];
+const TEST_FIXTURES: &str = "fixtures.rs";
 
 fn source_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src")
 }
 
 #[test]
-fn lets_only_the_resolver_name_the_filesystem() {
+fn names_no_filesystem_outside_its_test_fixtures() {
     let mut offenders = Vec::new();
     let mut stack = vec![source_dir()];
     while let Some(directory) = stack.pop() {
@@ -188,10 +188,7 @@ fn lets_only_the_resolver_name_the_filesystem() {
             if path.extension().is_none_or(|e| e != "rs") {
                 continue;
             }
-            if path
-                .file_name()
-                .is_some_and(|n| ALLOWED.iter().any(|allowed| n == *allowed))
-            {
+            if path.file_name().is_some_and(|n| n == TEST_FIXTURES) {
                 continue;
             }
             let text = std::fs::read_to_string(&path).expect("read module");

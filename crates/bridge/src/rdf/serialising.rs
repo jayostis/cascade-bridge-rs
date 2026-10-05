@@ -3,8 +3,8 @@
 use crate::fixtures::{committed, conversion, tiny, Variant, CRATE, RDF_TYPE};
 use crate::load::load_adapter;
 use crate::rdf::{canonical_lines, serialise, serialise_at, GraphFormat};
+use crate::resolver::Resolver;
 use crate::run::{convert, prepare, Conversion, Source};
-use crate::Resolver;
 use oxrdf::{NamedOrBlankNode, Quad, Term};
 use oxrdfio::{RdfFormat, RdfParser};
 use std::collections::BTreeSet;

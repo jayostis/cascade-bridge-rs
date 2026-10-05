@@ -68,7 +68,7 @@ fn supplied(facts: Option<Supplied<'_>>, document: &str) -> Result<Vec<Quad>> {
         .with_base_iri(facts.iri)?
         .for_slice(facts.turtle)
     {
-        let mut fact = fact.map_err(|e| Error::msg(format!("{}: {e}", facts.iri)))?;
+        let mut fact = fact.map_err(|e| Error::facts(format!("{}: {e}", facts.iri)))?;
         if let NamedOrBlankNode::BlankNode(node) = &fact.subject {
             fact.subject = relabel(node).into();
         }

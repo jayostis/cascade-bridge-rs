@@ -23,11 +23,15 @@ fn node_host_directory() -> PathBuf {
     workspace().join("hosts/node")
 }
 
+fn package_directory() -> PathBuf {
+    workspace().join("package/dist")
+}
+
 fn require_the_module() {
-    let module = node_host_directory().join("pkg/cascade_bridge_wasm.js");
+    let module = package_directory().join("node.js");
     assert!(
         module.is_file(),
-        "no node host module at {}: run `sh hosts/node/setup.sh` first",
+        "no package entry at {}: run `sh package/build.sh` first",
         module.display()
     );
 }
@@ -380,23 +384,49 @@ fn the_node_host_exits_as_the_native_command_does_when_standard_output_is_closed
 #[test]
 fn the_node_host_exits_two_and_says_why_when_the_engine_traps() {
     let scratch = scratch();
-    let host = scratch.path().join("cascade-bridge.mjs");
-    std::fs::copy(node_host_directory().join("cascade-bridge.mjs"), &host).expect("the host");
-    std::fs::create_dir(scratch.path().join("pkg")).expect("the module's directory");
+    let host = scratch.path().join("hosts/node");
+    copied_to(&node_host_directory(), &host);
+    let package = scratch.path().join("package/dist");
+    std::fs::create_dir_all(&package).expect("the package's directory");
+    std::fs::write(package.join("package.json"), "{ \"type\": \"module\" }\n")
+        .expect("the package's manifest");
     std::fs::write(
-        scratch.path().join("pkg/cascade_bridge_wasm.js"),
-        "exports.run = () => { throw new WebAssembly.RuntimeError(\"unreachable\"); };\n",
+        package.join("node.js"),
+        "const trap = () => { throw new WebAssembly.RuntimeError(\"unreachable\"); };\n\
+         export const describe = trap;\n\
+         export const test = trap;\n\
+         export class Adapter { static load() { trap(); } }\n\
+         export class BridgeError extends Error {}\n",
     )
-    .expect("a module whose engine traps");
+    .expect("a package whose engine traps");
+    let adapter = tiny().to_string_lossy().into_owned();
+    let vocabularies = vocabularies().to_string_lossy().into_owned();
     let run = Command::new("node")
-        .arg(&host)
-        .arg("test")
+        .arg(host.join("cascade-bridge.mjs"))
+        .args(["test", &adapter, "--vocabularies", &vocabularies])
         .current_dir(scratch.path())
         .output()
         .expect("run node");
     let said = String::from_utf8_lossy(&run.stderr);
     assert_eq!(run.status.code(), Some(2), "{said}");
-    assert_eq!(said, "cascade-bridge: unreachable\n");
+    let reason = said.strip_prefix("cascade-bridge: ").unwrap_or(&said);
+    assert!(
+        reason.contains("bridge"),
+        "the trap is said to be a fault in the Bridge: {said}"
+    );
+}
+
+#[test]
+fn an_adapter_under_a_folder_named_with_a_space_a_non_ascii_letter_and_sub_delimiters_converts_alike_on_both_hosts(
+) {
+    let scratch = scratch();
+    let adapter = scratch
+        .path()
+        .join("une données (old)+@,;=&!")
+        .join("tiny-adapter");
+    copied_to(&tiny(), &adapter);
+    let vocabularies = vocabularies().to_string_lossy().into_owned();
+    converts_as_the_native_command_does(&adapter, "two.xml", &["--vocabularies", &vocabularies]);
 }
 
 fn outcomes(report: &Path) -> BTreeMap<String, String> {
@@ -475,19 +505,20 @@ fn the_node_host_reports_the_outcome_the_native_command_reports_for_each_entry()
 fn check_imports(allowlist: &Path) -> Output {
     require_the_module();
     Command::new("node")
-        .arg(node_host_directory().join("check-imports.mjs"))
+        .arg(workspace().join("package/check-imports.mjs"))
         .arg(allowlist)
+        .arg(package_directory().join("cascade_bridge_bg.wasm"))
         .current_dir(workspace())
         .output()
         .expect("run node")
 }
 
 fn allowlist() -> PathBuf {
-    node_host_directory().join("imports.txt")
+    workspace().join("package/imports.txt")
 }
 
 #[test]
-fn the_import_check_passes_on_the_module_the_node_host_loads() {
+fn the_import_check_passes_on_the_package_s_module() {
     let run = check_imports(&allowlist());
     assert!(
         run.status.success(),
@@ -540,7 +571,7 @@ fn a_mapping_neither_host_can_read_is_named_once_by_each_and_both_exit_alike() {
         .expect("the metadata");
         let iri = format!(
             "{}/{named}",
-            cascade_bridge::file_iri(&adapter).expect("the adapter's IRI")
+            cascade_bridge_cli::file_iri(&adapter).expect("the adapter's IRI")
         );
         let document = adapter.join("fixtures/in/two.xml");
         let document = document.to_string_lossy().into_owned();
@@ -555,4 +586,280 @@ fn a_mapping_neither_host_can_read_is_named_once_by_each_and_both_exit_alike() {
             assert_eq!(said.matches(&iri).count(), 1, "{said}");
         }
     }
+}
+
+fn files_under(
+    root: &Path,
+    directory: &Path,
+    into: &mut serde_json::Map<String, serde_json::Value>,
+) {
+    for entry in std::fs::read_dir(directory).expect("a directory") {
+        let path = entry.expect("an entry").path();
+        let key = path
+            .strip_prefix(root)
+            .expect("under the root")
+            .to_string_lossy()
+            .replace('\\', "/");
+        if path.is_dir() {
+            files_under(root, &path, into);
+        } else {
+            into.insert(key, serde_json::json!(path.to_string_lossy()));
+        }
+    }
+}
+
+fn map_of(directory: &Path, iri: &str, withheld: &[&str]) -> serde_json::Value {
+    let mut files = serde_json::Map::new();
+    files_under(directory, directory, &mut files);
+    files.retain(|key, _| !withheld.iter().any(|left| key.starts_with(left)));
+    serde_json::json!({ "iri": iri, "files": files })
+}
+
+/// The answers, kinds and graphs a results directory holds, each graph canonicalised.
+fn results(directory: &Path) -> BTreeMap<String, String> {
+    let mut held = BTreeMap::new();
+    for case in std::fs::read_dir(directory).expect("the results") {
+        let case = case.expect("a case").path();
+        for written in std::fs::read_dir(&case).expect("a case's results") {
+            let written = written.expect("a result").path();
+            let name = format!(
+                "{}/{}",
+                case.file_name().expect("a case name").to_string_lossy(),
+                written.file_name().expect("a file name").to_string_lossy()
+            );
+            let bytes = std::fs::read(&written).expect("a result");
+            let said = match written.extension().and_then(|e| e.to_str()) {
+                Some("json") => {
+                    let mut answer: serde_json::Value =
+                        serde_json::from_slice(&bytes).expect("a JSON result");
+                    if let Some(failure) = answer.get_mut("failure") {
+                        failure
+                            .as_object_mut()
+                            .expect("a failure")
+                            .remove("message");
+                    }
+                    answer.to_string()
+                }
+                Some("report") => format!("{:?}", outcomes(&written)),
+                _ => format!(
+                    "{:?}",
+                    canonical(&bytes, RdfFormat::Turtle, "https://example.org/base")
+                ),
+            };
+            held.insert(name, said);
+        }
+    }
+    held
+}
+
+#[test]
+fn the_library_command_answers_one_calls_file_alike_on_both_hosts() {
+    let scratch = scratch();
+    let adapter_iri = "https://example.org/adapters/catalog/";
+    let vocabulary = map_of(&vocabularies(), "https://example.org/vocabularies/", &[]);
+    let to_load = map_of(&tiny(), adapter_iri, &["fixtures/"]);
+    let lacking = map_of(&tiny(), adapter_iri, &["fixtures/", "mapping/item.rq"]);
+    let whole = map_of(&tiny(), adapter_iri, &[]);
+    let not_xml = scratch.path().join("not-xml.xml");
+    std::fs::write(&not_xml, "<catalog><item").expect("a document that does not parse");
+    let document = |path: &Path| {
+        serde_json::json!({
+            "iri": "https://example.org/documents/catalog.xml",
+            "path": path.to_string_lossy(),
+        })
+    };
+    let two = document(&tiny().join("fixtures/in/two.xml"));
+    let mut with_facts = two.clone();
+    with_facts["facts"] = serde_json::json!({
+        "iri": "https://example.org/facts/catalog.ttl",
+        "path": tiny().join("fixtures/facts/catalog.ttl").to_string_lossy(),
+    });
+    let calls = serde_json::json!({ "cases": [
+        { "name": "describe", "calls": [
+            { "describe": {
+                "adapter": adapter_iri,
+                "metadata": tiny().join("ro-crate-metadata.json").to_string_lossy(),
+                "format": "turtle" } } ] },
+        { "name": "convert", "calls": [
+            { "convert": { "document": two, "format": "turtle" } },
+            { "load": { "adapter": to_load, "vocabulary": vocabulary } },
+            { "ask": { "document": two } },
+            { "convert": { "document": document(&not_xml), "format": "turtle" } },
+            { "convert": { "document": with_facts, "format": "ntriples" } } ] },
+        { "name": "missing", "calls": [
+            { "load": { "adapter": lacking, "vocabulary": vocabulary } },
+            { "load": { "adapter": to_load } },
+            { "convert": { "document": two, "format": "turtle" } } ] },
+        { "name": "test", "calls": [
+            { "test": { "adapter": whole, "vocabulary": vocabulary } },
+            { "test": { "adapter": whole } } ] }
+    ] });
+    let file = scratch.path().join("calls.json");
+    std::fs::write(&file, calls.to_string()).expect("the calls file");
+    let mut held = BTreeMap::new();
+    for host in ["native", "node"] {
+        let directory = scratch.path().join(host);
+        std::fs::create_dir(&directory).expect("an empty results directory");
+        let arguments = [
+            "library",
+            &file.to_string_lossy(),
+            &directory.to_string_lossy(),
+        ];
+        let run = match host {
+            "native" => native(&arguments),
+            _ => node(&arguments),
+        };
+        assert_eq!(
+            run.status.code(),
+            Some(0),
+            "{host}: {}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        held.insert(host, results(&directory));
+    }
+    let native_results = &held["native"];
+    for (written, said) in [
+        ("convert/2.json", "{}"),
+        ("convert/3.json", r#"{"answer":true}"#),
+        (
+            "convert/4.json",
+            r#"{"failure":{"kind":"documentFailure"}}"#,
+        ),
+        (
+            "missing/1.json",
+            r#"{"failure":{"kind":"fileMissingFailure","map":"adapter","path":"mapping/item.rq"}}"#,
+        ),
+        ("test/2.json", r#"{"failure":{"kind":"vocabularyFailure"}}"#),
+    ] {
+        assert_eq!(
+            native_results.get(written).map(String::as_str),
+            Some(said),
+            "{written}: {native_results:#?}"
+        );
+    }
+    for written in [
+        "describe/1.graph",
+        "convert/5.graph",
+        "convert/5.findings",
+        "missing/3.graph",
+        "test/1.report",
+    ] {
+        assert!(
+            native_results.contains_key(written),
+            "{written}: {native_results:#?}"
+        );
+    }
+    assert!(
+        !native_results.contains_key("convert/1.json"),
+        "{native_results:#?}"
+    );
+    assert!(
+        !native_results.contains_key("missing/3.findings"),
+        "{native_results:#?}"
+    );
+    assert_eq!(&held["node"], native_results);
+}
+
+#[test]
+fn neither_host_answers_a_describe_whose_graph_cannot_be_written() {
+    let scratch = scratch();
+    let calls = serde_json::json!({ "cases": [
+        { "name": "describe", "calls": [
+            { "describe": {
+                "adapter": "https://example.org/adapters/catalog/",
+                "metadata": tiny().join("ro-crate-metadata.json").to_string_lossy(),
+                "format": "turtle" } } ] }
+    ] });
+    let file = scratch.path().join("calls.json");
+    std::fs::write(&file, calls.to_string()).expect("the calls file");
+    for host in ["native", "node"] {
+        let directory = scratch.path().join(host);
+        let blocked = directory.join("describe/1.graph");
+        std::fs::create_dir_all(&blocked).expect("a directory where the graph would go");
+        let arguments = [
+            "library",
+            &file.to_string_lossy(),
+            &directory.to_string_lossy(),
+        ];
+        let run = match host {
+            "native" => native(&arguments),
+            _ => node(&arguments),
+        };
+        let said = String::from_utf8_lossy(&run.stderr);
+        assert_eq!(run.status.code(), Some(2), "{host}: {said}");
+        assert!(said.contains("1.graph"), "{host}: {said}");
+        assert!(
+            !directory.join("describe/1.json").exists(),
+            "{host}: an answer was written"
+        );
+    }
+}
+
+#[test]
+fn neither_host_reads_a_file_outside_the_adapter_named_with_an_encoded_slash() {
+    let scratch = scratch();
+    let adapter = scratch.path().join("adapter");
+    copied_to(&tiny(), &adapter);
+    std::fs::rename(
+        adapter.join("mapping/detect.rq"),
+        scratch.path().join("secret.rq"),
+    )
+    .expect("the query moved beside the adapter");
+    replaced_once(
+        &adapter,
+        "ro-crate-metadata.json",
+        "\"mapping/detect.rq\"",
+        "\"..%2Fsecret.rq\"",
+    );
+    let document = adapter.join("fixtures/in/two.xml");
+    let document = document.to_string_lossy().into_owned();
+    let adapter = adapter.to_string_lossy().into_owned();
+    for (host, run) in [
+        ("native", native(&["convert", &adapter, &document])),
+        ("node", node(&["convert", &adapter, &document])),
+    ] {
+        let said = String::from_utf8_lossy(&run.stderr);
+        assert_eq!(run.status.code(), Some(2), "{host}: {said}");
+        assert!(said.contains("not inside"), "{host}: {said}");
+    }
+}
+
+#[test]
+fn both_hosts_convert_with_the_adapter_s_own_schema_of_the_xml_namespace_as_they_test_with_it() {
+    let scratch = scratch();
+    let adapter = scratch.path().join("adapter");
+    copied_to(&tiny(), &adapter);
+    replaced_once(
+        &adapter,
+        "schema/item.xsd",
+        "<xs:element name=\"item\"",
+        "<xs:import namespace=\"http://www.w3.org/XML/1998/namespace\" schemaLocation=\"xml.xsd\"/>\n  <xs:element name=\"item\"",
+    );
+    replaced_once(
+        &adapter,
+        "schema/item.xsd",
+        "<xs:attribute name=\"internal\" type=\"xs:string\"/>",
+        "<xs:attribute name=\"internal\" type=\"xs:string\"/>\n    <xs:attribute ref=\"xml:lang\"/>",
+    );
+    replaced_once(
+        &adapter,
+        "fixtures/in/two.xml",
+        "<item id=\"1\">",
+        "<item id=\"1\" xml:lang=\"en\">",
+    );
+    std::fs::write(
+        adapter.join("schema/xml.xsd"),
+        "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" targetNamespace=\"http://www.w3.org/XML/1998/namespace\">\n  <xs:attribute name=\"lang\">\n    <xs:simpleType>\n      <xs:restriction base=\"xs:language\">\n        <xs:enumeration value=\"fr\"/>\n      </xs:restriction>\n    </xs:simpleType>\n  </xs:attribute>\n</xs:schema>\n",
+    )
+    .expect("the adapter's own schema of the XML namespace");
+    let vocabularies = vocabularies().to_string_lossy().into_owned();
+    let found = converts_as_the_native_command_does(
+        &adapter,
+        "two.xml",
+        &["--vocabularies", &vocabularies],
+    );
+    assert!(
+        names(&found, "http://www.w3.org/ns/shacl#Violation"),
+        "the item whose xml:lang only the adapter's schema refuses: {found:?}"
+    );
 }

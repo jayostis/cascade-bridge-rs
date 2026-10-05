@@ -3,8 +3,8 @@ use crate::fixtures::{
 };
 use crate::harness::{run_manifest, RunOptions};
 use crate::load::load_adapter;
+use crate::resolver::Resolver;
 use crate::run::prepare;
-use crate::Resolver;
 
 const MANIFEST: &str = "fixtures/manifest.ttl";
 
@@ -98,7 +98,8 @@ fn a_manifest_that_is_not_turtle_is_refused_by_its_name() {
         "<> a mf:Manifest ; {",
         1,
     );
-    let refused = load_adapter(&variant)
+    let adapter = load_adapter(&variant).expect("the crate, which names the manifest");
+    let refused = run_manifest(&adapter, &variant, RunOptions::default())
         .err()
         .expect("a manifest that is not Turtle is refused")
         .to_string();

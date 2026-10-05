@@ -39,15 +39,15 @@ impl Shapes {
                         triple.predicate.into_owned(),
                         triple.object.into_owned(),
                     )
-                    .map_err(|e| Error::msg(format!("{iri}: {e}")))?;
+                    .map_err(|e| Error::vocabulary(format!("{iri}: {e}")))?;
             }
         }
         let parsed = ShaclParser::new(graph)
             .parse()
-            .map_err(|e| Error::msg(format!("the vocabulary's shapes: {e}")))?;
+            .map_err(|e| Error::vocabulary(format!("the vocabulary's shapes: {e}")))?;
         Ok(Self {
             schema: IRSchema::compile(&parsed)
-                .map_err(|e| Error::msg(format!("the vocabulary's shapes: {e}")))?,
+                .map_err(|e| Error::vocabulary(format!("the vocabulary's shapes: {e}")))?,
         })
     }
 
@@ -60,7 +60,7 @@ impl Shapes {
                 quad.predicate.clone(),
                 quad.object.clone(),
             )
-            .map_err(|e| Error::msg(format!("the produced graph: {e}")))?;
+            .map_err(|e| Error::bridge(format!("the produced graph: {e}")))?;
         }
         let report = GraphValidation::new(data.into())
             .validate(
@@ -68,7 +68,7 @@ impl Shapes {
                 &ShaclValidationMode::Native,
                 &ShaclConfig::new(),
             )
-            .map_err(|e| Error::msg(format!("the produced graph: {e}")))?;
+            .map_err(|e| Error::bridge(format!("the produced graph: {e}")))?;
         let mut drawn = Vec::new();
         for result in report.results() {
             drawn.push(Drawn {
@@ -97,7 +97,7 @@ fn declares_a_reported_severity(iri: &str, document: &Graph) -> Result<()> {
         let reported = matches!(declared, TermRef::NamedNode(named)
             if REPORTED.contains(&named.as_str()));
         if !reported {
-            return Err(Error::msg(format!(
+            return Err(Error::vocabulary(format!(
                 "{iri}: a shape declares sh:severity {declared}; a finding carries sh:Info, \
                  sh:Warning or sh:Violation"
             )));
@@ -118,7 +118,7 @@ fn severity(severity: &Severity) -> Result<String> {
         Severity::Info => Ok(SH_INFO.to_owned()),
         Severity::Warning => Ok(SH_WARNING.to_owned()),
         Severity::Violation => Ok(SH_VIOLATION.to_owned()),
-        _ => Err(Error::msg(
+        _ => Err(Error::bridge(
             "a result carries a severity no finding does: sh:Info, sh:Warning or sh:Violation",
         )),
     }

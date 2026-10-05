@@ -2,8 +2,8 @@ use crate::fixtures;
 use crate::fixtures::{converted, objects, tiny_json, Variant, OA, RDF_TYPE, RDF_VALUE};
 use crate::harness::{run_manifest, RunOptions};
 use crate::load::load_adapter;
+use crate::resolver::Resolver;
 use crate::run::{convert, prepare, Conversion, Source};
-use crate::Resolver;
 use oxrdf::Quad;
 
 fn read_in(resolver: &dyn Resolver, input: &str, envelope: &str) -> Conversion {

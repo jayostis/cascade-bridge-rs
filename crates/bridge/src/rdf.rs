@@ -94,13 +94,13 @@ pub(crate) fn canonical_parts(quads: impl IntoIterator<Item = Quad>) -> Result<V
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum GraphFormat {
+pub enum GraphFormat {
     Turtle,
     NTriples,
 }
 
 impl GraphFormat {
-    pub(crate) fn named(name: &str) -> Option<Self> {
+    pub fn named(name: &str) -> Option<Self> {
         match name {
             "turtle" => Some(Self::Turtle),
             "ntriples" => Some(Self::NTriples),

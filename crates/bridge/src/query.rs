@@ -1,5 +1,5 @@
 use crate::annotation::Minted;
-use crate::error::{Error, Result};
+use crate::error::{Error, ErrorKind, Result};
 use crate::resolver::Resolver;
 use oxigraph::model::{GraphName, Quad};
 use oxigraph::sparql::{PreparedSparqlQuery, QueryResults, SparqlEvaluator};
@@ -48,21 +48,21 @@ impl Query {
         what: &str,
     ) -> Result<Self> {
         let text = String::from_utf8(resolver.read(iri)?)
-            .map_err(|e| Error::msg(format!("{iri}: {e}")))?;
+            .map_err(|e| Error::adapter(format!("{iri}: {e}")))?;
         let parsed = spargebra::SparqlParser::new()
             .with_base_iri(iri)
-            .map_err(|e| Error::msg(format!("{iri}: {e}")))?
+            .map_err(|e| Error::adapter(format!("{iri}: {e}")))?
             .parse_query(&text)
-            .map_err(|e| Error::msg(format!("{iri}: {e}")))?;
+            .map_err(|e| Error::adapter(format!("{iri}: {e}")))?;
         let form = Form::of(&parsed);
         if form != expected {
-            return Err(Error::msg(format!(
+            return Err(Error::adapter(format!(
                 "{what} {iri} is not a {}",
                 expected.keyword()
             )));
         }
         if let Some(held) = what_fetches(&parsed) {
-            return Err(Error::msg(format!(
+            return Err(Error::adapter(format!(
                 "{what} {iri} holds {held}; a query reads the dataset built for its unit, \
                  and nothing is fetched"
             )));
@@ -76,12 +76,16 @@ impl Query {
 
     pub(crate) fn on(&self, store: &Store) -> Result<QueryResults<'static>> {
         // Copies the algebra already parsed; the text is not parsed again.
-        Ok(self.prepared.clone().on_store(store).execute()?)
+        self.prepared
+            .clone()
+            .on_store(store)
+            .execute()
+            .map_err(|e| Error::from(e).explained_by(ErrorKind::Adapter))
     }
 
     pub(crate) fn graph(&self, store: &Store) -> Result<Vec<Quad>> {
         let QueryResults::Graph(triples) = self.on(store)? else {
-            return Err(Error::msg(format!(
+            return Err(Error::adapter(format!(
                 "{} is not a {}",
                 self.iri,
                 Form::Construct.keyword()
@@ -89,7 +93,7 @@ impl Query {
         };
         let mut quads = Vec::new();
         for triple in triples {
-            let triple = triple?;
+            let triple = triple.map_err(|e| Error::from(e).explained_by(ErrorKind::Adapter))?;
             quads.push(Quad::new(
                 triple.subject,
                 triple.predicate,

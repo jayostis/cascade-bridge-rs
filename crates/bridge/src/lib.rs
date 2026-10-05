@@ -1,11 +1,10 @@
 //! **Cascade Bridge for Rust**: an implementation of the Cascade Bridge
 //! Specification's `sparql-1.1` profile. It runs a Cascade Bridge Adapter, a
 //! data package for one source format, over a source document, and executes
-//! the adapter's test manifest.
+//! the adapter's test manifest, reading every file from a map held in memory.
 
 mod accounting;
 mod annotation;
-pub mod command;
 mod decode;
 mod earl;
 mod error;
@@ -13,6 +12,7 @@ mod error;
 mod fixtures;
 mod harness;
 mod json;
+mod library;
 mod lift;
 mod load;
 mod query;
@@ -27,9 +27,10 @@ mod validate;
 mod vocabulary;
 mod xpath;
 
-pub use error::{Error, Result};
+pub use error::{Error, ErrorKind, Map, Result};
+pub use library::{
+    describe, load, test, Conversion, Description, Document, Facts, Files, Format, Loaded, Named,
+    Outcome, TestEntry, TestOptions, TestReport, NAME, VERSION,
+};
 pub use oxrdf;
 pub use oxrdfio;
-pub use resolver::{
-    authority, file_iri, file_iri_to_path, path_to_file_iri, unread, DirectoryResolver, Resolver,
-};

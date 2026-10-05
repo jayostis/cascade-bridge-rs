@@ -181,6 +181,8 @@ name = "cascade-bridge-cli"
 version = "0.1.0"
 dependencies = [
  "cascade-bridge",
+ "oxiri 0.2.11",
+ "serde_json",
  "tempfile",
 ]
 
@@ -189,6 +191,7 @@ name = "cascade-bridge-wasm"
 version = "0.1.0"
 dependencies = [
  "cascade-bridge",
+ "js-sys",
  "oxigraph",
  "wasm-bindgen",
 ]

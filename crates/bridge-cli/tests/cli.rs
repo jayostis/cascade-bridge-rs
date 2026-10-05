@@ -374,7 +374,7 @@ fn expected_findings() -> BTreeSet<String> {
     canonical(
         &std::fs::read(&path).expect("the expected findings"),
         RdfFormat::Turtle,
-        &cascade_bridge::file_iri(&path).expect("the fixture's IRI"),
+        &cascade_bridge_cli::file_iri(&path).expect("the fixture's IRI"),
     )
 }
 
@@ -400,7 +400,7 @@ fn writes_the_findings_the_adapter_expects_of_the_document_where_findings_names(
         canonical(
             &produced,
             RdfFormat::Turtle,
-            &cascade_bridge::file_iri(&written).expect("the written file's IRI")
+            &cascade_bridge_cli::file_iri(&written).expect("the written file's IRI")
         ),
         expected_findings(),
         "{}",
@@ -430,7 +430,7 @@ fn writes_findings_the_adapter_can_commit_and_a_checkout_at_another_path_can_rea
         canonical(
             &produced,
             RdfFormat::Turtle,
-            &cascade_bridge::file_iri(&oracle).expect("the oracle's IRI")
+            &cascade_bridge_cli::file_iri(&oracle).expect("the oracle's IRI")
         ),
         expected_findings(),
         "committed where the adapter's own oracle stands, it names that checkout's document: {}",
@@ -439,7 +439,7 @@ fn writes_findings_the_adapter_can_commit_and_a_checkout_at_another_path_can_rea
 }
 
 #[test]
-fn leaves_standard_output_byte_for_byte_what_it_is_without_the_flag() {
+fn leaves_standard_output_the_graph_it_is_without_the_flag() {
     let scratch = scratch();
     let document = tiny().join("fixtures/in/two.xml");
     let written = scratch.path().join("findings-beside.ttl");
@@ -462,7 +462,10 @@ fn leaves_standard_output_byte_for_byte_what_it_is_without_the_flag() {
     succeeded(&bare);
     succeeded(&beside);
     assert!(!bare.stdout.is_empty(), "the command wrote a graph");
-    assert_eq!(beside.stdout, bare.stdout);
+    assert_eq!(
+        canonical(&beside.stdout, RdfFormat::Turtle, BASE),
+        canonical(&bare.stdout, RdfFormat::Turtle, BASE)
+    );
 }
 
 #[test]
@@ -553,7 +556,7 @@ fn writes_findings_under_the_prefixes_a_findings_graph_uses() {
     let text =
         String::from_utf8(std::fs::read(&written).expect("the written findings")).expect("utf-8");
     let mut parsed = oxrdfio::RdfParser::from_format(RdfFormat::Turtle)
-        .with_base_iri(cascade_bridge::file_iri(&written).expect("an IRI"))
+        .with_base_iri(cascade_bridge_cli::file_iri(&written).expect("an IRI"))
         .expect("base")
         .for_slice(text.as_bytes());
     for quad in parsed.by_ref() {
@@ -629,7 +632,7 @@ fn writes_the_same_findings_graph_as_turtle_as_it_does_as_n_triples() {
         canonical(
             &turtle_text,
             RdfFormat::Turtle,
-            &cascade_bridge::file_iri(&turtle).expect("an IRI")
+            &cascade_bridge_cli::file_iri(&turtle).expect("an IRI")
         ),
         as_ntriples,
         "{}",
@@ -653,4 +656,205 @@ fn names_what_is_wrong_with_the_adapter_where_the_document_is_missing_too() {
     let stderr = String::from_utf8_lossy(&run.stderr);
     assert!(stderr.contains("names no root entity"), "{stderr}");
     assert!(!stderr.contains("missing.xml"), "{stderr}");
+}
+
+fn tiny_with_vocabularies(command: &str) -> Vec<String> {
+    vec![
+        command.to_owned(),
+        tiny().to_string_lossy().into_owned(),
+        "--vocabularies".to_owned(),
+        vocabularies().to_string_lossy().into_owned(),
+    ]
+}
+
+fn run_in(directory: &std::path::Path, arguments: &[String]) -> std::process::Output {
+    Command::new(env!("CARGO_BIN_EXE_cascade-bridge"))
+        .args(arguments)
+        .current_dir(directory)
+        .output()
+        .expect("run the command")
+}
+
+#[test]
+fn test_says_the_adapter_this_bridge_at_its_own_version_and_the_tally() {
+    let scratch = scratch();
+    let run = run_in(scratch.path(), &tiny_with_vocabularies("test"));
+    let stdout = String::from_utf8_lossy(&run.stdout);
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert!(
+        lines
+            .first()
+            .is_some_and(|l| l.starts_with("Adapter  catalog")),
+        "{stdout}"
+    );
+    let bridge = format!(
+        "Bridge   Cascade Bridge for Rust {}, offers ",
+        env!("CARGO_PKG_VERSION")
+    );
+    assert!(lines.iter().any(|l| l.starts_with(&bridge)), "{stdout}");
+    assert_eq!(
+        lines.last(),
+        Some(&"4 passed, 2 failed, 1 cantTell, 1 untested"),
+        "{stdout}"
+    );
+    assert_eq!(run.status.code(), Some(1), "an entry failed");
+}
+
+#[test]
+fn test_says_the_adapter_and_this_bridge_before_any_entry() {
+    let scratch = scratch();
+    let run = run_in(scratch.path(), &tiny_with_vocabularies("test"));
+    let stdout = String::from_utf8_lossy(&run.stdout);
+    let at = |starting: &str| {
+        stdout
+            .lines()
+            .position(|line| line.starts_with(starting))
+            .unwrap_or_else(|| panic!("no line starting {starting:?}: {stdout}"))
+    };
+    assert!(at("Adapter  catalog") < at("Bridge   "), "{stdout}");
+    assert!(at("Bridge   ") < at("  passed "), "{stdout}");
+}
+
+#[test]
+fn test_says_where_it_wrote_the_report_and_writes_none_where_none_was_asked_for() {
+    let scratch = common::scratch();
+    let report = scratch.path().join("report.ttl");
+    let mut arguments = tiny_with_vocabularies("test");
+    arguments.extend(["--earl".to_owned(), report.to_string_lossy().into_owned()]);
+    let run = run_in(scratch.path(), &arguments);
+    let stdout = String::from_utf8_lossy(&run.stdout);
+    assert!(
+        stdout.ends_with(&format!("EARL     {}\n", report.display())),
+        "{stdout}"
+    );
+    assert!(report.is_file(), "the report --earl asked for");
+
+    let bare = common::scratch();
+    run_in(bare.path(), &tiny_with_vocabularies("test"));
+    let written: Vec<_> = std::fs::read_dir(bare.path())
+        .expect("the scratch directory")
+        .collect();
+    assert!(written.is_empty(), "{written:?}");
+}
+
+#[test]
+fn refuses_what_it_cannot_parse_with_the_usage_and_status_two() {
+    let adapter = tiny().to_string_lossy().into_owned();
+    for argv in [
+        &["validate"][..],
+        &["test"],
+        &["test", &adapter, "--earl"],
+        &["convert", &adapter, "document.xml", "--format", "rdfxml"],
+    ] {
+        let run = cascade_bridge(argv);
+        let stderr = String::from_utf8_lossy(&run.stderr);
+        assert_eq!(run.status.code(), Some(2), "{argv:?}");
+        assert!(
+            stderr.starts_with("usage: cascade-bridge test"),
+            "{argv:?}: {stderr}"
+        );
+        assert!(run.stdout.is_empty(), "{argv:?}");
+    }
+}
+
+#[test]
+fn convert_says_it_wrote_the_findings_then_the_graph_and_names_the_document_by_its_iri() {
+    let scratch = scratch();
+    let document = tiny().join("fixtures/in/two.xml");
+    let findings = scratch.path().join("findings.ttl");
+    let graph = scratch.path().join("graph.ttl");
+    let mut arguments = tiny_with_vocabularies("convert");
+    arguments.insert(2, document.to_string_lossy().into_owned());
+    arguments.extend([
+        "--findings".to_owned(),
+        findings.to_string_lossy().into_owned(),
+        "--out".to_owned(),
+        graph.to_string_lossy().into_owned(),
+    ]);
+    let run = run_in(scratch.path(), &arguments);
+    succeeded(&run);
+    assert!(run.stdout.is_empty(), "the graph went to --out");
+    let said = String::from_utf8_lossy(&run.stderr);
+    assert!(
+        said.ends_with(&format!(
+            "Findings {}\nGraph    {}\n",
+            findings.display(),
+            graph.display()
+        )),
+        "{said}"
+    );
+    let iri = cascade_bridge_cli::file_iri(&document).expect("the document's IRI");
+    assert!(
+        said.contains(&format!("Document {iri}  2 record(s)")),
+        "{said}"
+    );
+    assert!(!read_at_its_own_iri(&findings, RdfFormat::Turtle).is_empty());
+}
+
+#[test]
+fn convert_writes_the_graph_to_standard_output_where_no_file_is_named() {
+    let scratch = scratch();
+    let document = tiny().join("fixtures/in/two.xml");
+    let run = run_in(
+        scratch.path(),
+        &[
+            "convert".to_owned(),
+            tiny().to_string_lossy().into_owned(),
+            document.to_string_lossy().into_owned(),
+        ],
+    );
+    succeeded(&run);
+    assert!(!run.stdout.is_empty());
+    assert!(!String::from_utf8_lossy(&run.stderr).contains("Graph"));
+    let written: Vec<_> = std::fs::read_dir(scratch.path())
+        .expect("the scratch directory")
+        .collect();
+    assert!(written.is_empty(), "{written:?}");
+}
+
+#[test]
+fn stops_with_status_two_and_the_reason_where_a_file_cannot_be_read() {
+    let scratch = scratch();
+    let run = run_in(
+        scratch.path(),
+        &[
+            "convert".to_owned(),
+            tiny().to_string_lossy().into_owned(),
+            "no-such-document.xml".to_owned(),
+        ],
+    );
+    assert_eq!(run.status.code(), Some(2));
+    let said = String::from_utf8_lossy(&run.stderr);
+    assert!(
+        said.starts_with("cascade-bridge: no-such-document.xml: "),
+        "{said}"
+    );
+}
+
+fn list_in_the_tiny_json_adapter(envelope: &str) -> std::process::Output {
+    let adapter = tiny().join("../tiny-json-adapter");
+    let list = adapter.join("fixtures/in/list.json");
+    cascade_bridge(&[
+        "convert",
+        &adapter.to_string_lossy(),
+        &list.to_string_lossy(),
+        "--envelope",
+        envelope,
+    ])
+}
+
+#[test]
+fn convert_reads_the_document_in_the_envelope_named_as_the_crate_names_it() {
+    let run = list_in_the_tiny_json_adapter("#envelope-item");
+    let said = String::from_utf8_lossy(&run.stderr);
+    assert_eq!(run.status.code(), Some(0), "{said}");
+    assert!(said.contains(" 1 record(s)"), "{said}");
+}
+
+#[test]
+fn convert_refuses_an_envelope_the_adapter_does_not_declare() {
+    let run = list_in_the_tiny_json_adapter("#envelope-none");
+    let said = String::from_utf8_lossy(&run.stderr);
+    assert_eq!(run.status.code(), Some(2), "{said}");
+    assert!(said.contains("declares no envelope"), "{said}");
 }

@@ -1,6 +1,6 @@
 [package]
 name = "cascade-bridge"
-description = "Cascade Bridge for Rust: runs Cascade Bridge Adapters under the sparql-1.1 profile."
+description = "Cascade Bridge for Rust: describes, loads and tests Cascade Bridge Adapters, and converts documents with them, under the sparql-1.1 profile, over maps of files held in memory."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

@@ -3,8 +3,8 @@ use crate::fixtures::{
     SH,
 };
 use crate::load::load_adapter;
+use crate::resolver::Resolver;
 use crate::run::{prepare, Conversion};
-use crate::Resolver;
 use oxrdf::Quad;
 use std::collections::BTreeSet;
 
