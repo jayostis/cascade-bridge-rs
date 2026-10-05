@@ -60,7 +60,7 @@ So:
 - `cargo fmt --all`, `cargo clippy --all-targets -- -D warnings`,
   `sh package/build.sh`, `cargo test`, `cargo test -p cascade-bridge-cli --test node_host`,
   `node --test package/tests/`. CI runs them all, and the specification's vector,
-  `specification_vector.rs`, with `--ignored` where it has checked out the
+  `specification_vector.rs`, with `--include-ignored` where it has checked out the
   specification. build.sh is the one build step: it builds the package in
   `package/dist` that `node_host` and the Node tests load, and `cargo test`
   never builds or installs anything.
