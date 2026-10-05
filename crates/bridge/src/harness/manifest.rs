@@ -4,7 +4,7 @@ use crate::earl::{earl_report_at, ReportSubject};
 use crate::fixtures::{tiny, Variant, BRIDGE, RDF_TYPE};
 use crate::harness::{run_manifest, EntryResult, RunOptions};
 use crate::load::load_adapter;
-use crate::Resolver;
+use crate::resolver::Resolver;
 use oxrdf::{Graph, NamedNode, NamedOrBlankNodeRef, TermRef, Triple};
 use oxrdfio::{RdfFormat, RdfParser};
 use std::collections::BTreeMap;

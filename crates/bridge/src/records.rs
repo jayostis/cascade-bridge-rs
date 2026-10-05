@@ -86,13 +86,13 @@ fn drafts(mapped: &[Quad]) -> Result<BTreeSet<String>> {
         .filter(|quad| quad.predicate.as_str() == PROV_SPECIALIZATION_OF)
     {
         let NamedOrBlankNode::NamedNode(version) = &quad.subject else {
-            return Err(Error::msg(format!(
+            return Err(Error::adapter(format!(
                 "a mapping wrote a version as the blank node {}; a version is an IRI",
                 quad.subject
             )));
         };
         if version.as_str().contains('#') {
-            return Err(Error::msg(format!(
+            return Err(Error::adapter(format!(
                 "a mapping wrote the version {version} with a fragment; a fragment names a node nested in a version"
             )));
         }
@@ -100,7 +100,7 @@ fn drafts(mapped: &[Quad]) -> Result<BTreeSet<String>> {
             .insert(version.as_str().to_owned(), &quad.object)
             .is_some_and(|record| *record != quad.object)
         {
-            return Err(Error::msg(format!(
+            return Err(Error::adapter(format!(
                 "a mapping wrote the version {version} as a specialization of more than one record"
             )));
         }
@@ -120,7 +120,7 @@ fn content(mapped: &[Quad], version: &str, drafts: &BTreeSet<String>) -> Result<
         }
         match &quad.object {
             Term::BlankNode(node) => {
-                return Err(Error::msg(format!(
+                return Err(Error::adapter(format!(
                     "the version {version} holds the blank node {node}; a node nested in a version is named by the version's IRI, # and its position"
                 )))
             }
@@ -128,7 +128,7 @@ fn content(mapped: &[Quad], version: &str, drafts: &BTreeSet<String>) -> Result<
                 if version_of(node.as_str()) != version
                     && drafts.contains(version_of(node.as_str())) =>
             {
-                return Err(Error::msg(format!(
+                return Err(Error::adapter(format!(
                     "the version {version} names the version {node}; a version names no other version"
                 )))
             }

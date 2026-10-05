@@ -19,7 +19,7 @@ impl Resolver for Files {
         self.0
             .get(iri)
             .map(|text| text.clone().into_bytes())
-            .ok_or_else(|| Error::msg(format!("{iri}: not in the package")))
+            .ok_or_else(|| Error::adapter(format!("{iri}: not in the package")))
     }
 }
 

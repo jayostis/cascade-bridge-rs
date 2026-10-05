@@ -2,7 +2,7 @@
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Kind {
+pub enum ErrorKind {
     Document,
     Facts,
     Adapter,
@@ -19,32 +19,79 @@ pub enum Map {
 
 #[derive(Debug)]
 pub struct Error {
+    kind: ErrorKind,
     message: String,
-    missing: bool,
 }
 
 impl Error {
-    pub fn msg(message: impl Into<String>) -> Self {
+    pub fn new(kind: ErrorKind, message: impl Into<String>) -> Self {
         Self {
+            kind,
             message: message.into(),
-            missing: false,
         }
     }
 
-    pub fn missing(message: impl Into<String>) -> Self {
-        Self {
-            message: message.into(),
-            missing: true,
+    pub fn kind(&self) -> &ErrorKind {
+        &self.kind
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    pub(crate) fn document(message: impl Into<String>) -> Self {
+        Self::new(ErrorKind::Document, message)
+    }
+
+    pub(crate) fn facts(message: impl Into<String>) -> Self {
+        Self::new(ErrorKind::Facts, message)
+    }
+
+    pub(crate) fn adapter(message: impl Into<String>) -> Self {
+        Self::new(ErrorKind::Adapter, message)
+    }
+
+    pub(crate) fn vocabulary(message: impl Into<String>) -> Self {
+        Self::new(ErrorKind::Vocabulary, message)
+    }
+
+    pub(crate) fn bridge(message: impl Into<String>) -> Self {
+        Self::new(ErrorKind::Bridge, message)
+    }
+
+    pub(crate) fn missing(map: Map, path: impl Into<String>, message: impl Into<String>) -> Self {
+        Self::new(
+            ErrorKind::Missing {
+                map,
+                path: path.into(),
+            },
+            message,
+        )
+    }
+
+    /// An error no input explained yet is put down to the input `kind` names.
+    pub(crate) fn explained_by(self, kind: ErrorKind) -> Self {
+        match self.kind {
+            ErrorKind::Bridge => Self { kind, ..self },
+            _ => self,
         }
     }
 
-    pub(crate) fn is_missing(&self) -> bool {
-        self.missing
+    pub(crate) fn reworded(self, say: impl FnOnce(&str) -> String) -> Self {
+        Self {
+            message: say(&self.message),
+            ..self
+        }
     }
+}
 
-    pub fn kind(&self) -> &Kind {
-        static BRIDGE: Kind = Kind::Bridge;
-        &BRIDGE
+pub(crate) trait Explained<T> {
+    fn explained_by(self, kind: ErrorKind) -> Result<T>;
+}
+
+impl<T> Explained<T> for Result<T> {
+    fn explained_by(self, kind: ErrorKind) -> Result<T> {
+        self.map_err(|error| error.explained_by(kind))
     }
 }
 
@@ -58,26 +105,18 @@ impl std::error::Error for Error {}
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-impl From<std::io::Error> for Error {
-    fn from(e: std::io::Error) -> Self {
-        match e.kind() {
-            std::io::ErrorKind::NotFound => Self::missing(e.to_string()),
-            _ => Self::msg(e.to_string()),
-        }
-    }
-}
-
 macro_rules! from_error {
     ($($t:ty),* $(,)?) => {
         $(impl From<$t> for Error {
             fn from(e: $t) -> Self {
-                Self::msg(e.to_string())
+                Self::bridge(e.to_string())
             }
         })*
     };
 }
 
 from_error!(
+    std::io::Error,
     std::str::Utf8Error,
     std::string::FromUtf8Error,
     quick_xml::Error,

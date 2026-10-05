@@ -87,14 +87,14 @@ impl Accounting {
             if let (Some(verdict), Some(gap)) = (&entry.verdict, &entry.gap) {
                 if NAMES_A_GAP.contains(&verdict.as_str()) {
                     let declared = scheme.get(gap.as_str()).ok_or_else(|| {
-                        Error::msg(format!(
+                        Error::adapter(format!(
                             "{iri}: the entry for {} names {gap}, which the adapter's \
                              bridge:gapScheme does not declare",
                             entry.path
                         ))
                     })?;
                     let kind = declared.kind.as_deref().ok_or_else(|| {
-                        Error::msg(format!(
+                        Error::adapter(format!(
                             "{iri}: the entry for {} names {gap}, which declares no skos:broader, \
                              so what kind of gap it is cannot be read",
                             entry.path
@@ -117,7 +117,7 @@ impl Accounting {
             match (&entry.map, &entry.miss) {
                 (None, None) => {}
                 (Some(_), None) | (None, Some(_)) => {
-                    return Err(Error::msg(format!(
+                    return Err(Error::adapter(format!(
                         "{iri}: the entry for {} declares one half of a lookup; bridge:lookupIn \
                          and bridge:lookupNamesGap are declared together or not at all",
                         entry.path
@@ -125,21 +125,21 @@ impl Accounting {
                 }
                 (Some(map), Some(gap)) => {
                     let declared = scheme.get(gap.as_str()).ok_or_else(|| {
-                        Error::msg(format!(
+                        Error::adapter(format!(
                             "{iri}: the lookup of the entry for {} names {gap}, which the \
                              adapter's bridge:gapScheme does not declare",
                             entry.path
                         ))
                     })?;
                     let kind = declared.kind.as_deref().ok_or_else(|| {
-                        Error::msg(format!(
+                        Error::adapter(format!(
                             "{iri}: the lookup of the entry for {} names {gap}, which declares no \
                              skos:broader, so what kind of gap it is cannot be read",
                             entry.path
                         ))
                     })?;
                     if kind != BRIDGE_VALUE_NOT_MAPPED {
-                        return Err(Error::msg(format!(
+                        return Err(Error::adapter(format!(
                             "{iri}: the lookup of the entry for {} names {gap}, a gap of kind \
                              {kind}; a value a concept map holds no notation for is a gap of kind \
                              {BRIDGE_VALUE_NOT_MAPPED}",
@@ -148,7 +148,7 @@ impl Accounting {
                     }
                     if !maps.contains_key(map) {
                         let notations = concept_map(resolver, map).map_err(|e| {
-                            Error::msg(format!(
+                            Error::adapter(format!(
                                 "{iri}: the entry for {} looks its values up in {e}",
                                 entry.path
                             ))
@@ -234,7 +234,7 @@ impl Accounting {
 
 fn declared(objects: &[Term], iri: &str, path: &str, predicate: &str) -> Result<Option<String>> {
     if let [first, second, ..] = objects {
-        return Err(Error::msg(format!(
+        return Err(Error::adapter(format!(
             "{iri}: the entry for {path} declares the {predicate} {first} and {second}; an entry \
              declares at most one"
         )));
@@ -243,7 +243,7 @@ fn declared(objects: &[Term], iri: &str, path: &str, predicate: &str) -> Result<
         return Ok(None);
     };
     let Term::NamedNode(named) = object else {
-        return Err(Error::msg(format!("{iri}: {object} is no {predicate}")));
+        return Err(Error::adapter(format!("{iri}: {object} is no {predicate}")));
     };
     Ok(Some(named.as_str().to_owned()))
 }
@@ -257,7 +257,7 @@ fn entries(resolver: &dyn Resolver, iri: &str) -> Result<Vec<Entry>> {
     for s in subjects(&graph, BRIDGE_SOURCE_PATH)? {
         for path in objects(&graph, &s, BRIDGE_SOURCE_PATH)? {
             let Term::Literal(path) = path else {
-                return Err(Error::msg(format!("{iri}: {path} is no path")));
+                return Err(Error::adapter(format!("{iri}: {path} is no path")));
             };
             if !typed.contains(&s) {
                 continue;
@@ -292,7 +292,7 @@ pub(crate) fn gap_scheme(
             let mut declared = Vec::new();
             for object in objects(&graph, &s, predicate)? {
                 let Term::NamedNode(object) = object else {
-                    return Err(Error::msg(format!(
+                    return Err(Error::adapter(format!(
                         "{iri}: {concept} declares {predicate} {object}, which is no IRI"
                     )));
                 };
@@ -303,7 +303,7 @@ pub(crate) fn gap_scheme(
                     .iter()
                     .find(|object| !SEVERITIES.contains(&object.as_str()))
                 {
-                    return Err(Error::msg(format!(
+                    return Err(Error::adapter(format!(
                         "{iri}: {concept} declares sh:resultSeverity {object}; a gap's severity \
                          is sh:Info, sh:Warning or sh:Violation"
                     )));
@@ -315,7 +315,7 @@ pub(crate) fn gap_scheme(
                 "sh:resultSeverity"
             };
             if let [first, second, ..] = declared.as_slice() {
-                return Err(Error::msg(format!(
+                return Err(Error::adapter(format!(
                     "{iri}: {concept} declares {name} {first} and {second}; a gap declares at \
                      most one"
                 )));
@@ -340,14 +340,16 @@ fn concept_map(resolver: &dyn Resolver, iri: &str) -> Result<HashSet<String>> {
     for s in subjects(&graph, SKOS_NOTATION)? {
         for notation in objects(&graph, &s, SKOS_NOTATION)? {
             let Term::Literal(notation) = notation else {
-                return Err(Error::msg(format!("{iri}: {notation} is no skos:notation")));
+                return Err(Error::adapter(format!(
+                    "{iri}: {notation} is no skos:notation"
+                )));
             };
             notations.insert(notation.value().to_owned());
         }
     }
     let schemes = instances(&graph, SKOS_CONCEPT_SCHEME)?.len();
     if schemes != 1 {
-        return Err(Error::msg(format!(
+        return Err(Error::adapter(format!(
             "{iri}: the file holds {schemes} concept schemes; a bridge:lookupIn names a file \
              holding one"
         )));

@@ -1,9 +1,11 @@
 use crate::fixtures;
 
+use crate::fixtures::Fixture;
 use crate::fixtures::{address, annotations, converted, says, tiny, Variant, OA, SH};
 use crate::load::load_adapter;
+use crate::resolver::Resolver;
 use crate::run::prepare;
-use crate::{DirectoryResolver, Error, Resolver, Result};
+use crate::{Error, Result};
 use oxrdf::{NamedOrBlankNode, Quad};
 
 /// Every finding as its body, its severity and its address, joined per finding.
@@ -110,7 +112,7 @@ fn reports_nothing_about_a_record_carrying_a_comment_and_an_instruction() {
 
 struct Rehomed {
     root: String,
-    directory: DirectoryResolver,
+    directory: Fixture,
 }
 
 impl Resolver for Rehomed {
@@ -120,7 +122,7 @@ impl Resolver for Rehomed {
 
     fn read(&self, iri: &str) -> Result<Vec<u8>> {
         let Some(rest) = iri.strip_prefix(self.root.as_str()) else {
-            return Err(Error::msg(format!("not under {}: {iri}", self.root)));
+            return Err(Error::adapter(format!("not under {}: {iri}", self.root)));
         };
         self.directory
             .read(&format!("{}{rest}", self.directory.root()))

@@ -1,5 +1,5 @@
 use crate::annotation::{self, Record};
-use crate::error::{Error, Result};
+use crate::error::{Error, ErrorKind, Explained, Result};
 use crate::load::{turtle, Adapter};
 use crate::resolver::Resolver;
 use crate::shapes::{Document, Shapes};
@@ -38,14 +38,16 @@ impl Vocabulary {
         if files.is_empty() {
             return Ok(None);
         }
-        let checkout = Iri::parse(directory)?;
+        let checkout =
+            Iri::parse(directory).map_err(|e| Error::vocabulary(format!("{directory}: {e}")))?;
         let mut documents: Vec<Document> = Vec::new();
         for file in files {
             let iri = checkout
                 .resolve(file)
-                .map_err(|e| Error::msg(format!("the crate names {file}: {e}")))?
+                .map_err(|e| Error::vocabulary(format!("the crate names {file}: {e}")))?
                 .into_inner();
-            let (graph, _) = turtle(&resolver.read_vocabulary(&iri)?, &iri)?;
+            let (graph, _) = turtle(&resolver.read_vocabulary(&iri)?, &iri)
+                .explained_by(ErrorKind::Vocabulary)?;
             documents.push((iri, graph));
         }
         let (bridge, _) = turtle(BRIDGE_VOCABULARY, BRIDGE_NAMESPACE)?;
@@ -109,7 +111,7 @@ pub(crate) fn require_vocabularies(adapter: &Adapter, resolver: &dyn Resolver) -
     if adapter.vocabulary_files.is_empty() || resolver.vocabularies().is_some() {
         return Ok(());
     }
-    Err(Error::msg(format!(
+    Err(Error::vocabulary(format!(
         "the crate names {} bridge:vocabularyFile, and the command was given no \
          --vocabularies directory to read them from",
         adapter.vocabulary_files.len()

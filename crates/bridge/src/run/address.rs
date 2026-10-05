@@ -2,8 +2,8 @@ use crate::fixtures::{address, annotations, committed, converted, says, tiny, Va
 use crate::harness::{run_manifest, RunOptions};
 use crate::load::load_adapter;
 use crate::rdf::canonical_lines;
+use crate::resolver::Resolver;
 use crate::run::Conversion;
-use crate::Resolver;
 use oxrdf::{NamedNode, NamedOrBlankNode, Quad, Term};
 
 const ADDRESS_NOT_ONE_NODE: &str =

@@ -3,8 +3,8 @@
 
 use crate::fixtures::{address, annotations, one, tiny, unaccounted, Variant, OA, RDF_VALUE, SH};
 use crate::load::load_adapter;
+use crate::resolver::Resolver;
 use crate::run::{convert, prepare, Conversion, Source};
-use crate::Resolver;
 use oxrdf::{NamedNode, Quad, Term};
 use std::collections::BTreeSet;
 

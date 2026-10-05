@@ -89,10 +89,10 @@ fn without_fragment(iri: &str) -> &str {
 }
 
 fn resolved(base: &str, reference: &str) -> Result<String> {
-    let base = Iri::parse(base).map_err(|e| Error::msg(format!("{base}: {e}")))?;
+    let base = Iri::parse(base).map_err(|e| Error::adapter(format!("{base}: {e}")))?;
     Ok(base
         .resolve(reference)
-        .map_err(|e| Error::msg(format!("{base} names {reference}: {e}")))?
+        .map_err(|e| Error::adapter(format!("{base} names {reference}: {e}")))?
         .into_inner())
 }
 
@@ -163,15 +163,14 @@ pub(crate) fn compile(iri: &str, resolver: &dyn Resolver) -> Result<JsonSchema> 
             continue;
         }
         let bytes = resolver.read(&location).map_err(|e| {
-            Error::msg(format!(
-                "{iri} names a schema this Bridge did not read: {e}"
-            ))
+            e.reworded(|said| format!("{iri} names a schema this Bridge did not read: {said}"))
         })?;
-        let node = json::parse(json::decode(&bytes)?)
-            .map_err(|e| Error::msg(format!("{location}: {e}")))?;
+        let node = json::decode(&bytes)
+            .and_then(json::parse)
+            .map_err(|e| Error::adapter(format!("{location}: {e}")))?;
         if let Some(draft) = member(&node, "$schema").and_then(text) {
             if without_fragment(draft) != DRAFT_06 {
-                return Err(Error::msg(format!(
+                return Err(Error::adapter(format!(
                     "{location} is written in {draft}; this Bridge validates against draft-06 \
                      of JSON Schema alone"
                 )));
@@ -201,7 +200,7 @@ pub(crate) fn compile(iri: &str, resolver: &dyn Resolver) -> Result<JsonSchema> 
         for pattern in written {
             if !patterns.contains_key(pattern) {
                 let compiled = Regex::with_flags(pattern, "u").map_err(|e| {
-                    Error::msg(format!(
+                    Error::adapter(format!(
                         "{location}: the pattern {pattern} is not read: {e}"
                     ))
                 })?;
@@ -370,7 +369,7 @@ impl<'s> Run<'s> {
             .documents
             .get_key_value(inner)
             .map(|(key, _)| key.as_str())
-            .ok_or_else(|| Error::msg(format!("the $id {inner}, a schema not read")))
+            .ok_or_else(|| Error::adapter(format!("the $id {inner}, a schema not read")))
     }
 
     /// The subschema a `$ref` names, and the base its own `$id` resolves against.
@@ -384,7 +383,7 @@ impl<'s> Run<'s> {
             .schema
             .documents
             .get(document)
-            .ok_or_else(|| Error::msg(format!("a $ref to {target}, a schema not read")))?;
+            .ok_or_else(|| Error::adapter(format!("a $ref to {target}, a schema not read")))?;
         let found = json::selected(node, fragment);
         match found.as_slice() {
             [(positions, reached)] => {
@@ -392,13 +391,13 @@ impl<'s> Run<'s> {
                 let mut passed = node;
                 for &position in positions {
                     outer = self.scope(outer, passed)?;
-                    passed = passed
-                        .at(&[position])
-                        .ok_or_else(|| Error::msg(format!("a $ref to {target}, not followed")))?;
+                    passed = passed.at(&[position]).ok_or_else(|| {
+                        Error::adapter(format!("a $ref to {target}, not followed"))
+                    })?;
                 }
                 Ok((outer, *reached))
             }
-            _ => Err(Error::msg(format!(
+            _ => Err(Error::adapter(format!(
                 "a $ref to {target}, which names no one subschema"
             ))),
         }
@@ -413,7 +412,7 @@ impl<'s> Run<'s> {
         depth: usize,
     ) -> Result<()> {
         if depth > DEPTH {
-            return Err(Error::msg("a $ref chain that never reaches a keyword"));
+            return Err(Error::adapter("a $ref chain that never reaches a keyword"));
         }
         let members = match &schema.value {
             Value::Object(members) => members,
@@ -423,7 +422,7 @@ impl<'s> Run<'s> {
                 return Ok(());
             }
             _ => {
-                return Err(Error::msg(
+                return Err(Error::adapter(
                     "a schema that is neither an object nor a boolean",
                 ))
             }
@@ -716,7 +715,7 @@ impl JsonSchema {
             failures: Vec::new(),
         };
         run.reference(without_fragment(&self.root), &self.root)
-            .map_err(|e| Error::msg(format!("the source schema {}: {e}", self.root)))
+            .map_err(|e| Error::adapter(format!("the source schema {}: {e}", self.root)))
     }
 }
 

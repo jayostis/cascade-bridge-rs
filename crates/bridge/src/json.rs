@@ -74,7 +74,7 @@ impl Node {
 /// UTF-8 with no byte order mark, as RFC 8259 has a JSON text exchanged.
 pub(crate) fn decode(bytes: &[u8]) -> Result<&str> {
     if bytes.starts_with(&[0xEF, 0xBB, 0xBF]) {
-        return Err(Error::msg(
+        return Err(Error::document(
             "the document begins with a byte order mark, which a JSON text does not",
         ));
     }
@@ -104,7 +104,7 @@ struct Reader<'a> {
 
 impl Reader<'_> {
     fn error(&self, what: &str) -> Error {
-        Error::msg(format!(
+        Error::document(format!(
             "the document is not JSON at byte {}: {what}",
             self.at
         ))
@@ -434,7 +434,7 @@ pub(crate) enum Segment {
 /// `$` followed by `.name`, `['name']` and `[*]`, the subset of RFC 9535 a record path is written in.
 pub(crate) fn path(written: &str) -> Result<Vec<Segment>> {
     let outside = || {
-        Error::msg(format!(
+        Error::adapter(format!(
             "the record path {written} is outside the subset of RFC 9535 JSONPath a record path \
              is written in: $ followed by .name, ['name'] and [*]"
         ))

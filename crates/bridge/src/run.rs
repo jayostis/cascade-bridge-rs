@@ -1,6 +1,6 @@
 use crate::accounting::{gap_scheme, Accounting};
 use crate::annotation::{self, Record};
-use crate::error::{Error, Result};
+use crate::error::{Error, ErrorKind, Explained, Result};
 use crate::lift::{admitting, Admission, Lift, Paths, Reading, Unit};
 use crate::load::{subject, value, Adapter};
 use crate::query::{Form, Query};
@@ -76,7 +76,7 @@ impl Prepared {
         self.envelopes
             .iter()
             .position(|envelope| envelope.iri == iri)
-            .ok_or_else(|| Error::msg(format!("the adapter declares no envelope {iri}")))
+            .ok_or_else(|| Error::document(format!("the adapter declares no envelope {iri}")))
     }
 }
 
@@ -106,8 +106,12 @@ pub(crate) struct Source<'a> {
 }
 
 pub(crate) fn prepare(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prepared> {
+    prepared(adapter, resolver).explained_by(ErrorKind::Adapter)
+}
+
+fn prepared(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prepared> {
     if adapter.mappings.is_empty() {
-        return Err(Error::msg("the adapter names no bridge:mapping"));
+        return Err(Error::adapter("the adapter names no bridge:mapping"));
     }
     let syntax = Syntax::of(adapter.source_media_type.as_deref())?;
     let unit = syntax.records(adapter)?;
@@ -175,7 +179,7 @@ fn tables(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Vec<Quad>> {
     for iri in &adapter.tables {
         let format = value(&adapter.graph, &subject(iri)?, SCHEMA_ENCODING_FORMAT)?;
         if format.as_deref() != Some("text/turtle") {
-            return Err(Error::msg(format!(
+            return Err(Error::adapter(format!(
                 "table {iri} is {}; this Bridge loads text/turtle tables",
                 format.as_deref().unwrap_or("undeclared")
             )));
@@ -186,7 +190,7 @@ fn tables(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Vec<Quad>> {
             .rename_blank_nodes()
             .for_slice(&bytes)
         {
-            tables.push(quad.map_err(|e| Error::msg(format!("{iri}: {e}")))?);
+            tables.push(quad.map_err(|e| Error::adapter(format!("{iri}: {e}")))?);
         }
     }
     Ok(tables)
@@ -250,18 +254,8 @@ fn findings_prefixes(gap_prefixes: Vec<(String, String)>) -> Vec<(String, String
     findings_prefixes
 }
 
-pub(crate) fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
-    let named = source
-        .envelope
-        .map(|iri| prepared.named_envelope(iri))
-        .transpose()?;
-    let syntax = prepared.syntax;
-    let text = syntax.decode(source.bytes)?;
-    let paths = prepared
-        .accounting
-        .as_ref()
-        .map_or(Paths::Dropped, Accounting::paths);
-    let reading = Reading {
+fn reading<'a>(prepared: &'a Prepared, named: Option<usize>) -> Reading<'a> {
+    Reading {
         element: prepared.unit.as_deref(),
         envelopes: prepared
             .envelopes
@@ -269,11 +263,55 @@ pub(crate) fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Convers
             .map(|envelope| &envelope.admission)
             .collect(),
         named,
+    }
+}
+
+pub(crate) fn accepts(prepared: &Prepared, source: Source<'_>) -> Result<bool> {
+    let Some(detect) = &prepared.detect else {
+        return Err(Error::adapter("the adapter names no bridge:detectQuery"));
     };
-    let arrived_in = Document::new(source.bytes, source.facts)?;
-    let table = document_table(prepared, &text, &reading, &arrived_in)?;
+    let named = source
+        .envelope
+        .map(|iri| prepared.named_envelope(iri))
+        .transpose()?;
+    let syntax = prepared.syntax;
+    let text = syntax
+        .decode(source.bytes)
+        .explained_by(ErrorKind::Document)?;
+    let reading = reading(prepared, named);
+    let mut lift = syntax
+        .lift(&text, &reading, Paths::Dropped)
+        .explained_by(ErrorKind::Document)?;
+    while lift
+        .next_unit()
+        .explained_by(ErrorKind::Document)?
+        .is_some()
+    {}
+    detected(detect, lift)
+}
+
+pub(crate) fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
+    let named = source
+        .envelope
+        .map(|iri| prepared.named_envelope(iri))
+        .transpose()?;
+    let syntax = prepared.syntax;
+    let text = syntax
+        .decode(source.bytes)
+        .explained_by(ErrorKind::Document)?;
+    let paths = prepared
+        .accounting
+        .as_ref()
+        .map_or(Paths::Dropped, Accounting::paths);
+    let reading = reading(prepared, named);
+    let arrived_in = Document::new(source.bytes, source.facts).explained_by(ErrorKind::Facts)?;
+
+    let table =
+        document_table(prepared, &text, &reading, &arrived_in).explained_by(ErrorKind::Document)?;
     let arrived_in = arrived_in.with_table(table);
-    let mut lift = syntax.lift(&text, &reading, paths)?;
+    let mut lift = syntax
+        .lift(&text, &reading, paths)
+        .explained_by(ErrorKind::Document)?;
     let followed = syntax.addresses();
     let mut conversion = Conversion {
         quads: Vec::new(),
@@ -281,7 +319,7 @@ pub(crate) fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Convers
         units: 0,
         detected: None,
     };
-    while let Some(unit) = lift.next_unit()? {
+    while let Some(unit) = lift.next_unit().explained_by(ErrorKind::Document)? {
         conversion.units += 1;
         // A record was read, so the document root was: no envelope is needed yet.
         let document = lift.document_selector(None);
@@ -304,18 +342,15 @@ pub(crate) fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Convers
             version: prepared.version.as_deref(),
         },
         &Release {
-            label: Some(crate::command::NAME),
+            label: Some(crate::library::NAME),
             version: Some(env!("CARGO_PKG_VERSION")),
         },
     ));
     let envelope = admitting(lift.as_ref(), &reading).map(|chosen| &prepared.envelopes[chosen]);
-    conversion.findings.extend(document_findings(
-        prepared,
-        envelope,
-        source.iri,
-        lift.as_ref(),
-        &text,
-    )?);
+    conversion.findings.extend(
+        document_findings(prepared, envelope, source.iri, lift.as_ref(), &text)
+            .explained_by(ErrorKind::Document)?,
+    );
     conversion.detected = prepared
         .detect
         .as_ref()
@@ -447,9 +482,9 @@ fn document_findings(
 }
 
 fn detected(detect: &Query, lift: Box<dyn Lift + '_>) -> Result<bool> {
-    let skeleton = lift.into_skeleton()?;
+    let skeleton = lift.into_skeleton().explained_by(ErrorKind::Document)?;
     let QueryResults::Boolean(answer) = detect.on(&skeleton)? else {
-        return Err(Error::msg(format!(
+        return Err(Error::adapter(format!(
             "detect query {} is not an ASK",
             detect.iri
         )));
@@ -485,13 +520,15 @@ mod validation;
 mod tests {
     use super::prepare;
     use crate::fixtures::tiny;
+    use crate::fixtures::Fixture;
     use crate::load::load_adapter;
-    use crate::{DirectoryResolver, Resolver, Result};
+    use crate::resolver::Resolver;
+    use crate::Result;
     use std::cell::RefCell;
     use std::collections::BTreeMap;
 
     struct Counting {
-        directory: DirectoryResolver,
+        directory: Fixture,
         reads: RefCell<BTreeMap<String, usize>>,
     }
 

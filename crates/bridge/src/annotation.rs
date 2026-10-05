@@ -269,7 +269,7 @@ pub(crate) fn about(
             NamedOrBlankNode::BlankNode(_) => None,
         })
     {
-        return Err(Error::msg(format!(
+        return Err(Error::adapter(format!(
             "findings query {query} constructs {named} as an oa:Annotation; a finding is a blank \
              node written for that one finding: one name is one node for every finding the query \
              produces, and which target, body and severity standing on it belong to which finding \
@@ -315,13 +315,13 @@ pub(crate) fn about(
         }
         let Term::BlankNode(target) = &quad.object else {
             // The written term: a query naming bridge:thisRecord reads its own name back.
-            return Err(Error::msg(format!(
+            return Err(Error::adapter(format!(
                 "findings query {query} targets {}; a findings query's oa:hasTarget is a blank node",
                 written.object
             )));
         };
         if !sourced.contains(target) {
-            return Err(Error::msg(format!(
+            return Err(Error::adapter(format!(
                 "findings query {query} targets a node with no oa:hasSource; a finding names the \
                  document it is about, by targeting [ oa:hasSource bridge:thisRecord ]"
             )));
@@ -331,7 +331,7 @@ pub(crate) fn about(
     let targeted: HashSet<&NamedOrBlankNode> =
         targets.iter().map(|(annotation, _)| annotation).collect();
     if !annotations.iter().all(|a| targeted.contains(a)) {
-        return Err(Error::msg(format!(
+        return Err(Error::adapter(format!(
             "findings query {query} constructs an annotation with no oa:hasTarget; a finding names \
              the document it is about, by targeting [ oa:hasSource bridge:thisRecord ]"
         )));

@@ -12,7 +12,7 @@ pub(crate) fn decode(bytes: &[u8]) -> Result<Cow<'_, str>> {
     }
     let (text, _, malformed) = encoding.decode(rest);
     if malformed {
-        return Err(Error::msg(format!(
+        return Err(Error::document(format!(
             "the document is not well-formed {}",
             encoding.name()
         )));
@@ -42,7 +42,7 @@ fn sniff(bytes: &[u8]) -> Result<(&'static Encoding, &[u8])> {
         Some(label) => Encoding::for_label(label.as_bytes())
             .map(|e| (e, bytes))
             .ok_or_else(|| {
-                Error::msg(format!(
+                Error::document(format!(
                     "the document declares an unknown encoding: {label}"
                 ))
             }),
