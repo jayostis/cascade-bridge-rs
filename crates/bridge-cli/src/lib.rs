@@ -3,6 +3,7 @@
 mod commands;
 mod folder;
 mod iri;
+mod library;
 
 pub use commands::run;
 pub use iri::{file_iri, file_iri_to_path, path_to_file_iri};

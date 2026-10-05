@@ -7,7 +7,8 @@ use std::fmt::Write as _;
 use std::io::Write as _;
 
 const USAGE: &str = "usage: cascade-bridge test <adapter-dir> [--vocabularies <directory>] [--earl <out.ttl>] [--datasets]
-       cascade-bridge convert <adapter-dir> <document> [--envelope <iri>] [--facts <file>] [--vocabularies <directory>] [--out <file>] [--findings <file>] [--format turtle|ntriples]";
+       cascade-bridge convert <adapter-dir> <document> [--envelope <iri>] [--facts <file>] [--vocabularies <directory>] [--out <file>] [--findings <file>] [--format turtle|ntriples]
+       cascade-bridge library <calls file> <results directory>";
 
 const METADATA: &str = "ro-crate-metadata.json";
 
@@ -32,6 +33,7 @@ struct Convert {
 enum Command {
     Test(Test),
     Convert(Convert),
+    Library { calls: String, results: String },
 }
 
 fn parse(argv: impl IntoIterator<Item = String>) -> Option<Command> {
@@ -78,6 +80,13 @@ fn parse(argv: impl IntoIterator<Item = String>) -> Option<Command> {
             }
             Some(Command::Convert(arguments))
         }
+        "library" => {
+            let command = Command::Library {
+                calls: argv.next()?,
+                results: argv.next()?,
+            };
+            argv.next().is_none().then_some(command)
+        }
         _ => None,
     }
 }
@@ -92,6 +101,7 @@ pub fn run(argv: impl IntoIterator<Item = String>) -> u8 {
     let ran = match command {
         Command::Test(arguments) => run_test(&arguments),
         Command::Convert(arguments) => convert(&arguments),
+        Command::Library { calls, results } => crate::library::run(&calls, &results),
     };
     ran.unwrap_or_else(|reason| {
         eprintln!("cascade-bridge: {reason}");
