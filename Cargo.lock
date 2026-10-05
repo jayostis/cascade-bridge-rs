@@ -190,6 +190,7 @@ name = "cascade-bridge-wasm"
 version = "0.1.0"
 dependencies = [
  "cascade-bridge",
+ "js-sys",
  "oxigraph",
  "wasm-bindgen",
 ]

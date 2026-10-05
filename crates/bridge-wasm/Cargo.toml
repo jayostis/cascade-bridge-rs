@@ -1,6 +1,6 @@
 [package]
 name = "cascade-bridge-wasm"
-description = "The library for a host that hands it bytes by IRI: test and convert, built for wasm32-unknown-unknown."
+description = "The Cascade Bridge library for JavaScript: describe, load, accepts, convert and test over maps of files, built for wasm32-unknown-unknown."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,5 +11,6 @@ crate-type = ["cdylib"]
 
 [dependencies]
 cascade-bridge = { path = "../bridge", version = "=0.1.0" }
+js-sys = "=0.3.105"
 oxigraph = { version = "=0.5.11", default-features = false, features = ["js"] }
 wasm-bindgen = "=0.2.128"
