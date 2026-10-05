@@ -1,0 +1,8 @@
+<ni:///sha-256;nzDVl3cuyM8lqXMvvTquUBXvPe3Irl4-PPaQot-zI0k#reaction-1> <http://example.org/clinical#manifestation> "Rash" .
+<ni:///sha-256;nzDVl3cuyM8lqXMvvTquUBXvPe3Irl4-PPaQot-zI0k> <http://example.org/clinical#allergen> "Latex" .
+<ni:///sha-256;nzDVl3cuyM8lqXMvvTquUBXvPe3Irl4-PPaQot-zI0k> <http://example.org/clinical#reaction> <ni:///sha-256;nzDVl3cuyM8lqXMvvTquUBXvPe3Irl4-PPaQot-zI0k#reaction-1> .
+<ni:///sha-256;nzDVl3cuyM8lqXMvvTquUBXvPe3Irl4-PPaQot-zI0k> <http://example.org/clinical#seeAlso> <urn:example:v1/reaction> .
+<ni:///sha-256;nzDVl3cuyM8lqXMvvTquUBXvPe3Irl4-PPaQot-zI0k> <http://example.org/clinical#seeAlso> <urn:example:v10> .
+<ni:///sha-256;nzDVl3cuyM8lqXMvvTquUBXvPe3Irl4-PPaQot-zI0k> <http://www.w3.org/ns/prov#specializationOf> <urn:uuid:7435b3b8-2d93-8912-9d48-940c5870dc81> .
+<urn:example:v10> <http://example.org/clinical#allergen> "Not in the version" .
+<urn:uuid:7435b3b8-2d93-8912-9d48-940c5870dc81> <http://example.org/clinical#latest> <ni:///sha-256;nzDVl3cuyM8lqXMvvTquUBXvPe3Irl4-PPaQot-zI0k> .

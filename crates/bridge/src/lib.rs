@@ -17,6 +17,7 @@ mod lift;
 mod load;
 mod query;
 mod rdf;
+mod records;
 mod resolver;
 mod run;
 mod shapes;

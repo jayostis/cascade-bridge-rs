@@ -1,0 +1,99 @@
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix mf:     <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#> .
+@prefix bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+<> a mf:Manifest ;
+  rdfs:label "versioning vectors" ;
+  mf:entries (
+    <#allergy>
+    <#allergy-again>
+    <#allergy-on-another-record>
+    <#nested-nodes>
+    <#typed-literals>
+    <#typed-literals-round-tripped>
+    <#escaped-literals>
+    <#placeholder-prefix>
+    <#two-versions>
+  ) .
+
+<#allergy> a bridge:VersioningTest ;
+  mf:name "allergy" ;
+  rdfs:comment "A version is every triple whose subject is the IRI the mapping linked to its record by prov:specializationOf; the record's own triples are no part of it." ;
+  mf:action [ bridge:input <allergy.mapped.nt> ] ;
+  mf:result [
+    bridge:expectedGraph <allergy.versioned.nt> ;
+    bridge:expectedVersion [ bridge:expectedName <ni:///sha-256;itXWoNc3qVdBH28_n3ixhPuOww69tNEuA0dS-GrXLB8> ; bridge:canonicalContent <allergy.nq> ]
+  ] .
+
+<#allergy-again> a bridge:VersioningTest ;
+  mf:name "allergy-again" ;
+  rdfs:comment "The same content under another IRI, in another order, with a triple written twice and a plain literal written with xsd:string, is one version: allergy's name." ;
+  mf:action [ bridge:input <allergy-again.mapped.nt> ] ;
+  mf:result [
+    bridge:expectedGraph <allergy-again.versioned.nt> ;
+    bridge:expectedVersion [ bridge:expectedName <ni:///sha-256;itXWoNc3qVdBH28_n3ixhPuOww69tNEuA0dS-GrXLB8> ; bridge:canonicalContent <allergy-again.nq> ]
+  ] .
+
+<#allergy-on-another-record> a bridge:VersioningTest ;
+  mf:name "allergy-on-another-record" ;
+  rdfs:comment "allergy's content said of another record is another version." ;
+  mf:action [ bridge:input <allergy-on-another-record.mapped.nt> ] ;
+  mf:result [
+    bridge:expectedGraph <allergy-on-another-record.versioned.nt> ;
+    bridge:expectedVersion [ bridge:expectedName <ni:///sha-256;nLG5FbsSXUNRM1-on17NISflF4ZglReHthLEXmSIdBM> ; bridge:canonicalContent <allergy-on-another-record.nq> ]
+  ] .
+
+<#nested-nodes> a bridge:VersioningTest ;
+  mf:name "nested-nodes" ;
+  rdfs:comment "A node nested in a version is named by the version's IRI, #, and a fragment from its position; it is hashed with the version, and named from the version's name." ;
+  mf:action [ bridge:input <nested-nodes.mapped.nt> ] ;
+  mf:result [
+    bridge:expectedGraph <nested-nodes.versioned.nt> ;
+    bridge:expectedVersion [ bridge:expectedName <ni:///sha-256;gJMhBb1piFxlZ1hjatcgiJ_x7GTG-01xH-znswCKpSk> ; bridge:canonicalContent <nested-nodes.nq> ]
+  ] .
+
+<#typed-literals> a bridge:VersioningTest ;
+  mf:name "typed-literals" ;
+  rdfs:comment "A literal is hashed as the mapping wrote it: 2.00, 007 and 1 keep their lexical forms, and a derived integer type keeps its datatype." ;
+  mf:action [ bridge:input <typed-literals.mapped.nt> ] ;
+  mf:result [
+    bridge:expectedGraph <typed-literals.versioned.nt> ;
+    bridge:expectedVersion [ bridge:expectedName <ni:///sha-256;GfO0_0wskNIQG7q71ttc_HmzuLNjCTLTgTTw6llh9Fw> ; bridge:canonicalContent <typed-literals.nq> ]
+  ] .
+
+<#typed-literals-round-tripped> a bridge:VersioningTest ;
+  mf:name "typed-literals-round-tripped" ;
+  rdfs:comment "typed-literals as a store gives it back, 2, 7, true and an xsd:integer, is another version: a Bridge hashes before any store round trip." ;
+  mf:action [ bridge:input <typed-literals-round-tripped.mapped.nt> ] ;
+  mf:result [
+    bridge:expectedGraph <typed-literals-round-tripped.versioned.nt> ;
+    bridge:expectedVersion [ bridge:expectedName <ni:///sha-256;uyMvQUUp7alsoh7jCWqBC8roiubqOnnvGcO3L9OIa6s> ; bridge:canonicalContent <typed-literals-round-tripped.nq> ]
+  ] .
+
+<#escaped-literals> a bridge:VersioningTest ;
+  mf:name "escaped-literals" ;
+  rdfs:comment "A quotation mark, a backslash, a line feed and a carriage return are escaped in the canonical N-Quads, and every other character, é written \\u00E9 here among them, is written as itself." ;
+  mf:action [ bridge:input <escaped-literals.mapped.nt> ] ;
+  mf:result [
+    bridge:expectedGraph <escaped-literals.versioned.nt> ;
+    bridge:expectedVersion [ bridge:expectedName <ni:///sha-256;5LWkRrnFyAOWO8BulZlHmDd_PizVbHXz-daRwWmVKGc> ; bridge:canonicalContent <escaped-literals.nq> ]
+  ] .
+
+<#placeholder-prefix> a bridge:VersioningTest ;
+  mf:name "placeholder-prefix" ;
+  rdfs:comment "Only the version's IRI and that IRI followed by # are the version's: an IRI it merely begins is not, and a reference to the version from outside it is named but not hashed." ;
+  mf:action [ bridge:input <placeholder-prefix.mapped.nt> ] ;
+  mf:result [
+    bridge:expectedGraph <placeholder-prefix.versioned.nt> ;
+    bridge:expectedVersion [ bridge:expectedName <ni:///sha-256;nzDVl3cuyM8lqXMvvTquUBXvPe3Irl4-PPaQot-zI0k> ; bridge:canonicalContent <placeholder-prefix.nq> ]
+  ] .
+
+<#two-versions> a bridge:VersioningTest ;
+  mf:name "two-versions" ;
+  rdfs:comment "A source record's graph may hold several records, each with its version: here a resource and the one it contains, whose version refers to its record by name." ;
+  mf:action [ bridge:input <two-versions.mapped.nt> ] ;
+  mf:result [
+    bridge:expectedGraph <two-versions.versioned.nt> ;
+    bridge:expectedVersion [ bridge:expectedName <ni:///sha-256;ssT9yOOiEly2AprRx10KlfLetW4Vp7NQZwUN260Zigk> ; bridge:canonicalContent <two-versions.1.nq> ] ;
+    bridge:expectedVersion [ bridge:expectedName <ni:///sha-256;I-LBKjOKD6YSe5CC4yK7VCKmPLH8HfQkW9-5tDh7pc8> ; bridge:canonicalContent <two-versions.2.nq> ]
+  ] .

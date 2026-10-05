@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use crate::load::load_adapter;
+use crate::records::Supplied;
 use crate::run::{convert, prepare, Conversion, Source};
 use crate::{DirectoryResolver, Resolver, Result};
 use oxrdf::{Quad, Term};
@@ -81,12 +82,66 @@ pub fn conversion(resolver: &dyn Resolver, input: &str) -> Result<Conversion> {
             iri: &iri,
             envelope: None,
             bytes: &xml,
+            facts: None,
         },
     )
 }
 
 pub fn converted(resolver: &dyn Resolver, input: &str) -> Conversion {
     conversion(resolver, input).expect("conversion")
+}
+
+/// The facts the tiny adapter's passing entry supplies.
+pub const FACTS: &str = "fixtures/facts/catalog.ttl";
+
+pub fn converted_with_facts(resolver: &dyn Resolver, input: &str) -> Conversion {
+    let adapter = load_adapter(resolver).expect("adapter");
+    let prepared = prepare(&adapter, resolver).expect("prepared");
+    let iri = format!("{}fixtures/in/{input}", resolver.root());
+    let xml = resolver.read(&iri).expect("the input");
+    let facts_iri = format!("{}{FACTS}", resolver.root());
+    let turtle = resolver.read(&facts_iri).expect("the facts");
+    convert(
+        &prepared,
+        Source {
+            iri: &iri,
+            envelope: None,
+            bytes: &xml,
+            facts: Some(Supplied {
+                iri: &facts_iri,
+                turtle: &turtle,
+            }),
+        },
+    )
+    .expect("conversion")
+}
+
+/// The tiny adapter, each item's title written as the item's version, which arrives with its id.
+pub fn versioned() -> Variant {
+    Variant::of(tiny()).with(
+        "mapping/item.rq",
+        r#"
+PREFIX rdf:    <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX fx:     <http://sparql.xyz/facade-x/ns/>
+PREFIX xyz:    <http://sparql.xyz/facade-x/data/>
+PREFIX prov:   <http://www.w3.org/ns/prov#>
+PREFIX pav:    <http://purl.org/pav/>
+PREFIX bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#>
+PREFIX ex:     <urn:example:catalog#>
+
+CONSTRUCT {
+  ?s a ex:Item .
+  ?v prov:specializationOf ?s ; ex:title ?title .
+  [] bridge:arrivedAs ?v ; pav:version ?id .
+}
+WHERE {
+  ?item a fx:root, xyz:item ; xyz:id ?id .
+  BIND(IRI(CONCAT("urn:example:item:", ?id)) AS ?s)
+  BIND(IRI(CONCAT("urn:example:draft:", ?id)) AS ?v)
+  OPTIONAL { ?item ?slot ?t . ?t a xyz:title ; rdf:_1 ?title . }
+}
+"#,
+    )
 }
 
 pub fn findings(resolver: &dyn Resolver, input: &str) -> Vec<Quad> {

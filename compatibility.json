@@ -12,5 +12,8 @@
       "command": ["node", "hosts/node/cascade-bridge.mjs"]
     }
   ],
-  "mustPassWith": ["https://github.com/jayostis/cascade-bridge-adapter-clinvar"]
+  "mustPassWith": [
+    "https://github.com/jayostis/cascade-bridge-adapter-clinvar",
+    "https://github.com/jayostis/cascade-bridge-adapter-fhir-r4"
+  ]
 }

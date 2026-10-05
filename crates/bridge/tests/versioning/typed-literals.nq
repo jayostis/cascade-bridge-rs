@@ -1,0 +1,5 @@
+<urn:cascade:this-version> <http://example.org/clinical#doseNumber> "007"^^<http://www.w3.org/2001/XMLSchema#integer> .
+<urn:cascade:this-version> <http://example.org/clinical#doseQuantity> "2.00"^^<http://www.w3.org/2001/XMLSchema#decimal> .
+<urn:cascade:this-version> <http://example.org/clinical#primarySource> "1"^^<http://www.w3.org/2001/XMLSchema#boolean> .
+<urn:cascade:this-version> <http://example.org/clinical#seriesDoses> "3"^^<http://www.w3.org/2001/XMLSchema#positiveInteger> .
+<urn:cascade:this-version> <http://www.w3.org/ns/prov#specializationOf> <urn:uuid:7435b3b8-2d93-8912-9d48-940c5870dc81> .

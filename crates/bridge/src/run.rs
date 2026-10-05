@@ -2,12 +2,13 @@ use crate::accounting::{gap_scheme, Accounting};
 use crate::annotation::{self, Record};
 use crate::error::{Error, Result};
 use crate::lift::{admitting, Admission, Lift, Paths, Reading, Unit};
-use crate::load::{subject, value, values, Adapter};
+use crate::load::{subject, value, Adapter};
 use crate::query::{Form, Query};
 use crate::rdf::FINDINGS_PREFIXES;
+use crate::records::{self, Document, Release, Supplied};
 use crate::resolver::Resolver;
 use crate::syntax::{Addresses, Syntax};
-use crate::terms::{BRIDGE_STAMP_PREDICATE, SCHEMA_ENCODING_FORMAT};
+use crate::terms::SCHEMA_ENCODING_FORMAT;
 use crate::validate::Schema;
 use crate::vocabulary::Vocabulary;
 use oxigraph::model::Quad;
@@ -19,6 +20,7 @@ struct Envelope {
     iri: String,
     admission: Admission,
     document_schema: Option<Box<dyn Schema>>,
+    source_schema: Option<usize>,
 }
 
 pub(crate) struct Prepared {
@@ -26,20 +28,50 @@ pub(crate) struct Prepared {
     unit: Option<String>,
     mappings: Vec<Query>,
     findings_queries: Vec<Query>,
+    document_table_queries: Vec<Query>,
     detect: Option<Query>,
     tables: Vec<Quad>,
     /// Every name the mappings give a namespace, the first binding of a name winning.
     pub(crate) prefixes: Vec<(String, String)>,
     pub(crate) findings_prefixes: Vec<(String, String)>,
     envelopes: Vec<Envelope>,
-    source_schema: Option<Box<dyn Schema>>,
+    source_schemas: SourceSchemas,
+    source_schema: Option<usize>,
     vocabulary: Option<Vocabulary>,
     accounting: Option<Accounting>,
     /// By gap concept IRI, for a findings query's annotation that declares no severity.
     gap_severities: HashMap<String, String>,
+    identifier: Option<String>,
+    version: Option<String>,
+}
+
+/// Each schema a record may be validated against, compiled once however many name it.
+#[derive(Default)]
+struct SourceSchemas {
+    compiled: Vec<Box<dyn Schema>>,
+    by_iri: HashMap<String, usize>,
+}
+
+impl SourceSchemas {
+    fn compiled(&mut self, iri: &str, syntax: Syntax, resolver: &dyn Resolver) -> Result<usize> {
+        if let Some(&index) = self.by_iri.get(iri) {
+            return Ok(index);
+        }
+        self.compiled.push(syntax.schema(iri, resolver)?);
+        self.by_iri.insert(iri.to_owned(), self.compiled.len() - 1);
+        Ok(self.compiled.len() - 1)
+    }
 }
 
 impl Prepared {
+    /// The schema of the envelope a record was read in, else the adapter's.
+    fn source_schema(&self, envelope: Option<usize>) -> Option<&dyn Schema> {
+        envelope
+            .and_then(|chosen| self.envelopes[chosen].source_schema)
+            .or(self.source_schema)
+            .map(|index| self.source_schemas.compiled[index].as_ref())
+    }
+
     fn named_envelope(&self, iri: &str) -> Result<usize> {
         self.envelopes
             .iter()
@@ -70,17 +102,7 @@ pub(crate) struct Source<'a> {
     pub(crate) iri: &'a str,
     pub(crate) envelope: Option<&'a str>,
     pub(crate) bytes: &'a [u8],
-}
-
-/// The manifest's own: an entry's replaces it only where the harness compares.
-fn stamps(adapter: &Adapter) -> Result<HashSet<String>> {
-    Ok(values(
-        &adapter.graph,
-        &subject(&adapter.manifest)?,
-        BRIDGE_STAMP_PREDICATE,
-    )?
-    .into_iter()
-    .collect())
+    pub(crate) facts: Option<Supplied<'a>>,
 }
 
 pub(crate) fn prepare(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prepared> {
@@ -92,17 +114,23 @@ pub(crate) fn prepare(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prep
     let tables = tables(adapter, resolver)?;
     let mappings = queries(resolver, &adapter.mappings, "mapping")?;
     let findings_queries = queries(resolver, &adapter.findings_queries, "findings query")?;
+    let document_table_queries = queries(
+        resolver,
+        &adapter.document_table_queries,
+        "document table query",
+    )?;
     let detect = adapter
         .detect_query
         .as_deref()
         .map(|iri| Query::read(resolver, iri, Form::Ask, "detect query"))
         .transpose()?;
+    let mut source_schemas = SourceSchemas::default();
     let source_schema = adapter
         .source_schema
         .as_deref()
-        .map(|iri| syntax.schema(iri, resolver))
+        .map(|iri| source_schemas.compiled(iri, syntax, resolver))
         .transpose()?;
-    let envelopes = envelopes(adapter, syntax, resolver)?;
+    let envelopes = envelopes(adapter, syntax, resolver, &mut source_schemas)?;
     let (scheme, gap_prefixes) = adapter
         .gap_scheme
         .as_deref()
@@ -115,7 +143,7 @@ pub(crate) fn prepare(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prep
         .iter()
         .filter_map(|(concept, gap)| Some((concept.clone(), gap.severity.clone()?)))
         .collect();
-    let vocabulary = Vocabulary::read(&adapter.vocabulary_files, stamps(adapter)?, resolver)?;
+    let vocabulary = Vocabulary::read(&adapter.vocabulary_files, resolver)?;
     let accounting = adapter
         .source_accounting
         .as_deref()
@@ -126,15 +154,19 @@ pub(crate) fn prepare(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prep
         unit,
         mappings,
         findings_queries,
+        document_table_queries,
         detect,
         tables,
         prefixes,
         findings_prefixes,
         envelopes,
+        source_schemas,
         source_schema,
         vocabulary,
         accounting,
         gap_severities,
+        identifier: adapter.identifier.clone(),
+        version: adapter.version.clone(),
     })
 }
 
@@ -166,7 +198,12 @@ fn queries(resolver: &dyn Resolver, iris: &[String], what: &str) -> Result<Vec<Q
         .collect()
 }
 
-fn envelopes(adapter: &Adapter, syntax: Syntax, resolver: &dyn Resolver) -> Result<Vec<Envelope>> {
+fn envelopes(
+    adapter: &Adapter,
+    syntax: Syntax,
+    resolver: &dyn Resolver,
+    source_schemas: &mut SourceSchemas,
+) -> Result<Vec<Envelope>> {
     let mut envelopes = Vec::new();
     for envelope in &adapter.envelopes {
         envelopes.push(Envelope {
@@ -176,6 +213,11 @@ fn envelopes(adapter: &Adapter, syntax: Syntax, resolver: &dyn Resolver) -> Resu
                 .document_schema
                 .as_deref()
                 .map(|iri| syntax.schema(iri, resolver))
+                .transpose()?,
+            source_schema: envelope
+                .source_schema
+                .as_deref()
+                .map(|iri| source_schemas.compiled(iri, syntax, resolver))
                 .transpose()?,
         });
     }
@@ -228,6 +270,9 @@ pub(crate) fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Convers
             .collect(),
         named,
     };
+    let arrived_in = Document::new(source.bytes, source.facts)?;
+    let table = document_table(prepared, &text, &reading, &arrived_in)?;
+    let arrived_in = arrived_in.with_table(table);
     let mut lift = syntax.lift(&text, &reading, paths)?;
     let followed = syntax.addresses();
     let mut conversion = Conversion {
@@ -240,11 +285,29 @@ pub(crate) fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Convers
         conversion.units += 1;
         // A record was read, so the document root was: no envelope is needed yet.
         let document = lift.document_selector(None);
-        let (produced, findings) =
-            unit_converted(prepared, source.iri, &document, &unit, followed.as_ref())?;
+        let schema = prepared.source_schema(admitting(lift.as_ref(), &reading));
+        let (produced, findings) = unit_converted(
+            prepared,
+            schema,
+            source.iri,
+            &document,
+            &unit,
+            followed.as_ref(),
+            &arrived_in,
+        )?;
         conversion.quads.extend(produced);
         conversion.findings.extend(findings);
     }
+    conversion.quads.extend(arrived_in.described(
+        &Release {
+            label: prepared.identifier.as_deref(),
+            version: prepared.version.as_deref(),
+        },
+        &Release {
+            label: Some(crate::command::NAME),
+            version: Some(env!("CARGO_PKG_VERSION")),
+        },
+    ));
     let envelope = admitting(lift.as_ref(), &reading).map(|chosen| &prepared.envelopes[chosen]);
     conversion.findings.extend(document_findings(
         prepared,
@@ -263,10 +326,12 @@ pub(crate) fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Convers
 
 fn unit_converted(
     prepared: &Prepared,
+    schema: Option<&dyn Schema>,
     iri: &str,
     document: &str,
     unit: &Unit,
     followed: &dyn Addresses,
+    arrived_in: &Document,
 ) -> Result<(Vec<Quad>, Vec<Quad>)> {
     let selector = unit.selector();
     let selector_type = prepared.syntax.selector_type();
@@ -275,11 +340,16 @@ fn unit_converted(
         selector: &selector,
         selector_type,
     };
-    let mut findings = validated(prepared.source_schema.as_deref(), &record, &unit.text)?;
+    let mut findings = validated(schema, &record, &unit.text)?;
     if let Some(accounting) = &prepared.accounting {
         findings.extend(accounting.findings(&record, unit)?);
     }
-    let produced = mapped(prepared, unit)?;
+    unit.store.extend(arrived_in.dataset(&selector))?;
+    let produced = arrived_in.arrived(
+        records::versioned(mapped(prepared, unit)?)?,
+        &selector,
+        &unit.store,
+    )?;
     if let Some(vocabulary) = &prepared.vocabulary {
         findings.extend(vocabulary.findings(&record, &produced)?);
     }
@@ -317,6 +387,27 @@ fn mapped(prepared: &Prepared, unit: &Unit) -> Result<Vec<Quad>> {
         produced.extend(mapping.graph(&unit.store)?);
     }
     Ok(produced)
+}
+
+fn document_table(
+    prepared: &Prepared,
+    text: &str,
+    reading: &Reading<'_>,
+    arrived_in: &Document,
+) -> Result<Vec<Quad>> {
+    let mut table = Vec::new();
+    if prepared.document_table_queries.is_empty() {
+        return Ok(table);
+    }
+    let mut lift = prepared.syntax.lift(text, reading, Paths::Dropped)?;
+    while let Some(unit) = lift.next_unit()? {
+        unit.store.extend(prepared.tables.iter().cloned())?;
+        unit.store.extend(arrived_in.dataset(&unit.selector()))?;
+        for query in &prepared.document_table_queries {
+            table.extend(query.graph(&unit.store)?);
+        }
+    }
+    Ok(table)
 }
 
 fn queried(prepared: &Prepared, record: &Record<'_>, unit: &Unit) -> Result<Vec<Quad>> {
@@ -443,6 +534,7 @@ mod tests {
             .mappings
             .iter()
             .chain(&adapter.findings_queries)
+            .chain(&adapter.document_table_queries)
             .chain(&adapter.detect_query)
             .collect();
         assert!(!adapter.findings_queries.is_empty() && adapter.detect_query.is_some());

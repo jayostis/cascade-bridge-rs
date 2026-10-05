@@ -1,0 +1,156 @@
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix mf:     <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#> .
+@prefix qt:     <http://www.w3.org/2001/sw/DataAccess/tests/test-query#> .
+@prefix bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+<> a mf:Manifest ;
+  rdfs:label "record naming vectors" ;
+  mf:entries (
+    <#fhir-resource>
+    <#fhir-resource-on-another-server>
+    <#fhir-patient>
+    <#fhir-bundle-entry-urn>
+    <#fhir-contained>
+    <#ccda-root-and-extension>
+    <#ccda-root-only>
+    <#ccda-non-ascii-extension>
+    <#clinvar-variation-archive>
+    <#clinvar-clinical-assertion>
+    <#clinvar-interpretation-first>
+    <#clinvar-interpretation-second>
+    <#repeated-id-first>
+    <#repeated-id-second>
+    <#no-id>
+    <#no-server>
+    <#xml-address>
+    <#base-url-scheme-and-host>
+    <#base-url-already-normal>
+    <#base-url-host-alone>
+    <#base-url-port-and-slashes>
+  ) .
+
+<#fhir-resource> a bridge:NamingTest ;
+  mf:name "fhir-resource" ;
+  rdfs:comment "A FHIR resource whose id is unique within its document: the server's base URL, the resource type, the id." ;
+  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "https://fhir.example.org/api/FHIR/R4" "AllergyIntolerance" "eQ3xk2RtVb7Lm9Pw1aZy8A3" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:7435b3b8-2d93-8912-9d48-940c5870dc81> ] .
+
+<#fhir-resource-on-another-server> a bridge:NamingTest ;
+  mf:name "fhir-resource-on-another-server" ;
+  rdfs:comment "The same type and id on another server name another record." ;
+  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "https://fhir.other.example/r4" "AllergyIntolerance" "eQ3xk2RtVb7Lm9Pw1aZy8A3" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:f83d6a9d-1d0e-84bd-826c-e3f00989c291> ] .
+
+<#fhir-patient> a bridge:NamingTest ;
+  mf:name "fhir-patient" ;
+  rdfs:comment "A Patient is named as any resource is: the name a reference to Patient/eM5vN8qTz2Hc4Rk7Jw0Pb3 on this server resolves to." ;
+  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "https://fhir.example.org/api/FHIR/R4" "Patient" "eM5vN8qTz2Hc4Rk7Jw0Pb3" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:83c84d0f-e803-8fc5-aa28-73f45078a304> ] .
+
+<#fhir-bundle-entry-urn> a bridge:NamingTest ;
+  mf:name "fhir-bundle-entry-urn" ;
+  rdfs:comment "A Bundle entry with no id and a urn:uuid fullUrl, whether a server is known or not: the urn, hashed as any input is, and never the name itself." ;
+  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "urn:uuid:5c1e0a4e-7d2b-4f0a-9a47-3f6e1b2c8d90" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:4d3c6fb5-45a5-8405-9a5f-af391d457e6d> ] .
+
+<#fhir-contained> a bridge:NamingTest ;
+  mf:name "fhir-contained" ;
+  rdfs:comment "A contained resource: the containing record's name, the fhir-resource vector's, and the contained resource's id." ;
+  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "urn:uuid:7435b3b8-2d93-8912-9d48-940c5870dc81" "r1" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:351ccd8a-d25c-83d4-8025-988b8769088e> ] .
+
+<#ccda-root-and-extension> a bridge:NamingTest ;
+  mf:name "ccda-root-and-extension" ;
+  rdfs:comment "A C-CDA entry whose id is unique within its document: the id's root and extension." ;
+  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "2.16.840.1.113883.19.5" "8237461" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:7f4d089e-600f-8e55-8fe6-edf87852329a> ] .
+
+<#ccda-root-only> a bridge:NamingTest ;
+  mf:name "ccda-root-only" ;
+  rdfs:comment "A C-CDA entry whose id has no extension: its root alone." ;
+  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "2.16.840.1.113883.19.5.99999.1" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:a4d0fe7b-9742-8aeb-a592-f7b8732fc8f2> ] .
+
+<#ccda-non-ascii-extension> a bridge:NamingTest ;
+  mf:name "ccda-non-ascii-extension" ;
+  rdfs:comment "An input is hashed as UTF-8." ;
+  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "2.16.840.1.113883.19.5" "Zürich-7" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:493d2d90-c842-8ec9-941d-b753c09e550d> ] .
+
+<#clinvar-variation-archive> a bridge:NamingTest ;
+  mf:name "clinvar-variation-archive" ;
+  rdfs:comment "A ClinVar VariationArchive: ClinVar's address and its VCV accession." ;
+  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "https://www.ncbi.nlm.nih.gov/clinvar" "VCV000012345" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:dc603298-28db-8b02-8fef-c3ce803b61d0> ] .
+
+<#clinvar-clinical-assertion> a bridge:NamingTest ;
+  mf:name "clinvar-clinical-assertion" ;
+  rdfs:comment "A ClinVar ClinicalAssertion: ClinVar's address and its SCV accession." ;
+  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "https://www.ncbi.nlm.nih.gov/clinvar" "SCV000123456" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:e7cd0833-9313-86d3-8012-da829b7da456> ] .
+
+<#clinvar-interpretation-first> a bridge:NamingTest ;
+  mf:name "clinvar-interpretation-first" ;
+  rdfs:comment "A ClinVar interpretation: ClinVar's address, the RCV accession, and its ClassifiedCondition's position among its list's, counted from 0." ;
+  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "https://www.ncbi.nlm.nih.gov/clinvar" "RCV000067890" "0" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:2922e32d-4d44-8eab-84be-62798f502ff3> ] .
+
+<#clinvar-interpretation-second> a bridge:NamingTest ;
+  mf:name "clinvar-interpretation-second" ;
+  rdfs:comment "The second ClassifiedCondition of the same RCV is another record." ;
+  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "https://www.ncbi.nlm.nih.gov/clinvar" "RCV000067890" "1" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:ee61b306-8318-8070-9247-0658ce7758ea> ] .
+
+<#repeated-id-first> a bridge:NamingTest ;
+  mf:name "repeated-id-first" ;
+  rdfs:comment "An id repeated within its document names no record: the first entry holding it is named by the document's name and its JSON Pointer." ;
+  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "ni:///sha-256;tGm9FWfUKGlKI5ifQdPtjK86ZoCkfBTJr0IBDqbDSE8" "/entry/0" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:c436feab-ce69-8b9d-84ec-d82aa7f89cca> ] .
+
+<#repeated-id-second> a bridge:NamingTest ;
+  mf:name "repeated-id-second" ;
+  rdfs:comment "The second entry holding the id repeated in repeated-id-first's document is another record." ;
+  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "ni:///sha-256;tGm9FWfUKGlKI5ifQdPtjK86ZoCkfBTJr0IBDqbDSE8" "/entry/2" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:dd96aec3-5cbe-8622-9c41-805ed1101df7> ] .
+
+<#no-id> a bridge:NamingTest ;
+  mf:name "no-id" ;
+  rdfs:comment "A resource with no id and no urn:uuid fullUrl: the document's name and the record's JSON Pointer." ;
+  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "ni:///sha-256;tGm9FWfUKGlKI5ifQdPtjK86ZoCkfBTJr0IBDqbDSE8" "/entry/1" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:d17f7793-d4df-8ecd-a46b-31599cc2b754> ] .
+
+<#no-server> a bridge:NamingTest ;
+  mf:name "no-server" ;
+  rdfs:comment "A bare resource with an id and no known server: the document's name and the record's JSON Pointer, the empty string for the whole document." ;
+  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "ni:///sha-256;xB0nSd3NEIv7JKSR3cDS7kcXb2swhmvDd51Of6iI-2c" "" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:0fff036b-ebd4-85fe-84c4-edefdeb6d52b> ] .
+
+<#xml-address> a bridge:NamingTest ;
+  mf:name "xml-address" ;
+  rdfs:comment "A record without a usable id in an XML document: the document's name and the record's XPath." ;
+  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "ni:///sha-256;HIELGty0gmK9X2oIlPDlGm-xvWIXkMCrEPN-xoVoYYg" "/ClinicalDocument/component/structuredBody/component[2]/section/entry[3]" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:7cf5f023-03cc-81dc-a23c-1bc54481d273> ] .
+
+<#base-url-scheme-and-host> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-scheme-and-host" ;
+  rdfs:comment "The scheme and the host are lower-cased and the trailing slash removed; the path keeps its case." ;
+  mf:action [ bridge:serverBaseUrl "HTTPS://FHIR.Example.ORG/api/FHIR/R4/" ] ;
+  mf:result [ bridge:serverBaseUrl "https://fhir.example.org/api/FHIR/R4" ] .
+
+<#base-url-already-normal> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-already-normal" ;
+  rdfs:comment "A base URL already in its normal form is unchanged." ;
+  mf:action [ bridge:serverBaseUrl "https://fhir.example.org/api/FHIR/R4" ] ;
+  mf:result [ bridge:serverBaseUrl "https://fhir.example.org/api/FHIR/R4" ] .
+
+<#base-url-host-alone> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-host-alone" ;
+  rdfs:comment "A base URL that is a host alone loses its slash." ;
+  mf:action [ bridge:serverBaseUrl "https://Fhir.Example.org/" ] ;
+  mf:result [ bridge:serverBaseUrl "https://fhir.example.org" ] .
+
+<#base-url-port-and-slashes> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-port-and-slashes" ;
+  rdfs:comment "A port is kept, and every trailing slash is removed." ;
+  mf:action [ bridge:serverBaseUrl "http://FHIR.example.org:8080/R4//" ] ;
+  mf:result [ bridge:serverBaseUrl "http://fhir.example.org:8080/R4" ] .

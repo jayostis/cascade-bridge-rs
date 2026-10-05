@@ -3,17 +3,16 @@
 # wherever the engine command was given no checkout to read the vocabulary from.
 @prefix mf:     <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#> .
 @prefix bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
-@prefix prov:   <http://www.w3.org/ns/prov#> .
 
 <> a mf:Manifest ;
   bridge:adapter <../> ;
-  bridge:stampPredicate prov:generatedAtTime ;
   mf:entries ( <#pass> <#graph-fail> <#findings-fail> <#findings-repeated> <#census> <#shapes> <#input-only> <#dataset> ) .
 
-# Passes only if the stamp in the expected graph is ignored.
+# Passes only if the facts are supplied, and the Bridge release the expected
+# graph names is set aside.
 <#pass> a bridge:IsomorphicConversionTest ;
   mf:name "pass" ;
-  mf:action [ bridge:input <in/two.xml> ; bridge:envelope <../ro-crate-metadata.json#envelope-catalog> ] ;
+  mf:action [ bridge:input <in/two.xml> ; bridge:envelope <../ro-crate-metadata.json#envelope-catalog> ; bridge:facts <facts/catalog.ttl> ] ;
   mf:result [ bridge:expectedGraph <expected/two.ttl> ; bridge:expectedFindings <findings/two.ttl> ] .
 
 # One literal differs.

@@ -1,0 +1,572 @@
+@prefix bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+@prefix mf:     <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#> .
+@prefix owl:    <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:    <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:    <http://www.w3.org/2001/XMLSchema#> .
+@prefix dct:    <http://purl.org/dc/terms/> .
+@prefix skos:   <http://www.w3.org/2004/02/skos/core#> .
+@prefix prov:   <http://www.w3.org/ns/prov#> .
+@prefix pav:    <http://purl.org/pav/> .
+
+<https://ns.cascadeprotocol.org/bridge/v1-draft#> a owl:Ontology ;
+  dct:title "Cascade Bridge Vocabulary"@en ;
+  dct:created "2026-09-06"^^xsd:date ;
+  owl:versionInfo "v1-draft" ;
+  rdfs:comment "DRAFT. No compatibility is promised before a numbered release."@en ;
+  rdfs:seeAlso <https://github.com/jayostis/cascade-bridge-spec> .
+
+# Adapter terms
+
+bridge:Adapter a owl:Class ;
+  rdfs:label "Adapter"@en ;
+  rdfs:comment "The root entity of an adapter package's RO-Crate."@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:Envelope a owl:Class ;
+  rdfs:label "Envelope"@en ;
+  rdfs:comment "A document root the source format arrives in. A Bridge accepts any of the adapter's envelopes and splits each into records."@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:Profile a owl:Class ;
+  rdfs:label "Profile"@en ;
+  rdfs:comment "A capability beyond Core that a Bridge may offer and an adapter may require."@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:sparql-1.1 a bridge:Profile ;
+  rdfs:label "sparql-1.1"@en ;
+  rdfs:comment "Specified by engine/sparql.md in the cascade-bridge-spec repository."@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:requiresProfile a owl:ObjectProperty ;
+  rdfs:label "requires profile"@en ;
+  rdfs:domain bridge:Adapter ;
+  rdfs:range bridge:Profile ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:cascadeVocabularyPin a owl:ObjectProperty ;
+  rdfs:label "Cascade vocabulary pin"@en ;
+  rdfs:comment "The commit of the Cascade vocabulary repository the adapter's vocabularies are read at."@en ;
+  rdfs:domain bridge:Adapter ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:vocabulary a owl:ObjectProperty ;
+  rdfs:label "vocabulary"@en ;
+  rdfs:comment "A Cascade vocabulary the adapter writes, by namespace IRI, whose schema:version is the vocabulary's version at the vocabulary pin."@en ;
+  rdfs:domain bridge:Adapter ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:vocabularyFile a owl:DatatypeProperty ;
+  rdfs:label "vocabulary file"@en ;
+  rdfs:comment "The path, in the Cascade vocabulary repository at the vocabulary pin, of an ontology or shapes file the adapter is read against."@en ;
+  rdfs:domain bridge:Adapter ;
+  rdfs:range xsd:string ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:sourceMediaType a owl:DatatypeProperty ;
+  rdfs:label "source media type"@en ;
+  rdfs:range xsd:string ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:sourceSchema a owl:ObjectProperty ;
+  rdfs:label "source schema"@en ;
+  rdfs:comment "The schema a Bridge validates every record against: XSD 1.0 for an XML source, JSON Schema for a JSON one."@en ;
+  rdfs:domain bridge:Adapter ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:envelope a owl:ObjectProperty ;
+  rdfs:label "envelope"@en ;
+  rdfs:range bridge:Envelope ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:elementNameOfEachRecord a owl:DatatypeProperty ;
+  rdfs:label "element name of each record"@en ;
+  rdfs:comment "A Bridge hands each record to the mapping on its own, and preserves its raw bytes."@en ;
+  rdfs:range xsd:string ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:jsonPathOfEachRecord a owl:DatatypeProperty ;
+  rdfs:label "JSON path of each record"@en ;
+  rdfs:comment "The RFC 9535 JSONPath selecting the records of a JSON document read in the envelope. A Bridge hands each record to the mapping on its own."@en ;
+  rdfs:range xsd:string ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:mapping a owl:ObjectProperty ;
+  rdfs:label "mapping"@en ;
+  rdfs:comment "A SPARQL 1.1 CONSTRUCT a Bridge runs on each record. A record's graph is the union of every mapping's results."@en ;
+  rdfs:domain bridge:Adapter ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:findingsQuery a owl:ObjectProperty ;
+  rdfs:label "findings query"@en ;
+  rdfs:comment "A SPARQL 1.1 CONSTRUCT over the same dataset as the mappings, producing a record's findings about the source document as Web Annotations."@en ;
+  rdfs:domain bridge:Adapter ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:thisRecord a owl:NamedIndividual ;
+  rdfs:label "this record"@en ;
+  rdfs:comment "The record a query is running on, as its dataset and a findings query name it. In a finding, a Bridge replaces it with the IRI of the document that record was read from, and expresses the record itself as the target's selector."@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:thisDocument a owl:NamedIndividual ;
+  rdfs:label "this document"@en ;
+  rdfs:comment "The document being converted, as supplied facts and a record's dataset name it. A Bridge's graph names it by its SHA-256 instead."@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:thisImport a owl:NamedIndividual ;
+  rdfs:label "this import"@en ;
+  rdfs:comment "The run converting the document, as supplied facts name it. A Bridge's graph names it by a blank node instead."@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:documentTableQuery a owl:ObjectProperty ;
+  rdfs:label "document table query"@en ;
+  rdfs:comment "A SPARQL 1.1 CONSTRUCT a Bridge runs on each record of a document before any mapping. The union of its graphs over the whole document is loaded beside each record's lift, so a record's mapping reads what other records of its document hold."@en ;
+  rdfs:domain bridge:Adapter ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:detectQuery a owl:ObjectProperty ;
+  rdfs:label "detect query"@en ;
+  rdfs:comment "A SPARQL 1.1 ASK over a document's envelope skeleton, true when the adapter handles the document."@en ;
+  rdfs:domain bridge:Adapter ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:table a owl:ObjectProperty ;
+  rdfs:label "table"@en ;
+  rdfs:comment "A lookup table the mapping reads. One declared text/turtle is loaded beside each record's lift before the mappings run; no other table format is specified."@en ;
+  rdfs:domain bridge:Adapter ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:extensionVocabulary a owl:ObjectProperty ;
+  rdfs:label "extension vocabulary"@en ;
+  rdfs:comment "The adapter's own namespace for values that have no Cascade term."@en ;
+  rdfs:domain bridge:Adapter ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:gapScheme a owl:ObjectProperty ;
+  rdfs:label "gap scheme"@en ;
+  rdfs:domain bridge:Adapter ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:sourceAccounting a owl:ObjectProperty ;
+  rdfs:label "source accounting"@en ;
+  rdfs:comment "The adapter's file of bridge:PathEntry, one for every path of its source."@en ;
+  rdfs:domain bridge:Adapter ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:PathEntry a owl:Class ;
+  rdfs:label "Path entry"@en ;
+  rdfs:comment "One path of the source, and what the adapter does with it."@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:sourcePath a owl:DatatypeProperty ;
+  rdfs:label "source path"@en ;
+  rdfs:domain bridge:PathEntry ;
+  rdfs:range xsd:string ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:verdict a owl:ObjectProperty ;
+  rdfs:label "verdict"@en ;
+  rdfs:domain bridge:PathEntry ;
+  rdfs:range skos:Concept ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:namesGap a owl:ObjectProperty ;
+  rdfs:label "names gap"@en ;
+  rdfs:comment "The gap of the adapter's bridge:gapScheme the entry opens."@en ;
+  rdfs:domain bridge:PathEntry ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:lookupIn a owl:ObjectProperty ;
+  rdfs:label "lookup in"@en ;
+  rdfs:comment "The bridge:table the values at the entry's path are looked up in, by the key each value folds to."@en ;
+  rdfs:domain bridge:PathEntry ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:lookupNamesGap a owl:ObjectProperty ;
+  rdfs:label "lookup names gap"@en ;
+  rdfs:comment "The gap of the adapter's bridge:gapScheme a value outside the entry's bridge:lookupIn opens."@en ;
+  rdfs:domain bridge:PathEntry ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:sameFactAs a owl:DatatypeProperty ;
+  rdfs:label "same fact as"@en ;
+  rdfs:comment "The bridge:sourcePath that carries the fact instead."@en ;
+  rdfs:domain bridge:PathEntry ;
+  rdfs:range xsd:string ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:because a owl:DatatypeProperty ;
+  rdfs:label "because"@en ;
+  rdfs:comment "Why a path is deliberately not carried."@en ;
+  rdfs:domain bridge:PathEntry ;
+  rdfs:range xsd:string ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:verdicts a skos:ConceptScheme ;
+  skos:prefLabel "What an adapter does with a path"@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:carried a skos:Concept ;
+  skos:prefLabel "the path reaches the graph whole"@en ;
+  skos:inScheme bridge:verdicts ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:carriedInPart a skos:Concept ;
+  skos:prefLabel "the path reaches the graph, but not wholly"@en ;
+  skos:inScheme bridge:verdicts ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:redundantWith a skos:Concept ;
+  skos:prefLabel "another path already carries the same fact"@en ;
+  skos:inScheme bridge:verdicts ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:consumed a skos:Concept ;
+  skos:prefLabel "read while the graph is built, and not carried"@en ;
+  skos:inScheme bridge:verdicts ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:noHome a skos:Concept ;
+  skos:prefLabel "no Cascade predicate carries it"@en ;
+  skos:inScheme bridge:verdicts ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:ignored a skos:Concept ;
+  skos:prefLabel "deliberately not carried"@en ;
+  skos:inScheme bridge:verdicts ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:closedBy a owl:ObjectProperty ;
+  rdfs:label "closed by"@en ;
+  rdfs:comment "The Cascade term whose declaration would let the adapter carry what the gap says it cannot."@en ;
+  rdfs:domain skos:Concept ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:gapKinds a skos:ConceptScheme ;
+  skos:prefLabel "Kinds of gap"@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:noPredicate a skos:Concept ;
+  skos:prefLabel "a source path no Cascade predicate carries"@en ;
+  skos:inScheme bridge:gapKinds ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:valueNotMapped a skos:Concept ;
+  skos:prefLabel "a value at a source path, outside a set the vocabulary fixes"@en ;
+  skos:inScheme bridge:gapKinds ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:sourceLacksRequired a skos:Concept ;
+  skos:prefLabel "a source path a shape requires and a record lacks"@en ;
+  skos:inScheme bridge:gapKinds ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:carriedWithLoss a skos:Concept ;
+  skos:prefLabel "what a record holds at a source path, carried but not wholly"@en ;
+  skos:inScheme bridge:gapKinds ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:schemaRuleUnnamed a skos:Concept ;
+  skos:prefLabel "a value at a source path failing a schema rule its specification names no anchor for"@en ;
+  skos:inScheme bridge:gapKinds ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:pathNotAccounted a skos:Concept ;
+  skos:prefLabel "a path of the record the adapter's bridge:sourceAccounting does not carry"@en ;
+  skos:inScheme bridge:gapKinds ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:idRepeated a skos:Concept ;
+  skos:prefLabel "an id the source repeats within its document, so each record holding it is named from the document and its selector"@en ;
+  skos:inScheme bridge:gapKinds ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:predicateNotDeclared a skos:Concept ;
+  skos:prefLabel "a predicate of the produced graph, other than rdf:type and one the Cascade Bridge vocabulary declares, that no ontology at the adapter's vocabulary pin declares"@en ;
+  skos:inScheme bridge:gapKinds ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:addressNotOneNode a skos:Concept ;
+  skos:prefLabel "an address the Bridge wrote that selects no node, or more than one, of what it is read against"@en ;
+  skos:inScheme bridge:gapKinds ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:occurrences a owl:DatatypeProperty ;
+  rdfs:label "occurrences"@en ;
+  rdfs:comment "How many nodes of the record stand at the path the finding is about."@en ;
+  rdfs:range xsd:integer ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:testManifest a owl:ObjectProperty ;
+  rdfs:label "test manifest"@en ;
+  rdfs:domain bridge:Adapter ;
+  rdfs:range mf:Manifest ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:docRootElementName a owl:DatatypeProperty ;
+  rdfs:label "document root element name"@en ;
+  rdfs:domain bridge:Envelope ;
+  rdfs:range xsd:string ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:docRootMemberName a owl:DatatypeProperty ;
+  rdfs:label "document root member name"@en ;
+  rdfs:comment "A member the object at the root of a JSON document in this envelope carries, by its name."@en ;
+  rdfs:domain bridge:Envelope ;
+  rdfs:range xsd:string ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:docRootMemberValue a owl:DatatypeProperty ;
+  rdfs:label "document root member value"@en ;
+  rdfs:comment "The value, as the JSON lift writes it, of the member bridge:docRootMemberName names."@en ;
+  rdfs:domain bridge:Envelope ;
+  rdfs:range xsd:string ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:documentSchema a owl:ObjectProperty ;
+  rdfs:label "document schema"@en ;
+  rdfs:comment "The schema a Bridge validates a whole document in this envelope against, in the source schema's language, where the source schema does not declare its root."@en ;
+  rdfs:domain bridge:Envelope ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+# Facts about a document, supplied with it or computed from it
+
+bridge:serverBaseUrl a owl:DatatypeProperty ;
+  rdfs:label "server base URL"@en ;
+  rdfs:range xsd:string ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:authenticatedPatient a owl:DatatypeProperty ;
+  rdfs:label "authenticated patient"@en ;
+  rdfs:comment "The patient the connection that fetched the document authenticated as, written as a reference in the document is written."@en ;
+  rdfs:range xsd:string ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:authenticatedAsProxy a owl:DatatypeProperty ;
+  rdfs:label "authenticated as proxy"@en ;
+  rdfs:comment "True where the connection acted for the authenticated patient rather than as them."@en ;
+  rdfs:range xsd:boolean ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:sourceFormatVersion a owl:DatatypeProperty ;
+  rdfs:label "source format version"@en ;
+  rdfs:comment "The version of the source format the document is written in, as the container it arrived in states it."@en ;
+  rdfs:range xsd:string ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:sha256 a owl:DatatypeProperty ;
+  rdfs:label "SHA-256"@en ;
+  rdfs:comment "The document's bytes' SHA-256, as the text of its ni: name."@en ;
+  rdfs:range xsd:string ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:selector a owl:DatatypeProperty ;
+  rdfs:label "selector"@en ;
+  rdfs:comment "Where a record stood in its document, as the rdf:value of the selector selecting it: of bridge:thisRecord in the record's dataset, and of the arrival of each version of a record."@en ;
+  rdfs:range xsd:string ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:arrivedAs a owl:ObjectProperty ;
+  rdfs:label "arrived as"@en ;
+  rdfs:comment "From a record's arrival in a document to the version it arrived as."@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+# Terms of PROV-O, PAV and RDF Schema a mapping or a Bridge writes, declared as the Bridge's own
+
+prov:specializationOf a owl:ObjectProperty ;
+  rdfs:isDefinedBy <http://www.w3.org/ns/prov-o#> .
+
+prov:Entity a owl:Class ;
+  rdfs:isDefinedBy <http://www.w3.org/ns/prov-o#> .
+
+prov:Activity a owl:Class ;
+  rdfs:isDefinedBy <http://www.w3.org/ns/prov-o#> .
+
+prov:Plan a owl:Class ;
+  rdfs:isDefinedBy <http://www.w3.org/ns/prov-o#> .
+
+prov:SoftwareAgent a owl:Class ;
+  rdfs:isDefinedBy <http://www.w3.org/ns/prov-o#> .
+
+prov:wasDerivedFrom a owl:ObjectProperty ;
+  rdfs:isDefinedBy <http://www.w3.org/ns/prov-o#> .
+
+prov:wasGeneratedBy a owl:ObjectProperty ;
+  rdfs:isDefinedBy <http://www.w3.org/ns/prov-o#> .
+
+prov:used a owl:ObjectProperty ;
+  rdfs:isDefinedBy <http://www.w3.org/ns/prov-o#> .
+
+prov:startedAtTime a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <http://www.w3.org/ns/prov-o#> .
+
+prov:qualifiedAssociation a owl:ObjectProperty ;
+  rdfs:isDefinedBy <http://www.w3.org/ns/prov-o#> .
+
+prov:qualifiedAttribution a owl:ObjectProperty ;
+  rdfs:isDefinedBy <http://www.w3.org/ns/prov-o#> .
+
+prov:agent a owl:ObjectProperty ;
+  rdfs:isDefinedBy <http://www.w3.org/ns/prov-o#> .
+
+prov:hadPlan a owl:ObjectProperty ;
+  rdfs:isDefinedBy <http://www.w3.org/ns/prov-o#> .
+
+prov:hadRole a owl:ObjectProperty ;
+  rdfs:isDefinedBy <http://www.w3.org/ns/prov-o#> .
+
+pav:retrievedFrom a owl:ObjectProperty ;
+  rdfs:isDefinedBy <http://purl.org/pav/> .
+
+pav:retrievedOn a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <http://purl.org/pav/> .
+
+pav:version a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <http://purl.org/pav/> .
+
+pav:lastUpdateOn a owl:DatatypeProperty ;
+  rdfs:isDefinedBy <http://purl.org/pav/> .
+
+rdfs:label a owl:AnnotationProperty ;
+  rdfs:isDefinedBy <http://www.w3.org/2000/01/rdf-schema#> .
+
+# Test terms, used with W3C's mf: test-manifest vocabulary
+
+bridge:IsomorphicConversionTest a owl:Class ;
+  rdfs:subClassOf mf:ManifestEntry ;
+  rdfs:label "Isomorphic conversion test"@en ;
+  rdfs:comment "Convert bridge:input, supplied with the facts bridge:facts names where the action names them. The produced graph must be isomorphic to bridge:expectedGraph (blank nodes relabelled, IRIs and literals exact) after every triple whose subject is the prov:agent of a prov:qualifiedAssociation, the Bridge's release, is removed from both sides. The produced findings must be isomorphic to bridge:expectedFindings in the same way, except that two selectors of one kind, oa:XPathSelector or an oa:FragmentSelector conforming to JSON Pointer, are equal when their rdf:values select the same one node: a record's selector evaluated against bridge:input, a refinement against the record that selector selects, read as a document of its own. An address selecting no node, or more than one, fails the entry. A finding produced twice is two blank nodes and counts twice."@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:InputOnlyTest a owl:Class ;
+  rdfs:subClassOf mf:ManifestEntry ;
+  rdfs:label "Input-only test"@en ;
+  rdfs:comment "Parse and validate bridge:input; record the produced graph and findings; judge nothing, and report earl:cantTell."@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:DatasetCompletionTest a owl:Class ;
+  rdfs:subClassOf mf:ManifestEntry ;
+  rdfs:label "Dataset completion test"@en ;
+  rdfs:comment "Stream bridge:dataset in its envelope; the run must complete without rejection. Where bridge:recordsProcessedCount and bridge:outputDigest are present they must match; where absent the harness records them. A Bridge that does not stream the dataset reports earl:untested."@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:LiftTest a owl:Class ;
+  rdfs:subClassOf mf:ManifestEntry ;
+  rdfs:label "Lift test"@en ;
+  rdfs:comment "A test of a Bridge offering bridge:sparql-1.1: lift bridge:input by the lift the action's bridge:sourceMediaType selects, with its document element, or its JSON value, as the lift root. The produced graph must be isomorphic to bridge:expectedGraph, blank nodes relabelled and IRIs and literals exact. No mapping runs, and nothing is removed from either side."@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:SkeletonTest a owl:Class ;
+  rdfs:subClassOf mf:ManifestEntry ;
+  rdfs:label "Envelope skeleton test"@en ;
+  rdfs:comment "A test of a Bridge offering bridge:sparql-1.1: build the envelope skeleton of bridge:input by the lift the action's bridge:sourceMediaType selects, its records named by the action's bridge:elementNameOfEachRecord or bridge:jsonPathOfEachRecord. The produced graph must be isomorphic to bridge:expectedGraph, blank nodes relabelled and IRIs and literals exact. Nothing is removed from either side."@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:NamingTest a owl:Class ;
+  rdfs:subClassOf mf:ManifestEntry ;
+  rdfs:label "Naming test"@en ;
+  rdfs:comment "A test of a Bridge offering bridge:sparql-1.1: evaluate the action's qt:query with ?input substituted by the members of bridge:nameInputs joined by |. It must have exactly one solution, whose ?name equals bridge:expectedName."@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:BaseUrlNormalisationTest a owl:Class ;
+  rdfs:subClassOf mf:ManifestEntry ;
+  rdfs:label "Base URL normalisation test"@en ;
+  rdfs:comment "A test of a Bridge offering bridge:sparql-1.1: normalise the action's bridge:serverBaseUrl. It must equal the result's bridge:serverBaseUrl, character for character."@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:VersioningTest a owl:Class ;
+  rdfs:subClassOf mf:ManifestEntry ;
+  rdfs:label "Versioning test"@en ;
+  rdfs:comment "A test of a Bridge: name the versions in bridge:input, read as the graph a mapping constructed, its literals as written. The produced graph must equal bridge:expectedGraph, IRIs and literals exact. Each bridge:expectedVersion's bridge:expectedName must name a version whose content, with the placeholder in place, has bridge:canonicalContent as its canonical N-Quads, byte for byte, and no other version may be named."@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:IdentityRelationTest a owl:Class ;
+  rdfs:subClassOf mf:ManifestEntry ;
+  rdfs:label "Identity relation test"@en ;
+  rdfs:comment "Convert each bridge:conversion of the action on its own: its bridge:input, in its bridge:envelope, supplied with the facts its bridge:facts names. Each conversion names one record: the record of the version whose arrival carries the conversion's bridge:selector or, where the conversion carries none, the one record of its graph a version arrived for. Where the result's bridge:sameRecord is true the two records' names must be equal, and where it is false they must differ. A conversion naming no record, or more than one, fails the entry."@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:conversion a owl:ObjectProperty ;
+  rdfs:label "conversion"@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:sameRecord a owl:DatatypeProperty ;
+  rdfs:label "same record"@en ;
+  rdfs:range xsd:boolean ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:nameInputs a owl:ObjectProperty ;
+  rdfs:label "name inputs"@en ;
+  rdfs:range rdf:List ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:expectedName a owl:ObjectProperty ;
+  rdfs:label "expected name"@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:expectedVersion a owl:ObjectProperty ;
+  rdfs:label "expected version"@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:canonicalContent a owl:ObjectProperty ;
+  rdfs:label "canonical content"@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:adapter a owl:ObjectProperty ;
+  rdfs:label "adapter"@en ;
+  rdfs:domain mf:Manifest ;
+  rdfs:range bridge:Adapter ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:input a owl:ObjectProperty ;
+  rdfs:label "input"@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:facts a owl:ObjectProperty ;
+  rdfs:label "facts"@en ;
+  rdfs:comment "The Turtle file of facts supplied with bridge:input, in the form convert's --facts takes."@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:dataset a owl:ObjectProperty ;
+  rdfs:label "dataset"@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:expectedGraph a owl:ObjectProperty ;
+  rdfs:label "expected graph"@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:expectedFindings a owl:ObjectProperty ;
+  rdfs:label "expected findings"@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:recordsProcessedCount a owl:DatatypeProperty ;
+  rdfs:label "records processed count"@en ;
+  rdfs:range xsd:integer ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:outputDigest a owl:DatatypeProperty ;
+  rdfs:label "output digest"@en ;
+  rdfs:comment "The sha256 of the canonical N-Quads output, the Bridge's release removed as an isomorphic conversion test removes it."@en ;
+  rdfs:range xsd:string ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+# Compatibility terms, the keys of a compatibility.json
+
+bridge:host a owl:ObjectProperty ;
+  rdfs:label "host"@en ;
+  rdfs:comment "One way an engine ships and is run, such as natively or in a JavaScript runtime."@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:setup a owl:ObjectProperty ;
+  rdfs:label "setup"@en ;
+  rdfs:comment "The argument vector that prepares a host of an engine to run, run without a shell in the engine's checkout."@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:command a owl:ObjectProperty ;
+  rdfs:label "command"@en ;
+  rdfs:comment "The argument vector that runs an engine's test command (engine/command.md) on a host, run without a shell in the engine's checkout."@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:mustPassWith a owl:ObjectProperty ;
+  rdfs:label "must pass with"@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .

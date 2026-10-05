@@ -1,3 +1,14 @@
-@prefix ex: <urn:example:list#> .
+@prefix ex:   <urn:example:list#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
 
 <urn:example:item:9> a ex:Item ; ex:title "nine" .
+
+<ni:///sha-256;0chlMg-Po-9NiG-HLS68SD6Lzi3PKkEHWKjdHNuuxQ0> a prov:Entity .
+
+[] a prov:Activity ;
+  prov:used <ni:///sha-256;0chlMg-Po-9NiG-HLS68SD6Lzi3PKkEHWKjdHNuuxQ0> ;
+  prov:qualifiedAssociation [
+    prov:hadPlan [ a prov:Plan ; rdfs:label "list" ] ;
+    prov:agent [ ]
+  ] .

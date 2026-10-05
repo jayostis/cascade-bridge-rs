@@ -1,15 +1,16 @@
 mod common;
 
+use cascade_bridge::oxrdf::Term;
 use cascade_bridge::oxrdfio::{self, RdfFormat};
 use common::{
-    canonical, copied_to, names, quads, read_at_its_own_iri, scratch, tiny, vocabularies, BASE,
-    MAX_LENGTH,
+    canonical, canonical_lines, copied_to, names, quads, read_at_its_own_iri, scratch, tiny,
+    vocabularies, BASE, MAX_LENGTH,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::process::{Command, Stdio};
 
-/// The stamp the expected graph carries and no stage of this Bridge writes yet.
-const STAMP: &str = "http://www.w3.org/ns/prov#generatedAtTime";
+const QUALIFIED_ASSOCIATION: &str = "http://www.w3.org/ns/prov#qualifiedAssociation";
+const AGENT: &str = "http://www.w3.org/ns/prov#agent";
 
 fn cascade_bridge(arguments: &[&str]) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_cascade-bridge"))
@@ -27,13 +28,35 @@ fn succeeded(run: &std::process::Output) {
     );
 }
 
-/// The graph a text holds, one line per triple, the stamp left out.
+/// The graph a text holds, canonicalised, the Bridge's release set aside as the harness sets it aside.
 fn triples(bytes: &[u8], format: RdfFormat, base: &str) -> BTreeSet<String> {
-    quads(bytes, format, base)
+    let quads = quads(bytes, format, base);
+    let objects = |predicate: &str| -> Vec<(Term, Term)> {
+        quads
+            .iter()
+            .filter(|quad| quad.predicate.as_str() == predicate)
+            .map(|quad| (Term::from(quad.subject.clone()), quad.object.clone()))
+            .collect()
+    };
+    let associations: BTreeSet<String> = objects(QUALIFIED_ASSOCIATION)
         .into_iter()
-        .filter(|quad| quad.predicate.as_str() != STAMP)
-        .map(|quad| quad.to_string())
-        .collect()
+        .map(|(_, association)| association.to_string())
+        .collect();
+    let releases: BTreeSet<String> = objects(AGENT)
+        .into_iter()
+        .filter(|(association, _)| associations.contains(&association.to_string()))
+        .map(|(_, release)| release.to_string())
+        .collect();
+    canonical_lines(
+        quads
+            .iter()
+            .filter(|quad| !releases.contains(&quad.subject.to_string()))
+            .cloned(),
+    )
+}
+
+fn facts() -> std::path::PathBuf {
+    tiny().join("fixtures/facts/catalog.ttl")
 }
 
 fn expected() -> BTreeSet<String> {
@@ -153,6 +176,8 @@ fn converts_without_the_vocabularies_directory_and_says_the_graph_went_unvalidat
         "convert",
         &tiny().to_string_lossy(),
         &document.to_string_lossy(),
+        "--facts",
+        &facts().to_string_lossy(),
     ]);
     succeeded(&run);
     assert_eq!(
@@ -245,6 +270,8 @@ fn converts_a_document_to_the_graph_the_adapter_expects_of_it() {
         "convert",
         &tiny().to_string_lossy(),
         &document.to_string_lossy(),
+        "--facts",
+        &facts().to_string_lossy(),
         "--vocabularies",
         &vocabularies().to_string_lossy(),
     ]);
@@ -255,6 +282,23 @@ fn converts_a_document_to_the_graph_the_adapter_expects_of_it() {
         "{}",
         String::from_utf8_lossy(&run.stdout)
     );
+}
+
+#[test]
+fn names_a_facts_file_it_cannot_read_and_writes_no_graph() {
+    let document = tiny().join("fixtures/in/two.xml");
+    let missing = tiny().join("fixtures/facts/missing.ttl");
+    let run = cascade_bridge(&[
+        "convert",
+        &tiny().to_string_lossy(),
+        &document.to_string_lossy(),
+        "--facts",
+        &missing.to_string_lossy(),
+    ]);
+    let stderr = String::from_utf8_lossy(&run.stderr);
+    assert_eq!(run.status.code(), Some(2), "{stderr}");
+    assert!(run.stdout.is_empty());
+    assert!(stderr.contains("missing.ttl"), "{stderr}");
 }
 
 #[test]
@@ -304,6 +348,8 @@ fn writes_the_same_graph_as_n_triples_and_to_the_file_out_names() {
         "convert",
         &tiny().to_string_lossy(),
         &document.to_string_lossy(),
+        "--facts",
+        &facts().to_string_lossy(),
         "--vocabularies",
         &vocabularies().to_string_lossy(),
         "--format",
@@ -429,6 +475,8 @@ fn writes_both_files_as_n_triples_and_neither_to_standard_output() {
         "convert",
         &tiny().to_string_lossy(),
         &document.to_string_lossy(),
+        "--facts",
+        &facts().to_string_lossy(),
         "--vocabularies",
         &vocabularies().to_string_lossy(),
         "--out",

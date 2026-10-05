@@ -1,0 +1,7 @@
+SELECT ?input ?name WHERE {
+  BIND(SHA256(CONCAT("90c60849-c5ef-4ca6-bfb8-8662bd07d2b5|", ?input)) AS ?hash)
+  BIND(REPLACE(REPLACE(REPLACE(REPLACE(SUBSTR(?hash, 17, 1),
+         "[048c]", "8"), "[159d]", "9"), "[26ae]", "a"), "[37bf]", "b") AS ?variant)
+  BIND(IRI(CONCAT("urn:uuid:", SUBSTR(?hash, 1, 8), "-", SUBSTR(?hash, 9, 4), "-8", SUBSTR(?hash, 14, 3),
+                  "-", ?variant, SUBSTR(?hash, 18, 3), "-", SUBSTR(?hash, 21, 12))) AS ?name)
+}

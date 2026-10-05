@@ -209,11 +209,13 @@ pub(crate) fn compile(iri: &str, resolver: &dyn Resolver) -> Result<JsonSchema> 
             }
         }
     }
-    Ok(JsonSchema {
+    let schema = JsonSchema {
         documents,
-        root: without_fragment(iri).to_owned(),
+        root: iri.to_owned(),
         patterns,
-    })
+    };
+    schema.root()?;
+    Ok(schema)
 }
 
 struct Failure {
@@ -704,10 +706,24 @@ fn within(count: usize, bound: Option<f64>, holds: impl Fn(f64, f64) -> bool) ->
     bound.is_none_or(|b| holds(count, b))
 }
 
+impl JsonSchema {
+    /// The subschema a record is validated against: the one the IRI's fragment
+    /// names, its `$ref`s resolved against the whole document.
+    fn root(&self) -> Result<(&str, &Node)> {
+        let run = Run {
+            schema: self,
+            asked: Asked::Every,
+            failures: Vec::new(),
+        };
+        run.reference(without_fragment(&self.root), &self.root)
+            .map_err(|e| Error::msg(format!("the source schema {}: {e}", self.root)))
+    }
+}
+
 impl Schema for JsonSchema {
     fn errors(&self, text: &str) -> Result<Vec<SchemaFinding>> {
         let instance = json::parse(text)?;
-        let (base, root) = &self.documents[&self.root];
+        let (base, root) = self.root()?;
         let mut run = Run {
             schema: self,
             asked: Asked::Every,
