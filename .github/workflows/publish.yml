@@ -25,6 +25,8 @@ jobs:
         with:
           node-version: 22
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ hashFiles('Cargo.toml') }}
       - uses: actions/cache@v6
         with:
           path: |
@@ -43,6 +45,10 @@ jobs:
       - if: steps.exists.outputs.release == 'false'
         run: sh package/build.sh
       - if: steps.exists.outputs.release == 'false'
+        run: |
+          cargo build --release --locked -p cascade-bridge-cli
+          cp target/release/cascade-bridge "$RUNNER_TEMP/cascade-bridge-x86_64-unknown-linux-gnu"
+      - if: steps.exists.outputs.release == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
         working-directory: package/dist
@@ -51,8 +57,11 @@ jobs:
           tarball=$(node -e 'console.log(require("../pack.json")[0].filename)')
           integrity=$(node -e 'console.log(require("../pack.json")[0].integrity)')
           sources=$(node -e 'console.log(require("./package.json").cascadeBridge.sources)')
-          notes=$(printf 'Commit: %s\nSources: %s\nIntegrity: %s\n' "$GITHUB_SHA" "$sources" "$integrity")
-          gh release create "build-$GITHUB_SHA" "$tarball" \
+          native="$RUNNER_TEMP/cascade-bridge-x86_64-unknown-linux-gnu"
+          native_sha256=$(sha256sum "$native" | cut -d' ' -f1)
+          notes=$(printf 'Commit: %s\nSources: %s\nIntegrity: %s\nNative SHA-256: %s\n' \
+            "$GITHUB_SHA" "$sources" "$integrity" "$native_sha256")
+          gh release create "build-$GITHUB_SHA" "$tarball" "$native" \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "build-$GITHUB_SHA" \

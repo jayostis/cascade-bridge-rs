@@ -17,3 +17,7 @@ serde_json = "=1.0.151"
 
 [dev-dependencies]
 tempfile = "=3.27.0"
+
+[[test]]
+name = "node_host"
+test = false
