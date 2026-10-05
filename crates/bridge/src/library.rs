@@ -1,19 +1,18 @@
 use crate::earl::{earl_report, ReportSubject};
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::harness::{run_manifest, RunOptions, OFFERED_PROFILES};
-use crate::load::{self, adapter_of, load_adapter, CRATE};
+use crate::load::{self, adapter_of, instances, load_adapter, CRATE};
 use crate::rdf::{serialise, serialise_at};
 use crate::records::Supplied;
 use crate::resolver::{key, Maps};
 use crate::run::{self, prepare, Prepared, Source};
 use crate::terms::{
-    BRIDGE_CASCADE_VOCABULARY_PIN, BRIDGE_ENVELOPE, BRIDGE_SOURCE_MEDIA_TYPE,
-    BRIDGE_VOCABULARY_FILE, SCHEMA_IDENTIFIER, SCHEMA_VERSION,
+    BRIDGE_ADAPTER, BRIDGE_CASCADE_VOCABULARY_PIN, BRIDGE_CRATE_FILE, BRIDGE_ENVELOPE,
+    BRIDGE_LOAD_FILE, BRIDGE_SOURCE_MEDIA_TYPE, BRIDGE_TEST_MANIFEST, BRIDGE_VOCABULARY_FILE,
+    RDF_TYPE, SCHEMA_IDENTIFIER, SCHEMA_MEDIA_OBJECT, SCHEMA_VERSION,
 };
 use crate::vocabulary::{require_vocabularies, unvalidated_output};
-use oxrdf::{
-    GraphName, Literal, NamedNode, NamedOrBlankNode, NamedOrBlankNodeRef, Quad, Term, TermRef,
-};
+use oxrdf::{GraphName, Literal, NamedNode, NamedOrBlankNode, Quad, Term, TermRef};
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 
@@ -22,6 +21,8 @@ pub use crate::rdf::GraphFormat as Format;
 
 pub const NAME: &str = "Cascade Bridge for Rust";
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+const BRIDGE: &str = "https://ns.cascadeprotocol.org/bridge/v1-draft#";
 
 /// Each file by its path, as the crate or a `bridge:vocabularyFile` writes it.
 pub type Files = BTreeMap<String, Vec<u8>>;
@@ -63,43 +64,41 @@ pub struct Description {
 
 pub fn describe(adapter_iri: &str, metadata: &[u8]) -> Result<Description> {
     let adapter = adapter_of(metadata, adapter_iri)?;
-    let mut load_files: BTreeSet<String> = adapter
-        .mappings
-        .iter()
-        .chain(&adapter.findings_queries)
-        .chain(&adapter.document_table_queries)
-        .chain(&adapter.detect_query)
-        .chain(&adapter.tables)
-        .chain(&adapter.source_schema)
-        .chain(&adapter.gap_scheme)
-        .chain(&adapter.source_accounting)
-        .chain(adapter.envelopes.iter().flat_map(|envelope| {
-            envelope
-                .document_schema
+    let named_by = |subject: &str| -> Vec<String> {
+        let Ok(subject) = NamedNode::new(subject) else {
+            return Vec::new();
+        };
+        adapter
+            .graph
+            .triples_for_subject(subject.as_ref())
+            .filter(|triple| {
+                triple.predicate.as_str().starts_with(BRIDGE)
+                    && triple.predicate.as_str() != BRIDGE_TEST_MANIFEST
+            })
+            .filter_map(|triple| match triple.object {
+                TermRef::NamedNode(node) => key(adapter_iri, node.as_str()),
+                _ => None,
+            })
+            .collect()
+    };
+    let mut load_files: BTreeSet<String> = std::iter::once(adapter.root.as_str())
+        .chain(
+            adapter
+                .envelopes
                 .iter()
-                .chain(&envelope.source_schema)
-        }))
-        .filter_map(|iri| key(adapter_iri, iri))
+                .map(|envelope| envelope.iri.as_str()),
+        )
+        .flat_map(named_by)
         .collect();
     load_files.insert(CRATE.to_owned());
-    let crate_files: BTreeSet<String> = adapter
-        .graph
-        .iter()
-        .flat_map(|triple| {
-            let subject = match triple.subject {
-                NamedOrBlankNodeRef::NamedNode(node) => Some(node.as_str()),
-                NamedOrBlankNodeRef::BlankNode(_) => None,
-            };
-            let object = match triple.object {
-                TermRef::NamedNode(node) => Some(node.as_str()),
-                _ => None,
-            };
-            [subject, object]
+    let mut crate_files: BTreeSet<String> = instances(&adapter.graph, SCHEMA_MEDIA_OBJECT)?
+        .into_iter()
+        .filter_map(|file| match file {
+            NamedOrBlankNode::NamedNode(node) => key(adapter_iri, node.as_str()),
+            NamedOrBlankNode::BlankNode(_) => None,
         })
-        .flatten()
-        .filter_map(|iri| key(adapter_iri, iri))
-        .filter(|path| !path.ends_with('/'))
         .collect();
+    crate_files.insert(CRATE.to_owned());
     Ok(Description {
         iri: adapter.root,
         identifier: adapter.identifier,
@@ -132,7 +131,7 @@ impl Description {
 fn described(description: &Description) -> Result<Vec<Quad>> {
     let adapter = NamedOrBlankNode::from(NamedNode::new(&description.iri)?);
     let literal = |value: &String| Term::from(Literal::new_simple_literal(value));
-    let mut said: Vec<(&str, Term)> = Vec::new();
+    let mut said: Vec<(&str, Term)> = vec![(RDF_TYPE, NamedNode::new(BRIDGE_ADAPTER)?.into())];
     if let Some(identifier) = &description.identifier {
         said.push((SCHEMA_IDENTIFIER, literal(identifier)));
     }
@@ -150,6 +149,12 @@ fn described(description: &Description) -> Result<Vec<Quad>> {
     }
     for file in &description.vocabulary_files {
         said.push((BRIDGE_VOCABULARY_FILE, literal(file)));
+    }
+    for file in &description.load_files {
+        said.push((BRIDGE_LOAD_FILE, literal(file)));
+    }
+    for file in &description.crate_files {
+        said.push((BRIDGE_CRATE_FILE, literal(file)));
     }
     said.into_iter()
         .map(|(predicate, object)| {
@@ -175,6 +180,18 @@ pub fn load(adapter: Named<'_>, vocabulary: Option<Named<'_>>) -> Result<Loaded>
         vocabulary,
     };
     let loaded = load_adapter(&maps)?;
+    let unoffered: Vec<&str> = loaded
+        .required_profiles
+        .iter()
+        .map(String::as_str)
+        .filter(|profile| !OFFERED_PROFILES.contains(profile))
+        .collect();
+    if !unoffered.is_empty() {
+        return Err(Error::adapter(format!(
+            "the adapter requires {}, which this Bridge does not offer",
+            unoffered.join(", ")
+        )));
+    }
     let prepared = prepare(&loaded, &maps)?;
     Ok(Loaded {
         unvalidated: unvalidated_output(&loaded, &maps),
@@ -198,7 +215,10 @@ impl Loaded {
     }
 
     pub fn convert(&self, document: &Document<'_>) -> Result<Conversion> {
-        let run = run::convert(&self.prepared, source(document))?;
+        let mut run = run::convert(&self.prepared, source(document))?;
+        if self.unvalidated.is_some() {
+            run.findings.clear();
+        }
         Ok(Conversion {
             records: run.units,
             triples: run.triples(),
