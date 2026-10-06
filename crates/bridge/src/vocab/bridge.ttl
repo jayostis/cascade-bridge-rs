@@ -44,21 +44,21 @@ bridge:requiresProfile a owl:ObjectProperty ;
   rdfs:range bridge:Profile ;
   rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
 
-bridge:cascadeVocabularyPin a owl:ObjectProperty ;
-  rdfs:label "Cascade vocabulary pin"@en ;
-  rdfs:comment "The commit of the Cascade vocabulary repository the adapter's vocabularies are read at."@en ;
+bridge:cascadeVocabularyRepository a owl:ObjectProperty ;
+  rdfs:label "Cascade vocabulary repository"@en ;
+  rdfs:comment "The Cascade vocabulary repository the adapter's vocabularies are read from, by its IRI; a run reads it at the version it picks, never at a commit the adapter names."@en ;
   rdfs:domain bridge:Adapter ;
   rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
 
 bridge:vocabulary a owl:ObjectProperty ;
   rdfs:label "vocabulary"@en ;
-  rdfs:comment "A Cascade vocabulary the adapter writes, by namespace IRI, whose schema:version is the vocabulary's version at the vocabulary pin."@en ;
+  rdfs:comment "A Cascade vocabulary the adapter writes, by namespace IRI, whose schema:version is the vocabulary's version in the Cascade vocabulary repository."@en ;
   rdfs:domain bridge:Adapter ;
   rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
 
 bridge:vocabularyFile a owl:DatatypeProperty ;
   rdfs:label "vocabulary file"@en ;
-  rdfs:comment "The path, in the Cascade vocabulary repository at the vocabulary pin, of an ontology or shapes file the adapter is read against."@en ;
+  rdfs:comment "The path, in the Cascade vocabulary repository, of an ontology or shapes file the adapter is read against."@en ;
   rdfs:domain bridge:Adapter ;
   rdfs:range xsd:string ;
   rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
@@ -281,7 +281,7 @@ bridge:idRepeated a skos:Concept ;
   rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
 
 bridge:predicateNotDeclared a skos:Concept ;
-  skos:prefLabel "a predicate of the produced graph, other than rdf:type and one the Cascade Bridge vocabulary declares, that no ontology at the adapter's vocabulary pin declares"@en ;
+  skos:prefLabel "a predicate of the produced graph, other than rdf:type and one the Cascade Bridge vocabulary declares, that no ontology the adapter is read against declares"@en ;
   skos:inScheme bridge:gapKinds ;
   rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
 

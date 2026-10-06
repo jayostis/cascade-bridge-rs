@@ -7,7 +7,7 @@ use crate::records::Supplied;
 use crate::resolver::{key, Maps};
 use crate::run::{self, prepare, Prepared, Source};
 use crate::terms::{
-    BRIDGE_ADAPTER, BRIDGE_CASCADE_VOCABULARY_PIN, BRIDGE_CRATE_FILE, BRIDGE_ENVELOPE,
+    BRIDGE_ADAPTER, BRIDGE_CASCADE_VOCABULARY_REPOSITORY, BRIDGE_CRATE_FILE, BRIDGE_ENVELOPE,
     BRIDGE_LOAD_FILE, BRIDGE_SOURCE_MEDIA_TYPE, BRIDGE_TEST_MANIFEST, BRIDGE_VOCABULARY_FILE,
     RDF_TYPE, SCHEMA_IDENTIFIER, SCHEMA_MEDIA_OBJECT, SCHEMA_VERSION,
 };
@@ -58,7 +58,7 @@ pub struct Description {
     pub envelopes: Vec<String>,
     pub load_files: Vec<String>,
     pub crate_files: Vec<String>,
-    pub vocabulary_pin: Option<String>,
+    pub vocabulary_repository: Option<String>,
     pub vocabulary_files: Vec<String>,
 }
 
@@ -111,7 +111,7 @@ pub fn describe(adapter_iri: &str, metadata: &[u8]) -> Result<Description> {
             .collect(),
         load_files: load_files.into_iter().collect(),
         crate_files: crate_files.into_iter().collect(),
-        vocabulary_pin: adapter.cascade_vocabulary_pin,
+        vocabulary_repository: adapter.cascade_vocabulary_repository,
         vocabulary_files: adapter.vocabulary_files,
     })
 }
@@ -144,8 +144,11 @@ fn described(description: &Description) -> Result<Vec<Quad>> {
     for envelope in &description.envelopes {
         said.push((BRIDGE_ENVELOPE, NamedNode::new(envelope)?.into()));
     }
-    if let Some(pin) = &description.vocabulary_pin {
-        said.push((BRIDGE_CASCADE_VOCABULARY_PIN, NamedNode::new(pin)?.into()));
+    if let Some(repository) = &description.vocabulary_repository {
+        said.push((
+            BRIDGE_CASCADE_VOCABULARY_REPOSITORY,
+            NamedNode::new(repository)?.into(),
+        ));
     }
     for file in &description.vocabulary_files {
         said.push((BRIDGE_VOCABULARY_FILE, literal(file)));

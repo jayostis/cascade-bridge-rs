@@ -49,7 +49,7 @@ export interface Description {
   envelopes: string[];
   loadFiles: string[];
   crateFiles: string[];
-  vocabulary?: { pin?: string; files: string[] };
+  vocabulary?: { repository?: string; files: string[] };
 }
 
 export interface ConvertOptions {
@@ -332,12 +332,12 @@ pub fn describe(
     set(&value, "envelopes", &strings(&described.envelopes));
     set(&value, "loadFiles", &strings(&described.load_files));
     set(&value, "crateFiles", &strings(&described.crate_files));
-    if described.vocabulary_pin.is_some() || !described.vocabulary_files.is_empty() {
+    if described.vocabulary_repository.is_some() || !described.vocabulary_files.is_empty() {
         let vocabulary = JsValue::from(Object::new());
         set(
             &vocabulary,
-            "pin",
-            &optional(described.vocabulary_pin.as_deref()),
+            "repository",
+            &optional(described.vocabulary_repository.as_deref()),
         );
         set(&vocabulary, "files", &strings(&described.vocabulary_files));
         set(&value, "vocabulary", &vocabulary);
