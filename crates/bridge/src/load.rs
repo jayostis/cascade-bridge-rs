@@ -1,11 +1,11 @@
 use crate::error::{Error, ErrorKind, Explained, Result};
 use crate::resolver::Resolver;
 use crate::terms::{
-    BRIDGE_ADAPTER, BRIDGE_CASCADE_VOCABULARY_PIN, BRIDGE_DETECT_QUERY, BRIDGE_DOCUMENT_SCHEMA,
-    BRIDGE_DOCUMENT_TABLE_QUERY, BRIDGE_DOC_ROOT_ELEMENT_NAME, BRIDGE_DOC_ROOT_MEMBER_NAME,
-    BRIDGE_DOC_ROOT_MEMBER_VALUE, BRIDGE_ELEMENT_NAME_OF_EACH_RECORD, BRIDGE_ENVELOPE,
-    BRIDGE_FINDINGS_QUERY, BRIDGE_GAP_SCHEME, BRIDGE_JSON_PATH_OF_EACH_RECORD, BRIDGE_MAPPING,
-    BRIDGE_REQUIRES_PROFILE, BRIDGE_SOURCE_ACCOUNTING, BRIDGE_SOURCE_MEDIA_TYPE,
+    BRIDGE_ADAPTER, BRIDGE_CASCADE_VOCABULARY_REPOSITORY, BRIDGE_DETECT_QUERY,
+    BRIDGE_DOCUMENT_SCHEMA, BRIDGE_DOCUMENT_TABLE_QUERY, BRIDGE_DOC_ROOT_ELEMENT_NAME,
+    BRIDGE_DOC_ROOT_MEMBER_NAME, BRIDGE_DOC_ROOT_MEMBER_VALUE, BRIDGE_ELEMENT_NAME_OF_EACH_RECORD,
+    BRIDGE_ENVELOPE, BRIDGE_FINDINGS_QUERY, BRIDGE_GAP_SCHEME, BRIDGE_JSON_PATH_OF_EACH_RECORD,
+    BRIDGE_MAPPING, BRIDGE_REQUIRES_PROFILE, BRIDGE_SOURCE_ACCOUNTING, BRIDGE_SOURCE_MEDIA_TYPE,
     BRIDGE_SOURCE_SCHEMA, BRIDGE_TABLE, BRIDGE_TEST_MANIFEST, BRIDGE_VOCABULARY_FILE, RDF_FIRST,
     RDF_NIL, RDF_REST, RDF_TYPE, SCHEMA_ABOUT, SCHEMA_IDENTIFIER, SCHEMA_NAME, SCHEMA_VERSION,
 };
@@ -66,7 +66,7 @@ pub(crate) struct Adapter {
     pub(crate) tables: Vec<String>,
     pub(crate) envelopes: Vec<Envelope>,
     pub(crate) manifest: Option<String>,
-    pub(crate) cascade_vocabulary_pin: Option<String>,
+    pub(crate) cascade_vocabulary_repository: Option<String>,
 }
 
 pub(crate) fn subject(iri: &str) -> Result<NamedOrBlankNode> {
@@ -274,7 +274,11 @@ fn crate_read(metadata: &[u8], root: &str) -> Result<Adapter> {
         tables: values(&graph, &root_subject, BRIDGE_TABLE)?,
         envelopes,
         manifest: one(&graph, &root_subject, BRIDGE_TEST_MANIFEST)?,
-        cascade_vocabulary_pin: one(&graph, &root_subject, BRIDGE_CASCADE_VOCABULARY_PIN)?,
+        cascade_vocabulary_repository: one(
+            &graph,
+            &root_subject,
+            BRIDGE_CASCADE_VOCABULARY_REPOSITORY,
+        )?,
         root,
         graph,
     })

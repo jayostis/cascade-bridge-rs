@@ -217,7 +217,7 @@ fn refuses_a_vocabulary_file_that_is_a_file_of_the_adapter() {
     let refused = refusal("../tiny-adapter/vocab/catalog-gaps.ttl");
     assert!(
         refused.contains("not inside"),
-        "the adapter was read against a file of its own rather than one at the vocabulary pin: \
+        "the adapter was read against a file of its own rather than one of the vocabulary repository: \
          {refused:?}"
     );
 }

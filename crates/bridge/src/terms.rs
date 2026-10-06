@@ -66,7 +66,7 @@ terms! {
     BRIDGE_SOURCE_MEDIA_TYPE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "sourceMediaType";
     BRIDGE_SOURCE_SCHEMA = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "sourceSchema";
     BRIDGE_VOCABULARY_FILE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "vocabularyFile";
-    BRIDGE_CASCADE_VOCABULARY_PIN = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "cascadeVocabularyPin";
+    BRIDGE_CASCADE_VOCABULARY_REPOSITORY = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "cascadeVocabularyRepository";
     BRIDGE_LOAD_FILE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "loadFile";
     BRIDGE_CRATE_FILE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "crateFile";
     BRIDGE_PREDICATE_NOT_DECLARED = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "predicateNotDeclared";
