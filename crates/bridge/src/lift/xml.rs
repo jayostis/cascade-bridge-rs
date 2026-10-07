@@ -1,10 +1,6 @@
-// The skeleton the detect query reads is the whole document with every unit reduced
-// to an empty container. A unit is handed over as soon as its end tag is read, and
-// written out again as XML with the declarations in scope where it stood, for a
-// validator that brings its own parser.
 use super::{member, name, store_of, triple, Occurrence, Paths, Unit, Valued, FX, RDF, XYZ};
 use crate::decode::{is_xml_space, normalise_attribute_value, normalise_line_endings};
-use crate::error::Result;
+use crate::error::{Error, Result};
 use oxigraph::model::{BlankNode, Literal, NamedNode, Quad};
 use oxigraph::store::Store;
 use quick_xml::events::Event;
@@ -171,6 +167,19 @@ struct Attribute {
     step: Option<Step>,
 }
 
+fn attribute_triples<'a>(
+    id: &'a BlankNode,
+    attributes: &'a [Attribute],
+) -> impl Iterator<Item = Quad> + 'a {
+    attributes.iter().map(move |attribute| {
+        triple(
+            id,
+            attribute.predicate.clone(),
+            Literal::new_simple_literal(&attribute.value),
+        )
+    })
+}
+
 impl Attribute {
     fn named(&self) -> Option<(&Step, &str)> {
         Some((self.step.as_ref()?, self.value.as_str()))
@@ -187,6 +196,10 @@ struct Frame {
     /// Only for an element reached from the document element without passing a record.
     step: Option<Step>,
     siblings: HashMap<(String, Option<String>), usize>,
+    /// A unit's node in the skeleton, where this is a unit.
+    skeleton: Option<BlankNode>,
+    /// A unit's child as the skeleton keeps it, until a child of its own drops it.
+    kept: Option<Vec<Quad>>,
 }
 
 fn start_tag(
@@ -279,6 +292,7 @@ impl Builder {
         if let Some(top) = self.stack.last_mut() {
             if !is_xml_space(&self.text) {
                 top.members += 1;
+                top.kept = None;
                 let quad = triple(
                     &top.id,
                     member(top.members)?,
@@ -309,6 +323,8 @@ impl Builder {
             declarations: element.declarations.clone(),
             step,
             siblings: HashMap::new(),
+            skeleton: None,
+            kept: None,
         };
 
         let name = (
@@ -339,19 +355,33 @@ impl Builder {
                 census.open(step.clone(), &element.attributes, valued);
             }
             let id = self.fresh();
+            let kept_id = match self.stack.last().is_some_and(|top| top.skeleton.is_some()) {
+                true => Some(self.fresh()),
+                false => None,
+            };
             let top = self.stack.last_mut().expect("checked above");
             top.members += 1;
+            top.kept = None;
             let slot = triple(&top.id, member(top.members)?, id.clone());
+            let kept = match (&top.skeleton, kept_id) {
+                (Some(unit), Some(kept_id)) => {
+                    let mut kept = vec![
+                        triple(unit, member(top.members)?, kept_id.clone()),
+                        triple(&kept_id, rdf_type.clone(), element.type_iri.clone()),
+                    ];
+                    kept.extend(attribute_triples(&kept_id, &element.attributes));
+                    Some(kept)
+                }
+                _ => None,
+            };
             self.unit.push(slot);
             self.unit.push(triple(&id, rdf_type, element.type_iri));
-            for attribute in element.attributes {
-                self.unit.push(triple(
-                    &id,
-                    attribute.predicate,
-                    Literal::new_simple_literal(attribute.value),
-                ));
-            }
-            self.stack.push(frame(id, true, Some(step)));
+            self.unit
+                .extend(attribute_triples(&id, &element.attributes));
+            self.stack.push(Frame {
+                kept,
+                ..frame(id, true, Some(step))
+            });
             return Ok(());
         }
 
@@ -368,6 +398,8 @@ impl Builder {
         }
         self.skeleton
             .push(triple(&id, rdf_type.clone(), element.type_iri.clone()));
+        self.skeleton
+            .extend(attribute_triples(&id, &element.attributes));
         if self.stack.is_empty() {
             self.document_step = Some(step.clone());
         }
@@ -395,24 +427,15 @@ impl Builder {
             self.unit
                 .push(triple(&unit_id, rdf_type.clone(), self.fx_root.clone()));
             self.unit.push(triple(&unit_id, rdf_type, element.type_iri));
-            for attribute in element.attributes {
-                self.unit.push(triple(
-                    &unit_id,
-                    attribute.predicate,
-                    Literal::new_simple_literal(attribute.value),
-                ));
-            }
-            self.stack.push(frame(unit_id, true, Some(step)));
+            self.unit
+                .extend(attribute_triples(&unit_id, &element.attributes));
+            self.stack.push(Frame {
+                skeleton: Some(id),
+                ..frame(unit_id, true, Some(step))
+            });
             return Ok(());
         }
 
-        for attribute in element.attributes {
-            self.skeleton.push(triple(
-                &id,
-                attribute.predicate,
-                Literal::new_simple_literal(attribute.value),
-            ));
-        }
         self.stack.push(frame(id, false, Some(step)));
         Ok(())
     }
@@ -428,6 +451,9 @@ impl Builder {
         let Some(frame) = self.stack.pop() else {
             return Ok(false);
         };
+        if let Some(kept) = frame.kept {
+            self.skeleton.extend(kept);
+        }
         if frame.unit {
             self.raw.push_str(&format!("</{}>", frame.qname));
             if let Some(census) = &mut self.census {
@@ -595,6 +621,12 @@ impl<R: BufRead> Lift<R> {
                     self.builder.write(&format!("<?{raw}?>"));
                 }
                 Event::Eof => {
+                    if !self.builder.stack.is_empty() {
+                        return Err(Error::document(format!(
+                            "the document ends with {} element(s) still open",
+                            self.builder.stack.len()
+                        )));
+                    }
                     self.done = true;
                     return Ok(None);
                 }

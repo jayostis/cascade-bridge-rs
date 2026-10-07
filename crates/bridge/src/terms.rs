@@ -89,6 +89,7 @@ terms! {
     BRIDGE_OCCURRENCES = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "occurrences";
     BRIDGE_PATH_NOT_ACCOUNTED = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "pathNotAccounted";
     BRIDGE_ADDRESS_NOT_ONE_NODE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "addressNotOneNode";
+    BRIDGE_VERSION_NOT_KEPT = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "versionNotKept";
     BRIDGE_INPUT = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "input";
     BRIDGE_EXPECTED_GRAPH = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "expectedGraph";
     BRIDGE_EXPECTED_FINDINGS = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "expectedFindings";
@@ -101,6 +102,9 @@ terms! {
     BRIDGE_BASE_URL_NORMALISATION_TEST = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "BaseUrlNormalisationTest";
     BRIDGE_VERSIONING_TEST = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "VersioningTest";
     BRIDGE_NAME_INPUTS = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "nameInputs";
+    BRIDGE_FINGERPRINT_TEST = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "FingerprintTest";
+    BRIDGE_FINGERPRINT_MEMBERS = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "fingerprintMembers";
+    BRIDGE_EXPECTED_FINGERPRINT = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "expectedFingerprint";
     BRIDGE_EXPECTED_NAME = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "expectedName";
     BRIDGE_SERVER_BASE_URL = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "serverBaseUrl";
     BRIDGE_EXPECTED_VERSION = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "expectedVersion";
