@@ -22,6 +22,7 @@
     }
   ],
   "mustPassWith": [
+    "https://github.com/jayostis/cascade-bridge-adapter-ccda",
     "https://github.com/jayostis/cascade-bridge-adapter-clinvar",
     "https://github.com/jayostis/cascade-bridge-adapter-fhir-r4"
   ]
