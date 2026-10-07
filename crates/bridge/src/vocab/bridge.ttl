@@ -290,6 +290,11 @@ bridge:addressNotOneNode a skos:Concept ;
   skos:inScheme bridge:gapKinds ;
   rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
 
+bridge:versionNotKept a skos:Concept ;
+  skos:prefLabel "a version of a record the Bridge dropped, its source record's graph holding another version of that record it kept"@en ;
+  skos:inScheme bridge:gapKinds ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
 bridge:occurrences a owl:DatatypeProperty ;
   rdfs:label "occurrences"@en ;
   rdfs:comment "How many nodes of the record stand at the path the finding is about."@en ;
@@ -467,6 +472,12 @@ bridge:NamingTest a owl:Class ;
   rdfs:comment "A test of a Bridge offering bridge:sparql-1.1: evaluate the action's qt:query with ?input substituted by the members of bridge:nameInputs joined by |. It must have exactly one solution, whose ?name equals bridge:expectedName."@en ;
   rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
 
+bridge:FingerprintTest a owl:Class ;
+  rdfs:subClassOf mf:ManifestEntry ;
+  rdfs:label "Fingerprint test"@en ;
+  rdfs:comment "A test of a Bridge offering bridge:sparql-1.1: evaluate the action's qt:query over a default graph holding, for each member of bridge:fingerprintMembers, one triple whose subject is a blank node of its own, whose predicate is rdf:value and whose object is that member. It must have exactly one solution, whose ?fingerprint equals bridge:expectedFingerprint."@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
 bridge:BaseUrlNormalisationTest a owl:Class ;
   rdfs:subClassOf mf:ManifestEntry ;
   rdfs:label "Base URL normalisation test"@en ;
@@ -497,6 +508,15 @@ bridge:sameRecord a owl:DatatypeProperty ;
 bridge:nameInputs a owl:ObjectProperty ;
   rdfs:label "name inputs"@en ;
   rdfs:range rdf:List ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:fingerprintMembers a owl:ObjectProperty ;
+  rdfs:label "fingerprint members"@en ;
+  rdfs:range rdf:List ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:expectedFingerprint a owl:DatatypeProperty ;
+  rdfs:label "expected fingerprint"@en ;
   rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
 
 bridge:expectedName a owl:ObjectProperty ;
@@ -701,6 +721,21 @@ bridge:setup a owl:ObjectProperty ;
 bridge:command a owl:ObjectProperty ;
   rdfs:label "command"@en ;
   rdfs:comment "The argument vector that runs an engine's commands (engine/command.md) on a host, run without a shell in the engine's checkout."@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:release a owl:ObjectProperty ;
+  rdfs:label "release"@en ;
+  rdfs:comment "Where a host's build is had from the release tagged build-<commit> of the engine's repository, in place of its setup."@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:asset a owl:DatatypeProperty ;
+  rdfs:label "asset"@en ;
+  rdfs:comment "A glob naming one asset of the release."@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:path a owl:DatatypeProperty ;
+  rdfs:label "path"@en ;
+  rdfs:comment "Where in the engine's checkout the asset is placed; an archive is unpacked there from its package/ folder."@en ;
   rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
 
 bridge:mustPassWith a owl:ObjectProperty ;

@@ -114,7 +114,7 @@ _:item <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/faca
 _:item <http://sparql.xyz/facade-x/data/id> "2" .
 "#;
 
-/// Each unit keeps its type triple and its slot, and nothing else.
+/// Each unit keeps its type triple, its slot and its attributes; a child holding text is left out.
 const SKELETON: &str = r#"
 _:set <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/ns/root> .
 _:set <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/set> .
@@ -122,11 +122,14 @@ _:set <http://sparql.xyz/facade-x/data/n> "2" .
 _:set <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> _:first .
 _:set <http://www.w3.org/1999/02/22-rdf-syntax-ns#_2> _:second .
 _:first <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/item> .
+_:first <http://sparql.xyz/facade-x/data/id> "1" .
 _:second <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/item> .
+_:second <http://sparql.xyz/facade-x/data/id> "2" .
 "#;
 
 #[test]
-fn lifts_each_unit_with_the_unit_as_root_and_empties_it_in_the_skeleton() {
+fn lifts_each_unit_with_the_unit_as_root_and_keeps_only_its_attributes_and_childless_children_in_the_skeleton(
+) {
     let xml = br#"<set n="2"><item id="1"><t>x</t></item><item id="2"/></set>"#;
     let mut lift = lift_slice(xml, Some("item")).expect("lift");
     let mut units = Vec::new();

@@ -5,6 +5,16 @@ _:Release <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> _:u1 .
 _:Release <http://www.w3.org/1999/02/22-rdf-syntax-ns#_2> _:Note .
 _:Release <http://www.w3.org/1999/02/22-rdf-syntax-ns#_3> _:u2 .
 _:u1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/Unit> .
+_:u1 <http://sparql.xyz/facade-x/data/id> "u1" .
+_:u1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> _:u1code .
+_:u1code <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/Code> .
+_:u1code <http://sparql.xyz/facade-x/data/value> "a" .
 _:Note <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/Note> .
 _:Note <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "kept" .
 _:u2 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/Unit> .
+_:u2 <http://sparql.xyz/facade-x/data/id> "u2" .
+_:u2 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_2> _:u2code .
+_:u2code <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/Code> .
+_:u2code <http://sparql.xyz/facade-x/data/value> "b" .
+_:u2 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_3> _:u2flag .
+_:u2flag <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/Flag> .

@@ -1,11 +1,11 @@
 use crate::error::{Error, Result};
 use crate::rdf::canonical_lines;
-use crate::terms::PROV_SPECIALIZATION_OF;
+use crate::terms::{BRIDGE_ARRIVED_AS, BRIDGE_SELECTOR, PROV_SPECIALIZATION_OF};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use oxrdf::{NamedNode, NamedOrBlankNode, Quad, Term};
 use sha2::{Digest, Sha256};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 mod document;
 
@@ -49,6 +49,15 @@ pub(crate) struct Version {
 pub(crate) struct Versioned {
     pub(crate) graph: Vec<Quad>,
     pub(crate) versions: Vec<Version>,
+    pub(crate) dropped: Vec<Dropped>,
+}
+
+/// A version not kept, beside the one of its record that was.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct Dropped {
+    pub(crate) kept: String,
+    /// The least selector the mapping wrote on what arrived as it.
+    pub(crate) selector: Option<String>,
 }
 
 /// The IRI the version's own IRI begins, where `iri` is the version or a node nested in it.
@@ -79,7 +88,8 @@ fn renamed_quad(quad: &Quad, names: &BTreeMap<String, String>) -> Quad {
     )
 }
 
-fn drafts(mapped: &[Quad]) -> Result<BTreeSet<String>> {
+/// Each version the mapping wrote, with the record it is a version of.
+fn drafts(mapped: &[Quad]) -> Result<BTreeMap<String, &Term>> {
     let mut drafts: BTreeMap<String, &Term> = BTreeMap::new();
     for quad in mapped
         .iter()
@@ -105,7 +115,7 @@ fn drafts(mapped: &[Quad]) -> Result<BTreeSet<String>> {
             )));
         }
     }
-    Ok(drafts.into_keys().collect())
+    Ok(drafts)
 }
 
 fn content(mapped: &[Quad], version: &str, drafts: &BTreeSet<String>) -> Result<Vec<Quad>> {
@@ -148,22 +158,79 @@ fn canonical_nquads(content: Vec<Quad>) -> Result<String> {
         .collect())
 }
 
-/// Hashes what the mapping constructed, before any store holds it.
+/// Hashes what the mapping constructed, before any store holds it, and keeps one
+/// version of each record: the least name, then the least IRI the mapping wrote.
 pub(crate) fn versioned(mapped: Vec<Quad>) -> Result<Versioned> {
     let drafts = drafts(&mapped)?;
-    let mut names = BTreeMap::new();
-    let mut versions = Vec::new();
-    for version in &drafts {
-        let canonical = canonical_nquads(content(&mapped, version, &drafts)?)?;
+    let all: BTreeSet<String> = drafts.keys().cloned().collect();
+    let mut kept: BTreeMap<String, (String, &String, String)> = BTreeMap::new();
+    let record_of: BTreeMap<&String, String> = drafts
+        .iter()
+        .map(|(version, record)| (version, record.to_string()))
+        .collect();
+    for (version, record) in &drafts {
+        let canonical = canonical_nquads(content(&mapped, version, &all)?)?;
         let name = ni_name(canonical.as_bytes());
-        names.insert(version.clone(), name.clone());
-        versions.push(Version { name, canonical });
+        let least = kept
+            .get(&record.to_string())
+            .is_none_or(|(held, draft, _)| (&name, version) < (held, draft));
+        if least {
+            kept.insert(record.to_string(), (name, version, canonical));
+        }
     }
+    let names: BTreeMap<String, String> = kept
+        .values()
+        .map(|(name, version, _)| ((*version).clone(), name.clone()))
+        .collect();
+    let dropped: BTreeSet<&str> = all
+        .iter()
+        .filter(|version| !names.contains_key(*version))
+        .map(String::as_str)
+        .collect();
+    let arrived_as_dropped: HashSet<&NamedOrBlankNode> = mapped
+        .iter()
+        .filter(|quad| quad.predicate.as_str() == BRIDGE_ARRIVED_AS)
+        .filter(|quad| matches!(&quad.object, Term::NamedNode(version) if dropped.contains(version.as_str())))
+        .map(|quad| &quad.subject)
+        .collect();
+    let dropped_versions: Vec<Dropped> = dropped
+        .iter()
+        .map(|version| Dropped {
+            kept: kept[&record_of[&(*version).to_owned()]].0.clone(),
+            selector: mapped
+                .iter()
+                .filter(|quad| quad.predicate.as_str() == BRIDGE_ARRIVED_AS)
+                .filter(|quad| matches!(&quad.object, Term::NamedNode(node) if node.as_str() == *version))
+                .flat_map(|arrival| {
+                    mapped.iter().filter(move |quad| {
+                        quad.subject == arrival.subject && quad.predicate.as_str() == BRIDGE_SELECTOR
+                    })
+                })
+                .filter_map(|quad| match &quad.object {
+                    Term::Literal(selector) => Some(selector.value().to_owned()),
+                    _ => None,
+                })
+                .min(),
+        })
+        .collect();
     let graph = mapped
         .iter()
+        .filter(|quad| !arrived_as_dropped.contains(&quad.subject))
+        .filter(|quad| match &quad.subject {
+            NamedOrBlankNode::NamedNode(node) => !dropped.contains(version_of(node.as_str())),
+            NamedOrBlankNode::BlankNode(_) => true,
+        })
         .map(|quad| renamed_quad(quad, &names))
         .collect();
-    Ok(Versioned { graph, versions })
+    let versions = kept
+        .into_values()
+        .map(|(name, _, canonical)| Version { name, canonical })
+        .collect();
+    Ok(Versioned {
+        graph,
+        versions,
+        dropped: dropped_versions,
+    })
 }
 
 #[cfg(test)]
@@ -189,6 +256,28 @@ mod tests {
     }
 
     const OF: &str = "<http://www.w3.org/ns/prov#specializationOf>";
+
+    #[test]
+    fn says_of_each_version_it_drops_which_version_was_kept_and_where_the_dropped_one_arrived_from()
+    {
+        let mapped: Vec<Quad> = RdfParser::from_format(RdfFormat::NTriples)
+            .for_slice(&crate::fixtures::fixture(
+                "tests/versioning/one-version-a-record.mapped.nt",
+            ))
+            .map(|quad| quad.expect("N-Triples"))
+            .collect();
+        let dropped = versioned(mapped).expect("versioned").dropped;
+        assert_eq!(dropped.len(), 1);
+        assert_eq!(
+            dropped[0].kept,
+            "ni:///sha-256;NE41csq6GnQ0o4E6uBjw3zQq45yL4XhCXNUwAyC8Mm8"
+        );
+        assert!(dropped[0]
+            .selector
+            .as_deref()
+            .is_some_and(|selector| selector
+                .contains("[local-name()='entry' and namespace-uri()='urn:hl7-org:v3'][1]")));
+    }
 
     #[test]
     fn refuses_a_version_whose_iri_carries_a_fragment() {

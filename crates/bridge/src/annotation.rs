@@ -3,10 +3,10 @@
 use crate::error::{Error, Result};
 use crate::terms::{
     BRIDGE_ADDRESS_NOT_ONE_NODE, BRIDGE_OCCURRENCES, BRIDGE_PATH_NOT_ACCOUNTED, BRIDGE_THIS_RECORD,
-    DCTERMS_CONFORMS_TO, JSON_POINTER, OA_ANNOTATION, OA_CLASSIFYING, OA_FRAGMENT_SELECTOR,
-    OA_HAS_BODY, OA_HAS_SELECTOR, OA_HAS_SOURCE, OA_HAS_TARGET, OA_MOTIVATED_BY, OA_REFINED_BY,
-    OA_XPATH_SELECTOR, RDF_TYPE, RDF_VALUE, SH_FOCUS_NODE, SH_INFO, SH_RESULT_PATH,
-    SH_RESULT_SEVERITY, SH_VALUE, SH_VIOLATION,
+    BRIDGE_VERSION_NOT_KEPT, DCTERMS_CONFORMS_TO, JSON_POINTER, OA_ANNOTATION, OA_CLASSIFYING,
+    OA_FRAGMENT_SELECTOR, OA_HAS_BODY, OA_HAS_SELECTOR, OA_HAS_SOURCE, OA_HAS_TARGET,
+    OA_MOTIVATED_BY, OA_REFINED_BY, OA_XPATH_SELECTOR, RDF_TYPE, RDF_VALUE, SH_FOCUS_NODE, SH_INFO,
+    SH_RESULT_PATH, SH_RESULT_SEVERITY, SH_VALUE, SH_VIOLATION, SH_WARNING,
 };
 use oxrdf::vocab::xsd;
 use oxrdf::{BlankNode, GraphName, Literal, NamedNode, NamedOrBlankNode, Quad, Term};
@@ -193,6 +193,26 @@ pub(crate) fn drawn(
         carries.push((SH_FOCUS_NODE, focus));
     }
     finding(record, body, None, severity, None, 1, &carries)
+}
+
+/// Refined to where the dropped version arrived from, where the mapping wrote that under the record.
+pub(crate) fn not_kept(record: &Record, selector: Option<&str>, kept: &str) -> Result<Vec<Quad>> {
+    let within = selector
+        .and_then(|selector| selector.strip_prefix(record.selector))
+        .and_then(|rest| match record.selector_type {
+            SelectorType::XPath => rest.strip_prefix('/'),
+            SelectorType::JsonPointer => rest.starts_with('/').then_some(rest),
+        })
+        .filter(|rest| !rest.is_empty());
+    finding(
+        record,
+        BRIDGE_VERSION_NOT_KEPT,
+        within,
+        SH_WARNING,
+        Some(kept),
+        1,
+        &[],
+    )
 }
 
 /// Addressed to the document element, the one node found without following an address.

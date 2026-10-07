@@ -1,7 +1,7 @@
 // The skeleton the detect query reads is the whole document with every unit reduced
-// to an empty container. A unit is handed over as soon as its end tag is read, and
-// written out again as XML with the declarations in scope where it stood, for a
-// validator that brings its own parser.
+// to its attributes and its childless children. A unit is handed over as soon as its
+// end tag is read, and written out again as XML with the declarations in scope where it
+// stood, for a validator that brings its own parser.
 use super::{member, name, store_of, triple, Occurrence, Paths, Unit, Valued, FX, RDF, XYZ};
 use crate::decode::{is_xml_space, normalise_attribute_value, normalise_line_endings};
 use crate::error::Result;
@@ -187,6 +187,10 @@ struct Frame {
     /// Only for an element reached from the document element without passing a record.
     step: Option<Step>,
     siblings: HashMap<(String, Option<String>), usize>,
+    /// A unit's node in the skeleton, where this is a unit.
+    skeleton: Option<BlankNode>,
+    /// A unit's child as the skeleton keeps it, until a child of its own drops it.
+    kept: Option<Vec<Quad>>,
 }
 
 fn start_tag(
@@ -279,6 +283,7 @@ impl Builder {
         if let Some(top) = self.stack.last_mut() {
             if !is_xml_space(&self.text) {
                 top.members += 1;
+                top.kept = None;
                 let quad = triple(
                     &top.id,
                     member(top.members)?,
@@ -309,6 +314,8 @@ impl Builder {
             declarations: element.declarations.clone(),
             step,
             siblings: HashMap::new(),
+            skeleton: None,
+            kept: None,
         };
 
         let name = (
@@ -339,9 +346,31 @@ impl Builder {
                 census.open(step.clone(), &element.attributes, valued);
             }
             let id = self.fresh();
+            let kept_id = match self.stack.last().is_some_and(|top| top.skeleton.is_some()) {
+                true => Some(self.fresh()),
+                false => None,
+            };
             let top = self.stack.last_mut().expect("checked above");
             top.members += 1;
+            top.kept = None;
             let slot = triple(&top.id, member(top.members)?, id.clone());
+            let kept = match (&top.skeleton, kept_id) {
+                (Some(unit), Some(kept_id)) => {
+                    let mut kept = vec![
+                        triple(unit, member(top.members)?, kept_id.clone()),
+                        triple(&kept_id, rdf_type.clone(), element.type_iri.clone()),
+                    ];
+                    kept.extend(element.attributes.iter().map(|attribute| {
+                        triple(
+                            &kept_id,
+                            attribute.predicate.clone(),
+                            Literal::new_simple_literal(&attribute.value),
+                        )
+                    }));
+                    Some(kept)
+                }
+                _ => None,
+            };
             self.unit.push(slot);
             self.unit.push(triple(&id, rdf_type, element.type_iri));
             for attribute in element.attributes {
@@ -351,7 +380,10 @@ impl Builder {
                     Literal::new_simple_literal(attribute.value),
                 ));
             }
-            self.stack.push(frame(id, true, Some(step)));
+            self.stack.push(Frame {
+                kept,
+                ..frame(id, true, Some(step))
+            });
             return Ok(());
         }
 
@@ -390,6 +422,13 @@ impl Builder {
             self.raw
                 .push_str(&start_tag(element.qname, &element.written, &scope));
 
+            for attribute in &element.attributes {
+                self.skeleton.push(triple(
+                    &id,
+                    attribute.predicate.clone(),
+                    Literal::new_simple_literal(&attribute.value),
+                ));
+            }
             let unit_id = self.fresh();
             self.unit.clear();
             self.unit
@@ -402,7 +441,10 @@ impl Builder {
                     Literal::new_simple_literal(attribute.value),
                 ));
             }
-            self.stack.push(frame(unit_id, true, Some(step)));
+            self.stack.push(Frame {
+                skeleton: Some(id),
+                ..frame(unit_id, true, Some(step))
+            });
             return Ok(());
         }
 
@@ -428,6 +470,9 @@ impl Builder {
         let Some(frame) = self.stack.pop() else {
             return Ok(false);
         };
+        if let Some(kept) = frame.kept {
+            self.skeleton.extend(kept);
+        }
         if frame.unit {
             self.raw.push_str(&format!("</{}>", frame.qname));
             if let Some(census) = &mut self.census {

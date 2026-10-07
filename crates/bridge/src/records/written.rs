@@ -1,8 +1,8 @@
 use super::{canonical_nquads, ni_name, PLACEHOLDER};
 use crate::fixtures::{converted_with_facts, fixture, objects, tiny, versioned, Variant, CRATE};
 use crate::terms::{
-    BRIDGE_ARRIVED_AS, BRIDGE_SELECTOR, PAV_LAST_UPDATE_ON, PAV_VERSION, PROV_ACTIVITY,
-    PROV_WAS_DERIVED_FROM, PROV_WAS_GENERATED_BY, RDF_TYPE,
+    BRIDGE_ARRIVED_AS, BRIDGE_SELECTOR, PAV_LAST_UPDATE_ON, PAV_VERSION, PROV_ACTIVITY, PROV_AGENT,
+    PROV_WAS_DERIVED_FROM, PROV_WAS_GENERATED_BY, RDFS_LABEL, RDF_TYPE,
 };
 use oxrdf::{NamedNode, Quad, Term};
 use std::collections::BTreeSet;
@@ -152,6 +152,26 @@ fn folds_each_version_s_arrival_into_one_node_naming_its_selector_its_document_a
         ],
         "each arrival carries what the mapping wrote of it, and its record's selector"
     );
+}
+
+#[test]
+fn keeps_an_attribution_a_mapping_writes_of_the_document_beside_the_supplied_facts() {
+    let resolver = reading(
+        "?document <http://www.w3.org/ns/prov#qualifiedAttribution> [
+           <http://www.w3.org/ns/prov#agent> [ <http://www.w3.org/2000/01/rdf-schema#label> \"a clinic\" ] ] .",
+        "bridge:thisDocument bridge:sha256 ?sha256 . BIND(IRI(?sha256) AS ?document)",
+    );
+    let quads = converted_with_facts(&resolver, "two.xml").quads;
+    let agents: BTreeSet<String> = objects(
+        &quads,
+        &format!("<{}>", two()),
+        "http://www.w3.org/ns/prov#qualifiedAttribution",
+    )
+    .iter()
+    .flat_map(|attribution| said(&quads, &attribution.to_string(), PROV_AGENT))
+    .flat_map(|agent| said(&quads, &agent, RDFS_LABEL))
+    .collect();
+    assert!(agents.contains("a clinic"), "{agents:?}");
 }
 
 #[test]

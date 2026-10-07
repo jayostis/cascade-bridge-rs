@@ -380,11 +380,15 @@ fn unit_converted(
         findings.extend(accounting.findings(&record, unit)?);
     }
     unit.store.extend(arrived_in.dataset(&selector))?;
-    let produced = arrived_in.arrived(
-        records::versioned(mapped(prepared, unit)?)?,
-        &selector,
-        &unit.store,
-    )?;
+    let versioned = records::versioned(mapped(prepared, unit)?)?;
+    for dropped in &versioned.dropped {
+        findings.extend(annotation::not_kept(
+            &record,
+            dropped.selector.as_deref(),
+            &dropped.kept,
+        )?);
+    }
+    let produced = arrived_in.arrived(versioned, &selector, &unit.store)?;
     if let Some(vocabulary) = &prepared.vocabulary {
         findings.extend(vocabulary.findings(&record, &produced)?);
     }

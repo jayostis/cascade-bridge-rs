@@ -14,6 +14,8 @@
     <#escaped-literals>
     <#placeholder-prefix>
     <#two-versions>
+    <#one-version-a-record>
+    <#one-version-a-record-same-content>
   ) .
 
 <#allergy> a bridge:VersioningTest ;
@@ -96,4 +98,22 @@
     bridge:expectedGraph <two-versions.versioned.nt> ;
     bridge:expectedVersion [ bridge:expectedName <ni:///sha-256;ssT9yOOiEly2AprRx10KlfLetW4Vp7NQZwUN260Zigk> ; bridge:canonicalContent <two-versions.1.nq> ] ;
     bridge:expectedVersion [ bridge:expectedName <ni:///sha-256;I-LBKjOKD6YSe5CC4yK7VCKmPLH8HfQkW9-5tDh7pc8> ; bridge:canonicalContent <two-versions.2.nq> ]
+  ] .
+
+<#one-version-a-record> a bridge:VersioningTest ;
+  mf:name "one-version-a-record" ;
+  rdfs:comment "A mapping writing two versions of one record, as it does for C-CDA records sharing a name: the one whose name is least by code point is kept, the second here, and the other is dropped with its content and what arrived as it." ;
+  mf:action [ bridge:input <one-version-a-record.mapped.nt> ] ;
+  mf:result [
+    bridge:expectedGraph <one-version-a-record.versioned.nt> ;
+    bridge:expectedVersion [ bridge:expectedName <ni:///sha-256;NE41csq6GnQ0o4E6uBjw3zQq45yL4XhCXNUwAyC8Mm8> ; bridge:canonicalContent <one-version-a-record.nq> ]
+  ] .
+
+<#one-version-a-record-same-content> a bridge:VersioningTest ;
+  mf:name "one-version-a-record-same-content" ;
+  rdfs:comment "Two versions of one record with one content share a name, and the one whose IRI as the mapping wrote it is least is kept with what arrived as it." ;
+  mf:action [ bridge:input <one-version-a-record-same-content.mapped.nt> ] ;
+  mf:result [
+    bridge:expectedGraph <one-version-a-record-same-content.versioned.nt> ;
+    bridge:expectedVersion [ bridge:expectedName <ni:///sha-256;i-y48nnWIxWpYOwtNh3hQHcXrooz_BrhDHUvy4hb5vY> ; bridge:canonicalContent <one-version-a-record-same-content.nq> ]
   ] .
