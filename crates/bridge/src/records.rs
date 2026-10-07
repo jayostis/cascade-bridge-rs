@@ -242,6 +242,9 @@ pub(crate) fn versioned(mapped: Vec<Quad>) -> Result<Versioned> {
                 !gone.contains(node)
                     && from
                         .iter()
+                        .any(|subject| *subject != node && is_gone(subject, &gone))
+                    && from
+                        .iter()
                         .all(|subject| *subject == node || is_gone(subject, &gone))
             })
             .map(|(node, _)| node)
@@ -353,6 +356,28 @@ _:about <urn:example:label> \"about\" .
         assert_eq!(
             labels,
             BTreeSet::from(["\"kept\"".to_owned(), "\"about\"".to_owned()])
+        );
+    }
+
+    #[test]
+    fn keeps_a_blank_node_only_itself_refers_to_where_no_version_is_dropped() {
+        let quads: Vec<Quad> = RdfParser::from_format(RdfFormat::NTriples)
+            .for_slice(
+                format!(
+                    "<urn:example:v> {OF} <urn:example:record> .
+_:x <urn:example:next> _:x .
+"
+                )
+                .as_bytes(),
+            )
+            .map(|quad| quad.expect("N-Triples"))
+            .collect();
+        let graph = versioned(quads).expect("versioned").graph;
+        assert!(
+            graph
+                .iter()
+                .any(|quad| quad.predicate.as_str() == "urn:example:next"),
+            "{graph:?}"
         );
     }
 
