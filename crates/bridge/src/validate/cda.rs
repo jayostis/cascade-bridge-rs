@@ -350,13 +350,13 @@ fn reports_each_fault_of_a_ccd_by_its_rule_within_the_element_that_has_it() {
             vec![("cvc-pattern-valid", None)],
         ),
         (
-            "a timestamp matching only the start of one branch of ts",
+            "an effectiveTime written with dashes",
             r#"<effectiveTime value="201308151030-0800" />"#,
             r#"<effectiveTime value="2013-08-15" />"#,
             vec![("cvc-pattern-valid", None)],
         ),
         (
-            "a timestamp matching only the end of another branch of ts",
+            "an effectiveTime with letters before its digits",
             r#"<effectiveTime value="201308151030-0800" />"#,
             r#"<effectiveTime value="abc201308151030" />"#,
             vec![("cvc-pattern-valid", None)],

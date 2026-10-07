@@ -72,6 +72,38 @@ fn reports_nothing_about_a_document_both_its_schemas_accept() {
 }
 
 #[test]
+fn reports_a_value_matching_a_branch_of_its_pattern_at_only_one_end() {
+    let either = Variant::of(tiny())
+        .replacing(
+            "schema/item.xsd",
+            "<xs:attribute name=\"internal\" type=\"xs:string\"/>",
+            "<xs:attribute name=\"internal\">\n      <xs:simpleType>\n        <xs:restriction base=\"xs:string\">\n          <xs:pattern value=\"a|b\"/>\n        </xs:restriction>\n      </xs:simpleType>\n    </xs:attribute>",
+        )
+        .replacing(
+            "fixtures/in/two.xml",
+            "<item id=\"1\">",
+            "<item id=\"1\" internal=\"ax\">",
+        )
+        .replacing(
+            "fixtures/in/two.xml",
+            "<item id=\"2\"/>",
+            "<item id=\"2\" internal=\"xb\"/>\n  <item id=\"3\" internal=\"b\"/>",
+        );
+    let addressed: Vec<(String, String)> = [
+        ("/catalog", "item[1]"),
+        ("/catalog", "item[2]"),
+        ("/catalog/item[1]", ""),
+        ("/catalog/item[2]", ""),
+    ]
+    .map(|(record, within)| (record.to_owned(), within.to_owned()))
+    .into();
+    assert_eq!(
+        violations(&converted(&either, "two.xml").findings),
+        addressed
+    );
+}
+
+#[test]
 fn refuses_a_schema_that_includes_a_file_outside_the_adapter() {
     let outside = Variant::of(tiny()).replacing(
         "schema/catalog.xsd",
