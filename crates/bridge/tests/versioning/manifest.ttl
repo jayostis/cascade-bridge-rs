@@ -102,7 +102,7 @@
 
 <#one-version-a-record> a bridge:VersioningTest ;
   mf:name "one-version-a-record" ;
-  rdfs:comment "A mapping writing two versions of one record, as it does for C-CDA records sharing a name: the one whose name is least by code point is kept, the second here, and the other is dropped with its content and what arrived as it." ;
+  rdfs:comment "A mapping writing two versions of one record, as it does for C-CDA records sharing a name: the one whose name is least by code point is kept, here urn:example:mapping:version-at:2's, and the other is dropped with its content and what arrived as it." ;
   mf:action [ bridge:input <one-version-a-record.mapped.nt> ] ;
   mf:result [
     bridge:expectedGraph <one-version-a-record.versioned.nt> ;

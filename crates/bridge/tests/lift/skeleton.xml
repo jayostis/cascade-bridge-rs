@@ -1,1 +1,1 @@
-<Release date="2026-01-01"><Unit id="u1"><Code value="a"/><Name>one</Name><Part><Code value="deep"/></Part></Unit><Note>kept</Note><Unit id="u2"><Name>two</Name><Code value="b"/><Flag/></Unit></Release>
+<Release date="2026-01-01"><Unit id="u1"><Code value="a"/><Name>one</Name><Part><Code value="deep"/></Part></Unit><Note>kept</Note><Unit id="u2"><Name>two</Name><Code value="b"/><Flag> <!-- a comment --> </Flag></Unit></Release>

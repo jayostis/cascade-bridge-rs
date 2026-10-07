@@ -276,7 +276,7 @@ bridge:pathNotAccounted a skos:Concept ;
   rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
 
 bridge:idRepeated a skos:Concept ;
-  skos:prefLabel "an id the source repeats within its document, so each record holding it is named from the document and its selector"@en ;
+  skos:prefLabel "an id the source repeats within its document"@en ;
   skos:inScheme bridge:gapKinds ;
   rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
 
