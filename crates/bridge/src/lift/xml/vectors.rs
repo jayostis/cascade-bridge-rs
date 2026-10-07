@@ -155,6 +155,19 @@ fn lifts_each_unit_with_the_unit_as_root_and_keeps_only_its_attributes_and_child
 }
 
 #[test]
+fn refuses_a_document_ending_with_an_element_still_open_before_its_skeleton_is_read() {
+    let refused = lift_slice(b"<set><item/>", Some("item"))
+        .and_then(|lift| lift.into_skeleton())
+        .err()
+        .expect("refused");
+    assert!(
+        refused.message().contains("still open"),
+        "{}",
+        refused.message()
+    );
+}
+
+#[test]
 fn treats_a_document_whose_element_is_the_unit_as_one_unit() {
     let mut lift = lift_slice(br#"<item id="9"/>"#, Some("item")).expect("lift");
     let unit = lift.next_unit().expect("unit").expect("one unit");

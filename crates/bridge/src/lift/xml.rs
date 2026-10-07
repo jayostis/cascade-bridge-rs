@@ -4,7 +4,7 @@
 // stood, for a validator that brings its own parser.
 use super::{member, name, store_of, triple, Occurrence, Paths, Unit, Valued, FX, RDF, XYZ};
 use crate::decode::{is_xml_space, normalise_attribute_value, normalise_line_endings};
-use crate::error::Result;
+use crate::error::{Error, Result};
 use oxigraph::model::{BlankNode, Literal, NamedNode, Quad};
 use oxigraph::store::Store;
 use quick_xml::events::Event;
@@ -640,6 +640,12 @@ impl<R: BufRead> Lift<R> {
                     self.builder.write(&format!("<?{raw}?>"));
                 }
                 Event::Eof => {
+                    if !self.builder.stack.is_empty() {
+                        return Err(Error::document(format!(
+                            "the document ends with {} element(s) still open",
+                            self.builder.stack.len()
+                        )));
+                    }
                     self.done = true;
                     return Ok(None);
                 }
