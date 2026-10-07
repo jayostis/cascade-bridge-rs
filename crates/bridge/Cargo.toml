@@ -26,4 +26,4 @@ shacl = { git = "https://github.com/jayostis/rudof", rev = "1b6af3ba209ee731e1c4
 spargebra = { version = "=0.4.7", features = ["sep-0002", "sep-0006"] }
 web-time = "=1.1.0"
 xpath-eval = "=0.2.2"
-xsd-schema = "=0.2.0"
+xsd-schema = { git = "https://github.com/jayostis/xsd-schema", rev = "4d9bf573883b4b8095aee5e388c4b66068654918" }

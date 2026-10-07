@@ -3029,8 +3029,7 @@ checksum = "83058fdeec995449ff47adb0bc5773092b56aa91423c4cb257ef4e4e11df542b"
 [[package]]
 name = "xsd-schema"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3f2e893bf7da1852e228122881580f0fb05e08f61284cce19d4cdd9c66dd49d"
+source = "git+https://github.com/jayostis/xsd-schema?rev=4d9bf573883b4b8095aee5e388c4b66068654918#4d9bf573883b4b8095aee5e388c4b66068654918"
 dependencies = [
  "ahash",
  "base64",
