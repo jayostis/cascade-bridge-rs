@@ -1,2 +1,6 @@
 _:Unit <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/ns/root> .
 _:Unit <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/Unit> .
+_:Unit <http://sparql.xyz/facade-x/data/id> "u1" .
+_:Unit <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> _:Code .
+_:Code <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/Code> .
+_:Code <http://sparql.xyz/facade-x/data/value> "a" .

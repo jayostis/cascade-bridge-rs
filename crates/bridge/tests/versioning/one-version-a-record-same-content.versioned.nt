@@ -1,0 +1,7 @@
+<ni:///sha-256;i-y48nnWIxWpYOwtNh3hQHcXrooz_BrhDHUvy4hb5vY> <http://example.org/clinical#allergen> "Penicillin G" .
+<ni:///sha-256;i-y48nnWIxWpYOwtNh3hQHcXrooz_BrhDHUvy4hb5vY> <http://example.org/clinical#note> "Rash after the first dose." .
+<ni:///sha-256;i-y48nnWIxWpYOwtNh3hQHcXrooz_BrhDHUvy4hb5vY> <http://www.w3.org/ns/prov#specializationOf> <urn:uuid:b4a38586-bc3b-8b1d-82f8-2d7e3523ea31> .
+<urn:example:mapping:arrival:1> <https://ns.cascadeprotocol.org/bridge/v1-draft#arrivedAs> <ni:///sha-256;i-y48nnWIxWpYOwtNh3hQHcXrooz_BrhDHUvy4hb5vY> .
+<urn:example:mapping:arrival:1> <https://ns.cascadeprotocol.org/bridge/v1-draft#selector> "/*[local-name()='ClinicalDocument' and namespace-uri()='urn:hl7-org:v3']/*[local-name()='component' and namespace-uri()='urn:hl7-org:v3'][1]/*[local-name()='structuredBody' and namespace-uri()='urn:hl7-org:v3'][1]/*[local-name()='component' and namespace-uri()='urn:hl7-org:v3'][1]/*[local-name()='section' and namespace-uri()='urn:hl7-org:v3'][1]/*[local-name()='entry' and namespace-uri()='urn:hl7-org:v3'][1]/*[local-name()='observation' and namespace-uri()='urn:hl7-org:v3'][1]" .
+<urn:uuid:b4a38586-bc3b-8b1d-82f8-2d7e3523ea31> <http://example.org/clinical#sourceRecordId> "2.16.840.1.113883.19.5:8237461" .
+<urn:uuid:b4a38586-bc3b-8b1d-82f8-2d7e3523ea31> <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://example.org/clinical#AllergyRecord> .

@@ -1,8 +1,15 @@
 use super::{canonical_nquads, ni_name, PLACEHOLDER};
-use crate::fixtures::{converted_with_facts, fixture, objects, tiny, versioned, Variant, CRATE};
+use crate::fixtures::{
+    address, annotations, converted_with_facts, fixture, objects, says, tiny, versioned, Variant,
+    CRATE,
+};
 use crate::terms::{
-    BRIDGE_ARRIVED_AS, BRIDGE_SELECTOR, PAV_LAST_UPDATE_ON, PAV_VERSION, PROV_ACTIVITY,
-    PROV_WAS_DERIVED_FROM, PROV_WAS_GENERATED_BY, RDF_TYPE,
+    BRIDGE_ARRIVED_AS, BRIDGE_SELECTOR, PAV_LAST_UPDATE_ON, PAV_VERSION, PROV_ACTIVITY, PROV_AGENT,
+    PROV_WAS_DERIVED_FROM, PROV_WAS_GENERATED_BY, RDFS_LABEL, RDF_TYPE,
+};
+use crate::terms::{
+    BRIDGE_VERSION_NOT_KEPT, OA_HAS_BODY, PROV_SPECIALIZATION_OF, SH_RESULT_SEVERITY, SH_VALUE,
+    SH_WARNING,
 };
 use oxrdf::{NamedNode, Quad, Term};
 use std::collections::BTreeSet;
@@ -155,6 +162,26 @@ fn folds_each_version_s_arrival_into_one_node_naming_its_selector_its_document_a
 }
 
 #[test]
+fn keeps_an_attribution_a_mapping_writes_of_the_document_beside_the_supplied_facts() {
+    let resolver = reading(
+        "?document <http://www.w3.org/ns/prov#qualifiedAttribution> [
+           <http://www.w3.org/ns/prov#agent> [ <http://www.w3.org/2000/01/rdf-schema#label> \"a clinic\" ] ] .",
+        "bridge:thisDocument bridge:sha256 ?sha256 . BIND(IRI(?sha256) AS ?document)",
+    );
+    let quads = converted_with_facts(&resolver, "two.xml").quads;
+    let agents: BTreeSet<String> = objects(
+        &quads,
+        &format!("<{}>", two()),
+        "http://www.w3.org/ns/prov#qualifiedAttribution",
+    )
+    .iter()
+    .flat_map(|attribution| said(&quads, &attribution.to_string(), PROV_AGENT))
+    .flat_map(|agent| said(&quads, &agent, RDFS_LABEL))
+    .collect();
+    assert!(agents.contains("a clinic"), "{agents:?}");
+}
+
+#[test]
 fn writes_the_same_graph_byte_for_byte_in_every_run() {
     let resolver = versioned().with(
         "fixtures/facts/catalog.ttl",
@@ -271,4 +298,68 @@ fn leaves_a_version_s_last_update_as_its_name_was_hashed_over() {
             name.as_str()
         );
     }
+}
+
+#[test]
+fn warns_of_each_version_it_drops_naming_the_kept_one_where_the_dropped_one_arrived_from() {
+    let resolver = versioned()
+        .replacing(
+            "mapping/item.rq",
+            "pav:version ?id .",
+            "pav:version ?id .
+  ?again prov:specializationOf ?s ; ex:title ?title .
+  [] bridge:arrivedAs ?again ; bridge:selector ?within .",
+        )
+        .replacing(
+            "mapping/item.rq",
+            "AS ?v)",
+            "AS ?v)
+  BIND(IRI(CONCAT(\"urn:example:draft:\", ?id, \"-again\")) AS ?again)
+  bridge:thisRecord bridge:selector ?record .
+  BIND(CONCAT(?record, \"/title[1]\") AS ?within)",
+        );
+    let conversion = converted_with_facts(&resolver, "two.xml");
+    let kept = |record: &str| -> String {
+        conversion
+            .quads
+            .iter()
+            .filter(|quad| quad.predicate.as_str() == PROV_SPECIALIZATION_OF)
+            .filter(|quad| matches!(&quad.object, Term::NamedNode(node) if node.as_str() == record))
+            .map(|quad| quad.subject.to_string().trim_matches(['<', '>']).to_owned())
+            .collect::<Vec<String>>()
+            .concat()
+    };
+    let findings = &conversion.findings;
+    let mut warned: Vec<(String, String, String, String)> = annotations(findings)
+        .iter()
+        .filter(|annotation| says(findings, annotation, OA_HAS_BODY) == BRIDGE_VERSION_NOT_KEPT)
+        .map(|annotation| {
+            let (record, within) = address(findings, annotation);
+            (
+                record,
+                within,
+                says(findings, annotation, SH_RESULT_SEVERITY),
+                says(findings, annotation, SH_VALUE),
+            )
+        })
+        .collect();
+    warned.sort();
+    let row = |record: &str, item: &str| {
+        (
+            record.to_owned(),
+            "title[1]".to_owned(),
+            SH_WARNING.to_owned(),
+            kept(item),
+        )
+    };
+    assert_eq!(
+        warned,
+        [
+            row("/catalog/item[1]", "urn:example:item:1"),
+            row("/catalog/item[2]", "urn:example:item:2")
+        ]
+    );
+    assert!(warned
+        .iter()
+        .all(|(_, _, _, name)| name.starts_with("ni:///")));
 }

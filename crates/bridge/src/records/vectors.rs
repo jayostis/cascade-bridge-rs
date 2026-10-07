@@ -4,12 +4,13 @@ use super::{normalised_base_url, versioned};
 use crate::fixtures::fixture;
 use crate::load::{as_subject, instances, list, objects, one, term_value, turtle};
 use crate::terms::{
-    BRIDGE_BASE_URL_NORMALISATION_TEST, BRIDGE_CANONICAL_CONTENT, BRIDGE_EXPECTED_GRAPH,
-    BRIDGE_EXPECTED_NAME, BRIDGE_EXPECTED_VERSION, BRIDGE_INPUT, BRIDGE_NAME_INPUTS,
+    BRIDGE_BASE_URL_NORMALISATION_TEST, BRIDGE_CANONICAL_CONTENT, BRIDGE_EXPECTED_FINGERPRINT,
+    BRIDGE_EXPECTED_GRAPH, BRIDGE_EXPECTED_NAME, BRIDGE_EXPECTED_VERSION,
+    BRIDGE_FINGERPRINT_MEMBERS, BRIDGE_FINGERPRINT_TEST, BRIDGE_INPUT, BRIDGE_NAME_INPUTS,
     BRIDGE_NAMING_TEST, BRIDGE_SERVER_BASE_URL, BRIDGE_VERSIONING_TEST, MF_ACTION, MF_NAME,
     MF_RESULT, QT_QUERY,
 };
-use oxigraph::model::{Literal, Term};
+use oxigraph::model::{BlankNode, GraphName, Literal, NamedNode, Term};
 use oxigraph::sparql::{QueryResults, SparqlEvaluator, Variable};
 use oxigraph::store::Store;
 use oxrdf::{Graph, NamedOrBlankNode, Quad};
@@ -104,6 +105,68 @@ fn computes_every_naming_vector_of_the_specification_with_its_query_run_by_oxigr
         let names = names(&query, &inputs.join("|"));
         assert_eq!(
             names.iter().map(term_value).collect::<Vec<_>>(),
+            [expected],
+            "{}",
+            named(&graph, &entry)
+        );
+    }
+}
+
+fn fingerprints(query: &[u8], members: &[String]) -> Vec<String> {
+    let store = Store::new().expect("a store");
+    let value = NamedNode::new_unchecked("http://www.w3.org/1999/02/22-rdf-syntax-ns#value");
+    for member in members {
+        store
+            .insert(&Quad::new(
+                BlankNode::default(),
+                value.clone(),
+                Literal::new_simple_literal(member),
+                GraphName::DefaultGraph,
+            ))
+            .expect("inserted");
+    }
+    let parsed = spargebra::SparqlParser::new()
+        .parse_query(std::str::from_utf8(query).expect("UTF-8"))
+        .expect("the query");
+    let QueryResults::Solutions(solutions) = SparqlEvaluator::new()
+        .for_query(parsed)
+        .on_store(&store)
+        .execute()
+        .expect("evaluated")
+    else {
+        panic!("the fingerprint query is not a SELECT");
+    };
+    solutions
+        .map(|solution| {
+            term_value(
+                solution
+                    .expect("a solution")
+                    .get("fingerprint")
+                    .expect("a ?fingerprint"),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn computes_every_fingerprint_vector_of_the_specification_with_its_query_run_by_oxigraph() {
+    let graph = manifest("tests/naming");
+    for entry in entries(&graph, BRIDGE_FINGERPRINT_TEST) {
+        let action = node(&graph, &entry, MF_ACTION);
+        let query = file(&only(&graph, &action, QT_QUERY));
+        let head = objects(&graph, &action, BRIDGE_FINGERPRINT_MEMBERS).expect("members");
+        let members: Vec<String> = list(&graph, head.first())
+            .expect("a list")
+            .iter()
+            .map(term_value)
+            .collect();
+        let expected = only(
+            &graph,
+            &node(&graph, &entry, MF_RESULT),
+            BRIDGE_EXPECTED_FINGERPRINT,
+        );
+        assert_eq!(
+            fingerprints(&query, &members),
             [expected],
             "{}",
             named(&graph, &entry)

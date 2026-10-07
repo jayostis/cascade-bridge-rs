@@ -14,6 +14,12 @@
     <#ccda-root-and-extension>
     <#ccda-root-only>
     <#ccda-non-ascii-extension>
+    <#ccda-medication>
+    <#ccda-repeated-id-active>
+    <#ccda-repeated-id-resolved>
+    <#ccda-no-id-key>
+    <#ccda-no-id-members>
+    <#ccda-class-alone>
     <#clinvar-variation-archive>
     <#clinvar-clinical-assertion>
     <#clinvar-interpretation-first>
@@ -27,6 +33,14 @@
     <#base-url-already-normal>
     <#base-url-host-alone>
     <#base-url-port-and-slashes>
+    <#fingerprint-one>
+    <#fingerprint-key-active>
+    <#fingerprint-key-active-reordered>
+    <#fingerprint-key-active-repeated>
+    <#fingerprint-key-resolved>
+    <#fingerprint-key-immunization>
+    <#fingerprint-members>
+    <#fingerprint-empty>
   ) .
 
 <#fhir-resource> a bridge:NamingTest ;
@@ -61,21 +75,57 @@
 
 <#ccda-root-and-extension> a bridge:NamingTest ;
   mf:name "ccda-root-and-extension" ;
-  rdfs:comment "A C-CDA entry whose id is unique within its document: the id's root and extension." ;
-  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "2.16.840.1.113883.19.5" "8237461" ) ] ;
-  mf:result [ bridge:expectedName <urn:uuid:7f4d089e-600f-8e55-8fe6-edf87852329a> ] .
+  rdfs:comment "A C-CDA record whose identifier no other record of its class in its document carries with another key: its class and its identifier, the root, : and the extension." ;
+  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "AllergyIntolerance" "2.16.840.1.113883.19.5:8237461" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:b4a38586-bc3b-8b1d-82f8-2d7e3523ea31> ] .
 
 <#ccda-root-only> a bridge:NamingTest ;
   mf:name "ccda-root-only" ;
-  rdfs:comment "A C-CDA entry whose id has no extension: its root alone." ;
-  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "2.16.840.1.113883.19.5.99999.1" ) ] ;
-  mf:result [ bridge:expectedName <urn:uuid:a4d0fe7b-9742-8aeb-a592-f7b8732fc8f2> ] .
+  rdfs:comment "An identifier with no extension is its root alone." ;
+  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "Condition" "2.16.840.1.113883.19.5.99999.1" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:c7c71864-3281-8f90-b5f4-7b85c2b5496c> ] .
 
 <#ccda-non-ascii-extension> a bridge:NamingTest ;
   mf:name "ccda-non-ascii-extension" ;
   rdfs:comment "An input is hashed as UTF-8." ;
-  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "2.16.840.1.113883.19.5" "Zürich-7" ) ] ;
-  mf:result [ bridge:expectedName <urn:uuid:493d2d90-c842-8ec9-941d-b753c09e550d> ] .
+  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "Procedure" "2.16.840.1.113883.19.5:Zürich-7" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:46509281-3b72-81d2-beb6-6b658db5b256> ] .
+
+<#ccda-medication> a bridge:NamingTest ;
+  mf:name "ccda-medication" ;
+  rdfs:comment "A medication's class is MedicationRequest, in either mood." ;
+  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "MedicationRequest" "2.16.840.1.113883.19.5:rx-551" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:8949020f-bf42-83fd-9ab1-b180a3214bc6> ] .
+
+<#ccda-repeated-id-active> a bridge:NamingTest ;
+  mf:name "ccda-repeated-id-active" ;
+  rdfs:comment "An identifier two allergies of one document carry with keys differing in status: the class, the identifier and this one's key's fingerprint, fingerprint-key-active's." ;
+  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "AllergyIntolerance" "2.16.840.1.113883.19.5:2210" "506034893686827" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:146187ec-84af-85ab-b1b4-8f06a954fa2c> ] .
+
+<#ccda-repeated-id-resolved> a bridge:NamingTest ;
+  mf:name "ccda-repeated-id-resolved" ;
+  rdfs:comment "The other allergy carrying ccda-repeated-id-active's identifier, resolved, is another record." ;
+  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "AllergyIntolerance" "2.16.840.1.113883.19.5:2210" "485897515424792" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:16e3a9ac-4dc3-886d-9ada-c315aaf1890d> ] .
+
+<#ccda-no-id-key> a bridge:NamingTest ;
+  mf:name "ccda-no-id-key" ;
+  rdfs:comment "A record with no identifier and a key: the class, the empty string and its key's fingerprint, fingerprint-key-immunization's." ;
+  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "Immunization" "" "116633954584022" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:0d53ee53-aa38-8ec4-a740-36fe7f92bf38> ] .
+
+<#ccda-no-id-members> a bridge:NamingTest ;
+  mf:name "ccda-no-id-members" ;
+  rdfs:comment "A record with no identifier and no key: the class, two empty strings and its members' fingerprint, fingerprint-members's." ;
+  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "Condition" "" "" "334992598836920" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:6e689e64-69b0-81a5-878f-e5debf9e21f4> ] .
+
+<#ccda-class-alone> a bridge:NamingTest ;
+  mf:name "ccda-class-alone" ;
+  rdfs:comment "A record with no identifier, no key and no member: its class alone." ;
+  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "Observation" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:c4f7242a-96c9-833a-ac13-a6bf87142982> ] .
 
 <#clinvar-variation-archive> a bridge:NamingTest ;
   mf:name "clinvar-variation-archive" ;
@@ -128,8 +178,8 @@
 <#xml-address> a bridge:NamingTest ;
   mf:name "xml-address" ;
   rdfs:comment "A record without a usable id in an XML document: the document's name and the record's XPath." ;
-  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "ni:///sha-256;HIELGty0gmK9X2oIlPDlGm-xvWIXkMCrEPN-xoVoYYg" "/ClinicalDocument/component/structuredBody/component[2]/section/entry[3]" ) ] ;
-  mf:result [ bridge:expectedName <urn:uuid:7cf5f023-03cc-81dc-a23c-1bc54481d273> ] .
+  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "ni:///sha-256;HIELGty0gmK9X2oIlPDlGm-xvWIXkMCrEPN-xoVoYYg" "/ClinVarResult-Set/VariationArchive[3]" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:51d1501d-7618-8b4b-abf4-c9b09943f7c8> ] .
 
 <#base-url-scheme-and-host> a bridge:BaseUrlNormalisationTest ;
   mf:name "base-url-scheme-and-host" ;
@@ -154,3 +204,51 @@
   rdfs:comment "A port is kept, and every trailing slash is removed." ;
   mf:action [ bridge:serverBaseUrl "http://FHIR.example.org:8080/R4//" ] ;
   mf:result [ bridge:serverBaseUrl "http://fhir.example.org:8080/R4" ] .
+
+<#fingerprint-one> a bridge:FingerprintTest ;
+  mf:name "fingerprint-one" ;
+  rdfs:comment "One string: the integer the first twelve hexadecimal digits of its SHA-256 write." ;
+  mf:action [ qt:query <fingerprint.rq> ; bridge:fingerprintMembers ( "code=91936005" ) ] ;
+  mf:result [ bridge:expectedFingerprint "259087979045763" ] .
+
+<#fingerprint-key-active> a bridge:FingerprintTest ;
+  mf:name "fingerprint-key-active" ;
+  rdfs:comment "Three strings: the sum of each one's integer." ;
+  mf:action [ qt:query <fingerprint.rq> ; bridge:fingerprintMembers ( "code=91936005" "effectiveTime=20250327120000+0000" "status=active" ) ] ;
+  mf:result [ bridge:expectedFingerprint "506034893686827" ] .
+
+<#fingerprint-key-active-reordered> a bridge:FingerprintTest ;
+  mf:name "fingerprint-key-active-reordered" ;
+  rdfs:comment "fingerprint-key-active's strings in another order have its fingerprint." ;
+  mf:action [ qt:query <fingerprint.rq> ; bridge:fingerprintMembers ( "status=active" "effectiveTime=20250327120000+0000" "code=91936005" ) ] ;
+  mf:result [ bridge:expectedFingerprint "506034893686827" ] .
+
+<#fingerprint-key-active-repeated> a bridge:FingerprintTest ;
+  mf:name "fingerprint-key-active-repeated" ;
+  rdfs:comment "A string given twice counts once: fingerprint-key-active's fingerprint." ;
+  mf:action [ qt:query <fingerprint.rq> ; bridge:fingerprintMembers ( "code=91936005" "effectiveTime=20250327120000+0000" "status=active" "code=91936005" ) ] ;
+  mf:result [ bridge:expectedFingerprint "506034893686827" ] .
+
+<#fingerprint-key-resolved> a bridge:FingerprintTest ;
+  mf:name "fingerprint-key-resolved" ;
+  rdfs:comment "fingerprint-key-active's set with another status has another fingerprint." ;
+  mf:action [ qt:query <fingerprint.rq> ; bridge:fingerprintMembers ( "code=91936005" "effectiveTime=20250327120000+0000" "status=resolved" ) ] ;
+  mf:result [ bridge:expectedFingerprint "485897515424792" ] .
+
+<#fingerprint-key-immunization> a bridge:FingerprintTest ;
+  mf:name "fingerprint-key-immunization" ;
+  rdfs:comment "An immunization's key." ;
+  mf:action [ qt:query <fingerprint.rq> ; bridge:fingerprintMembers ( "code=141" "effectiveTime=20241015" ) ] ;
+  mf:result [ bridge:expectedFingerprint "116633954584022" ] .
+
+<#fingerprint-members> a bridge:FingerprintTest ;
+  mf:name "fingerprint-members" ;
+  rdfs:comment "An element's members." ;
+  mf:action [ qt:query <fingerprint.rq> ; bridge:fingerprintMembers ( "urn:hl7-org:v3code@http://sparql.xyz/facade-x/data/nullFlavor=UNK" "urn:hl7-org:v3originalText=left knee pain" ) ] ;
+  mf:result [ bridge:expectedFingerprint "334992598836920" ] .
+
+<#fingerprint-empty> a bridge:FingerprintTest ;
+  mf:name "fingerprint-empty" ;
+  rdfs:comment "The empty set's fingerprint is 0." ;
+  mf:action [ qt:query <fingerprint.rq> ; bridge:fingerprintMembers (  ) ] ;
+  mf:result [ bridge:expectedFingerprint "0" ] .

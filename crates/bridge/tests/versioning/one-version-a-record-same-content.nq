@@ -1,0 +1,3 @@
+<urn:cascade:this-version> <http://example.org/clinical#allergen> "Penicillin G" .
+<urn:cascade:this-version> <http://example.org/clinical#note> "Rash after the first dose." .
+<urn:cascade:this-version> <http://www.w3.org/ns/prov#specializationOf> <urn:uuid:b4a38586-bc3b-8b1d-82f8-2d7e3523ea31> .
