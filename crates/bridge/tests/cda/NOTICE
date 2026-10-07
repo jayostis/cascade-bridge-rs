@@ -1,0 +1,17 @@
+schema/
+  HL7 CDA R2 schema with the SDTC extensions, from
+  https://github.com/HL7/CDA-core-2.0, schema/extensions/SDTC/,
+  at e922fc35586fd2629f0c8a021080bca9ab424e18, unchanged.
+  Copyright (c) 2015 Health Level Seven. BSD-4-Clause, as each file's
+  notice states; NarrativeBlock.xsd, infrastructureRoot.xsd and voc.xsd
+  carry no notice and are taken under the same distribution.
+  This product includes software developed by Health Level Seven.
+
+hl7-examples/
+  Documents/CCD/CCD 1/CCD.XML and Documents/CCD/CCD 2/CCD.xml from
+  https://github.com/HL7/C-CDA-Examples
+  at ad5007abd912a45bbd04ce96e871c70954c2b2c2, unchanged. CC0-1.0.
+
+conformance/
+  fixtures/ccda/ from https://github.com/jayostis/conformance
+  at 6c332fdd4f5e92548e37edcde2c6df7667932eac, unchanged. Apache-2.0.

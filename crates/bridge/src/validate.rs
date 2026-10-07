@@ -3,6 +3,9 @@ use crate::error::Result;
 pub(crate) mod json_schema;
 pub(crate) mod xsd;
 
+#[cfg(test)]
+mod cda;
+
 pub(crate) trait Schema: Send {
     fn errors(&self, text: &str) -> Result<Vec<SchemaFinding>>;
 }

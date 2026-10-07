@@ -79,7 +79,7 @@ fn body(constraint: &str) -> String {
 /// drew it.
 type At = Rc<RefCell<Vec<Step>>>;
 
-fn within(at: &[Step]) -> Option<String> {
+pub(crate) fn within(at: &[Step]) -> Option<String> {
     let below = at.get(1..).unwrap_or_default();
     (!below.is_empty()).then(|| {
         below
