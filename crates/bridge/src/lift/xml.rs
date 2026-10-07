@@ -1,7 +1,3 @@
-// The skeleton the detect query reads is the whole document with every unit reduced
-// to its attributes and its childless children. A unit is handed over as soon as its
-// end tag is read, and written out again as XML with the declarations in scope where it
-// stood, for a validator that brings its own parser.
 use super::{member, name, store_of, triple, Occurrence, Paths, Unit, Valued, FX, RDF, XYZ};
 use crate::decode::{is_xml_space, normalise_attribute_value, normalise_line_endings};
 use crate::error::{Error, Result};
@@ -169,6 +165,19 @@ struct Attribute {
     predicate: NamedNode,
     value: String,
     step: Option<Step>,
+}
+
+fn attribute_triples<'a>(
+    id: &'a BlankNode,
+    attributes: &'a [Attribute],
+) -> impl Iterator<Item = Quad> + 'a {
+    attributes.iter().map(move |attribute| {
+        triple(
+            id,
+            attribute.predicate.clone(),
+            Literal::new_simple_literal(&attribute.value),
+        )
+    })
 }
 
 impl Attribute {
@@ -360,26 +369,15 @@ impl Builder {
                         triple(unit, member(top.members)?, kept_id.clone()),
                         triple(&kept_id, rdf_type.clone(), element.type_iri.clone()),
                     ];
-                    kept.extend(element.attributes.iter().map(|attribute| {
-                        triple(
-                            &kept_id,
-                            attribute.predicate.clone(),
-                            Literal::new_simple_literal(&attribute.value),
-                        )
-                    }));
+                    kept.extend(attribute_triples(&kept_id, &element.attributes));
                     Some(kept)
                 }
                 _ => None,
             };
             self.unit.push(slot);
             self.unit.push(triple(&id, rdf_type, element.type_iri));
-            for attribute in element.attributes {
-                self.unit.push(triple(
-                    &id,
-                    attribute.predicate,
-                    Literal::new_simple_literal(attribute.value),
-                ));
-            }
+            self.unit
+                .extend(attribute_triples(&id, &element.attributes));
             self.stack.push(Frame {
                 kept,
                 ..frame(id, true, Some(step))
@@ -400,6 +398,8 @@ impl Builder {
         }
         self.skeleton
             .push(triple(&id, rdf_type.clone(), element.type_iri.clone()));
+        self.skeleton
+            .extend(attribute_triples(&id, &element.attributes));
         if self.stack.is_empty() {
             self.document_step = Some(step.clone());
         }
@@ -422,25 +422,13 @@ impl Builder {
             self.raw
                 .push_str(&start_tag(element.qname, &element.written, &scope));
 
-            for attribute in &element.attributes {
-                self.skeleton.push(triple(
-                    &id,
-                    attribute.predicate.clone(),
-                    Literal::new_simple_literal(&attribute.value),
-                ));
-            }
             let unit_id = self.fresh();
             self.unit.clear();
             self.unit
                 .push(triple(&unit_id, rdf_type.clone(), self.fx_root.clone()));
             self.unit.push(triple(&unit_id, rdf_type, element.type_iri));
-            for attribute in element.attributes {
-                self.unit.push(triple(
-                    &unit_id,
-                    attribute.predicate,
-                    Literal::new_simple_literal(attribute.value),
-                ));
-            }
+            self.unit
+                .extend(attribute_triples(&unit_id, &element.attributes));
             self.stack.push(Frame {
                 skeleton: Some(id),
                 ..frame(unit_id, true, Some(step))
@@ -448,13 +436,6 @@ impl Builder {
             return Ok(());
         }
 
-        for attribute in element.attributes {
-            self.skeleton.push(triple(
-                &id,
-                attribute.predicate,
-                Literal::new_simple_literal(attribute.value),
-            ));
-        }
         self.stack.push(frame(id, false, Some(step)));
         Ok(())
     }
