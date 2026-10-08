@@ -398,17 +398,38 @@ pub(crate) fn selected<'a>(root: &'a Node, pointer: &str) -> Vec<(Vec<usize>, &'
     for token in &tokens {
         let mut next = Vec::new();
         for (positions, node) in reached {
-            for (position, (name, child)) in node.children().enumerate() {
-                if name == *token {
-                    let mut walked = positions.clone();
-                    walked.push(position);
-                    next.push((walked, child));
+            let mut reach = |position: usize, child: &'a Node| {
+                let mut walked = positions.clone();
+                walked.push(position);
+                next.push((walked, child));
+            };
+            match &node.value {
+                Value::Object(members) => {
+                    for (position, (name, child)) in members.iter().enumerate() {
+                        if name == token {
+                            reach(position, child);
+                        }
+                    }
                 }
+                Value::Array(items) => {
+                    if let Some(index) = item_index(token).filter(|index| *index < items.len()) {
+                        reach(index, &items[index]);
+                    }
+                }
+                _ => {}
             }
         }
         reached = next;
     }
     reached
+}
+
+/// RFC 6901's array index: `0`, or digits with no leading zero.
+fn item_index(token: &str) -> Option<usize> {
+    if token != "0" && token.starts_with(['0', '+']) {
+        return None;
+    }
+    token.parse().ok()
 }
 
 /// The tokens of the node at child positions below `root`.

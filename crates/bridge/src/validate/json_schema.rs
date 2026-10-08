@@ -122,12 +122,13 @@ const NAMING: [&str; 4] = [
 /// `patternProperties` name, anywhere but inside an instance.
 fn patterns_written<'a>(schema: &'a Node, into: &mut Vec<&'a str>) {
     for (keyword, value) in schema.children() {
-        match &*keyword {
+        let keyword: &str = &keyword;
+        match keyword {
             "pattern" => into.extend(text(value)),
             keyword if VALUES.contains(&keyword) => continue,
             _ => {}
         }
-        if NAMING.contains(&&*keyword) {
+        if NAMING.contains(&keyword) {
             if keyword == "patternProperties" {
                 if let Value::Object(members) = &value.value {
                     into.extend(members.iter().map(|(pattern, _)| pattern.as_str()));
