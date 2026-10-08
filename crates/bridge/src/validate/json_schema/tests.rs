@@ -1,4 +1,4 @@
-use super::compile;
+use super::{compile, JsonSchema};
 use crate::error::{Error, Result};
 use crate::resolver::Resolver;
 use crate::validate::Schema;
@@ -54,6 +54,22 @@ fn found(pairs: &[(&str, Option<&str>)]) -> Vec<(String, Option<String>)> {
         .iter()
         .map(|(body, within)| ((*body).to_owned(), within.map(str::to_owned)))
         .collect()
+}
+
+/// Each `$ref` the schema remembers following, by the base it was resolved against.
+fn followed(schema: &JsonSchema) -> Vec<(String, String)> {
+    let mut pairs: Vec<(String, String)> = schema
+        .located
+        .borrow()
+        .iter()
+        .flat_map(|(base, references)| {
+            references
+                .keys()
+                .map(move |reference| (base.clone(), reference.clone()))
+        })
+        .collect();
+    pairs.sort();
+    pairs
 }
 
 #[test]
@@ -159,7 +175,7 @@ fn refuses_a_schema_written_in_another_draft() {
 }
 
 #[test]
-fn resolves_a_ref_against_the_id_of_the_subschema_it_stands_in() {
+fn resolves_a_ref_against_the_id_of_the_subschema_it_stands_in_on_every_validation() {
     let package = files(&[
         (
             "schema.json",
@@ -171,27 +187,44 @@ fn resolves_a_ref_against_the_id_of_the_subschema_it_stands_in() {
                 "properties": {
                     "a": {"$ref": "sub/a.json"},
                     "n": {"$ref": "#addr"},
-                    "p": {"$ref": "#/definitions/a/properties/x"}
+                    "p": {"$ref": "#/definitions/a/properties/x"},
+                    "q": {"$ref": "b.json"}
                 }
             }"##,
         ),
         ("sub/b.json", r#"{"type": "integer"}"#),
+        ("b.json", r#"{"type": "string"}"#),
     ]);
-    let compiled = compile(&format!("{ROOT}schema.json"), &package).expect("the schema");
-    let within: Vec<Option<String>> = compiled
-        .errors(r#"{"a": {"x": "s"}, "n": 1, "p": "s"}"#)
-        .expect("validated")
-        .iter()
-        .map(|finding| finding.within().map(str::to_owned))
-        .collect();
-    assert_eq!(
-        within,
-        [
-            Some("/a/x".to_owned()),
-            Some("/n".to_owned()),
-            Some("/p".to_owned())
-        ]
-    );
+    let schema = format!("{ROOT}schema.json");
+    let sub = format!("{ROOT}sub/a.json");
+    let compiled = compile(&schema, &package).expect("the schema");
+    let remembered = [
+        (schema.as_str(), "#/definitions/a/properties/x"),
+        (schema.as_str(), "#addr"),
+        (schema.as_str(), "b.json"),
+        (schema.as_str(), schema.as_str()),
+        (schema.as_str(), "sub/a.json"),
+        (sub.as_str(), "b.json"),
+    ]
+    .map(|(base, reference)| (base.to_owned(), reference.to_owned()));
+    for _ in 0..2 {
+        let within: Vec<Option<String>> = compiled
+            .errors(r#"{"a": {"x": "s"}, "n": 1, "p": "s", "q": 1}"#)
+            .expect("validated")
+            .iter()
+            .map(|finding| finding.within().map(str::to_owned))
+            .collect();
+        assert_eq!(
+            within,
+            [
+                Some("/a/x".to_owned()),
+                Some("/n".to_owned()),
+                Some("/p".to_owned()),
+                Some("/q".to_owned())
+            ]
+        );
+        assert_eq!(followed(&compiled), remembered);
+    }
 }
 
 #[test]

@@ -7,7 +7,7 @@ fn refusal(text: &str) -> String {
 #[test]
 fn keeps_every_member_of_a_repeated_name_in_document_order() {
     let node = parse(r#"{"a": 1, "b": 2, "a": 3}"#).expect("parsed");
-    let names: Vec<String> = node.children().into_iter().map(|(name, _)| name).collect();
+    let names: Vec<_> = node.children().map(|(name, _)| name).collect();
     assert_eq!(names, ["a", "b", "a"]);
 }
 
@@ -16,7 +16,6 @@ fn keeps_a_number_as_the_document_writes_it() {
     let node = parse("[1.50, -0, 1E+2, 123456789012345678901234567890]").expect("parsed");
     let written: Vec<&str> = node
         .children()
-        .into_iter()
         .filter_map(|(_, item)| item.scalar())
         .collect();
     assert_eq!(
@@ -70,12 +69,17 @@ fn writes_a_pointer_in_its_fragment_representation_and_reads_it_back() {
 }
 
 #[test]
-fn a_pointer_through_a_repeated_name_selects_each_node_and_one_to_null_the_null() {
-    let node = parse(r#"{"a": {"b": 1}, "a": {"b": 2}, "n": null}"#).expect("parsed");
+fn a_pointer_through_a_repeated_name_selects_each_node_one_to_null_the_null_and_an_item_by_its_index_as_rfc_6901_writes_it(
+) {
+    let node = parse(r#"{"a": {"b": 1}, "a": {"b": 2}, "n": null, "i": [7, 8]}"#).expect("parsed");
     assert_eq!(selected(&node, "/a/b").len(), 2);
     assert_eq!(selected(&node, "/n").len(), 1);
     assert_eq!(selected(&node, "/%FF").len(), 0);
     assert_eq!(selected(&node, "").len(), 1);
+    assert_eq!(selected(&node, "/i/1").len(), 1);
+    for not_an_index in ["/i/01", "/i/+1", "/i/2", "/i/-"] {
+        assert_eq!(selected(&node, not_an_index).len(), 0, "{not_an_index}");
+    }
 }
 
 #[test]
