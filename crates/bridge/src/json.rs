@@ -1,6 +1,7 @@
 // A hand-written reader: a JSON library's map keeps one member of a repeated name,
 // and the lift keeps every one, in document order, with each number's text.
 use crate::error::{Error, Result};
+use std::borrow::Cow;
 use std::ops::Range;
 
 pub(crate) mod addressing;
@@ -42,19 +43,21 @@ impl Node {
     }
 
     /// Each child with its reference token, in document order.
-    pub(crate) fn children(&self) -> Vec<(String, &Node)> {
-        match &self.value {
-            Value::Object(members) => members
-                .iter()
-                .map(|(name, member)| (name.clone(), member))
-                .collect(),
-            Value::Array(items) => items
-                .iter()
-                .enumerate()
-                .map(|(index, item)| (index.to_string(), item))
-                .collect(),
-            _ => Vec::new(),
-        }
+    pub(crate) fn children(&self) -> impl Iterator<Item = (Cow<'_, str>, &Node)> {
+        let (members, items): (&[(String, Node)], &[Node]) = match &self.value {
+            Value::Object(members) => (members, &[]),
+            Value::Array(items) => (&[], items),
+            _ => (&[], &[]),
+        };
+        members
+            .iter()
+            .map(|(name, member)| (Cow::Borrowed(name.as_str()), member))
+            .chain(
+                items
+                    .iter()
+                    .enumerate()
+                    .map(|(index, item)| (Cow::Owned(index.to_string()), item)),
+            )
     }
 
     /// The node reached by child positions, a member's among its object's members.
@@ -395,7 +398,7 @@ pub(crate) fn selected<'a>(root: &'a Node, pointer: &str) -> Vec<(Vec<usize>, &'
     for token in &tokens {
         let mut next = Vec::new();
         for (positions, node) in reached {
-            for (position, (name, child)) in node.children().into_iter().enumerate() {
+            for (position, (name, child)) in node.children().enumerate() {
                 if name == *token {
                     let mut walked = positions.clone();
                     walked.push(position);
@@ -415,10 +418,9 @@ pub(crate) fn tokens_at(root: &Node, positions: &[usize]) -> Vec<String> {
     for &position in positions {
         let (token, child) = node
             .children()
-            .into_iter()
             .nth(position)
             .expect("a position below the root");
-        tokens.push(token);
+        tokens.push(token.into_owned());
         node = child;
     }
     tokens

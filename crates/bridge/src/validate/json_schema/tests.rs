@@ -159,7 +159,7 @@ fn refuses_a_schema_written_in_another_draft() {
 }
 
 #[test]
-fn resolves_a_ref_against_the_id_of_the_subschema_it_stands_in() {
+fn resolves_a_ref_against_the_id_of_the_subschema_it_stands_in_on_every_validation() {
     let package = files(&[
         (
             "schema.json",
@@ -171,27 +171,32 @@ fn resolves_a_ref_against_the_id_of_the_subschema_it_stands_in() {
                 "properties": {
                     "a": {"$ref": "sub/a.json"},
                     "n": {"$ref": "#addr"},
-                    "p": {"$ref": "#/definitions/a/properties/x"}
+                    "p": {"$ref": "#/definitions/a/properties/x"},
+                    "q": {"$ref": "b.json"}
                 }
             }"##,
         ),
         ("sub/b.json", r#"{"type": "integer"}"#),
+        ("b.json", r#"{"type": "string"}"#),
     ]);
     let compiled = compile(&format!("{ROOT}schema.json"), &package).expect("the schema");
-    let within: Vec<Option<String>> = compiled
-        .errors(r#"{"a": {"x": "s"}, "n": 1, "p": "s"}"#)
-        .expect("validated")
-        .iter()
-        .map(|finding| finding.within().map(str::to_owned))
-        .collect();
-    assert_eq!(
-        within,
-        [
-            Some("/a/x".to_owned()),
-            Some("/n".to_owned()),
-            Some("/p".to_owned())
-        ]
-    );
+    for _ in 0..2 {
+        let within: Vec<Option<String>> = compiled
+            .errors(r#"{"a": {"x": "s"}, "n": 1, "p": "s", "q": 1}"#)
+            .expect("validated")
+            .iter()
+            .map(|finding| finding.within().map(str::to_owned))
+            .collect();
+        assert_eq!(
+            within,
+            [
+                Some("/a/x".to_owned()),
+                Some("/n".to_owned()),
+                Some("/p".to_owned()),
+                Some("/q".to_owned())
+            ]
+        );
+    }
 }
 
 #[test]

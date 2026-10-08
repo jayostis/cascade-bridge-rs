@@ -9,6 +9,7 @@ use crate::resolver::Resolver;
 use crate::terms::BRIDGE_SCHEMA_RULE_UNNAMED;
 use oxiri::Iri;
 use regress::Regex;
+use std::cell::RefCell;
 use std::collections::HashMap;
 
 const DRAFT_06: &str = "http://json-schema.org/draft-06/schema";
@@ -58,6 +59,16 @@ pub(crate) struct JsonSchema {
     documents: HashMap<String, (String, Node)>,
     root: String,
     patterns: HashMap<String, Regex>,
+    /// By the base a `$ref` was resolved against, then by the `$ref`.
+    located: RefCell<HashMap<String, HashMap<String, Located>>>,
+}
+
+/// Where a `$ref` led: the node at `positions` in the document read as `document`,
+/// and the base its own `$id` resolves against.
+struct Located {
+    outer: String,
+    document: String,
+    positions: Vec<usize>,
 }
 
 fn body(keyword: Option<&str>) -> String {
@@ -111,12 +122,12 @@ const NAMING: [&str; 4] = [
 /// `patternProperties` name, anywhere but inside an instance.
 fn patterns_written<'a>(schema: &'a Node, into: &mut Vec<&'a str>) {
     for (keyword, value) in schema.children() {
-        match keyword.as_str() {
+        match &*keyword {
             "pattern" => into.extend(text(value)),
             keyword if VALUES.contains(&keyword) => continue,
             _ => {}
         }
-        if NAMING.contains(&keyword.as_str()) {
+        if NAMING.contains(&&*keyword) {
             if keyword == "patternProperties" {
                 if let Value::Object(members) = &value.value {
                     into.extend(members.iter().map(|(pattern, _)| pattern.as_str()));
@@ -212,6 +223,7 @@ pub(crate) fn compile(iri: &str, resolver: &dyn Resolver) -> Result<JsonSchema> 
         documents,
         root: iri.to_owned(),
         patterns,
+        located: RefCell::default(),
     };
     schema.root()?;
     Ok(schema)
@@ -374,9 +386,29 @@ impl<'s> Run<'s> {
 
     /// The subschema a `$ref` names, and the base its own `$id` resolves against.
     fn reference(&self, base: &str, reference: &str) -> Result<(&'s str, &'s Node)> {
+        let schema: &'s JsonSchema = self.schema;
+        if let Some(found) = schema.remembered(base, reference) {
+            return Ok(found);
+        }
+        let (located, found) = self.locate(base, reference)?;
+        schema
+            .located
+            .borrow_mut()
+            .entry(base.to_owned())
+            .or_default()
+            .insert(reference.to_owned(), located);
+        Ok(found)
+    }
+
+    fn locate(&self, base: &str, reference: &str) -> Result<(Located, (&'s str, &'s Node))> {
         let target = resolved(base, reference)?;
         if let Some((outer, named)) = self.schema.documents.get(&target) {
-            return Ok((outer.as_str(), named));
+            let located = Located {
+                outer: outer.clone(),
+                document: target,
+                positions: Vec::new(),
+            };
+            return Ok((located, (outer.as_str(), named)));
         }
         let (document, fragment) = target.split_once('#').unwrap_or((&target, ""));
         let (outer, node) = self
@@ -395,7 +427,12 @@ impl<'s> Run<'s> {
                         Error::adapter(format!("a $ref to {target}, not followed"))
                     })?;
                 }
-                Ok((outer, *reached))
+                let located = Located {
+                    outer: outer.to_owned(),
+                    document: document.to_owned(),
+                    positions: positions.clone(),
+                };
+                Ok((located, (outer, *reached)))
             }
             _ => Err(Error::adapter(format!(
                 "a $ref to {target}, which names no one subschema"
@@ -706,6 +743,14 @@ fn within(count: usize, bound: Option<f64>, holds: impl Fn(f64, f64) -> bool) ->
 }
 
 impl JsonSchema {
+    fn remembered(&self, base: &str, reference: &str) -> Option<(&str, &Node)> {
+        let located = self.located.borrow();
+        let located = located.get(base)?.get(reference)?;
+        let (outer, _) = self.documents.get_key_value(&located.outer)?;
+        let (_, document) = self.documents.get(&located.document)?;
+        Some((outer.as_str(), document.at(&located.positions)?))
+    }
+
     /// The subschema a record is validated against: the one the IRI's fragment
     /// names, its `$ref`s resolved against the whole document.
     fn root(&self) -> Result<(&str, &Node)> {

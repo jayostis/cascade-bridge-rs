@@ -7,7 +7,7 @@ fn refusal(text: &str) -> String {
 #[test]
 fn keeps_every_member_of_a_repeated_name_in_document_order() {
     let node = parse(r#"{"a": 1, "b": 2, "a": 3}"#).expect("parsed");
-    let names: Vec<String> = node.children().into_iter().map(|(name, _)| name).collect();
+    let names: Vec<_> = node.children().map(|(name, _)| name).collect();
     assert_eq!(names, ["a", "b", "a"]);
 }
 
@@ -16,7 +16,6 @@ fn keeps_a_number_as_the_document_writes_it() {
     let node = parse("[1.50, -0, 1E+2, 123456789012345678901234567890]").expect("parsed");
     let written: Vec<&str> = node
         .children()
-        .into_iter()
         .filter_map(|(_, item)| item.scalar())
         .collect();
     assert_eq!(
