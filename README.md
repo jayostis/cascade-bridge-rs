@@ -24,3 +24,5 @@ generic lift of the source XML.
 ## Licence
 
 Apache-2.0.
+
+<!-- throwaway canary for cascade-bridge-spec#131 -->
