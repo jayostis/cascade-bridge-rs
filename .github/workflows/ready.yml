@@ -1,0 +1,32 @@
+name: ready-to-merge
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+jobs:
+  ready-to-merge:
+    name: ready-to-merge
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    concurrency:
+      group: ready-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
+        with:
+          check: ready-to-merge
+
+  rerun-when-edited:
+    if: github.event.action == 'edited'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: write
+      pull-requests: read
+    steps:
+      - uses: jayostis/cascade-bridge-spec/.github/actions/rerun-when-edited@main
+        with:
+          workflows: ci.yml
