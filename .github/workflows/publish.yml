@@ -1,76 +1,252 @@
 name: publish
 
-# A merge to main is the only trigger, so no pull request ever publishes.
+# Every same-repository pull request head gets a build-<head> pre-release, and a merge to main
+# reuses its pull request's build where nothing it was built from has changed.
 on:
   push:
     branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
 
+# A newer head cancels an older head's build, and a close cancels one in flight: an unmerged
+# close must leave no release, and a merged pull request's push run builds or reuses for itself.
 concurrency:
-  group: publish-${{ github.sha }}
+  group: ${{ github.event_name == 'pull_request' && format('publish-pr-{0}', github.event.pull_request.number) || format('publish-{0}', github.sha) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
+env:
+  COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+
 jobs:
   publish:
     name: publish
+    if: github.event_name == 'push' || (github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
+    # Runs the pull request's code, so it holds nothing it could write with.
     permissions:
-      contents: write
+      contents: read
+      pull-requests: read
+    outputs:
+      built: ${{ steps.pack.outputs.built }}
+      pull: ${{ steps.decide.outputs.pull }}
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ env.COMMIT }}
           persist-credentials: false
       - uses: actions/setup-node@v5
         with:
           node-version: 22
+      # Decided before the toolchain and the caches, which only a build needs. Every way a reuse can
+      # fail falls through to a build, and none of them fails the job.
+      - id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PULL: ${{ github.event.pull_request.number }}
+        run: |
+          set +e
+          say() { echo "publish: $*"; }
+          fail() { say "$*"; exit 1; }
+          # Paths nothing in package/build.sh or cargo reads. Everything else must be unchanged
+          # between the head and the merge for a reuse, so a new build input forces a build.
+          unread=(':!.github' ':!README.md' ':!CLAUDE.md' ':!compatibility.json' ':!hosts')
+          merged_head=
+          lookup_failed=
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            if found=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" \
+              --jq "[.[] | select(.merge_commit_sha == \"$GITHUB_SHA\")][0] | \"\(.number) \(.head.sha) \(.head.repo.full_name)\""); then
+              read -r number merged_head merged_repo <<<"$found"
+              if [ "$number" = null ]; then merged_head=; else PULL=$number; fi
+            else
+              lookup_failed=1
+            fi
+          fi
+          reuse() (
+            [ -z "$lookup_failed" ] || fail "the pull requests of $GITHUB_SHA could not be read, so it is built"
+            [ -n "$merged_head" ] || fail "no pull request was merged as $GITHUB_SHA, so it is built"
+            [ "$merged_repo" = "$GITHUB_REPOSITORY" ] || fail "the pull request merged as $GITHUB_SHA is from $merged_repo, so it is built"
+            dir="$RUNNER_TEMP/reuse"
+            rm -rf "$dir"
+            mkdir -p "$dir/unpacked"
+            gh release view "build-$merged_head" --repo "$GITHUB_REPOSITORY" --json body,isDraft > "$dir/release.json" ||
+              fail "build-$merged_head cannot be read, so $GITHUB_SHA is built"
+            [ "$(jq -r .isDraft "$dir/release.json")" = false ] || fail "build-$merged_head is still being made, so $GITHUB_SHA is built"
+            notes=$(jq -r .body "$dir/release.json" | tr -d '\r')
+            want=$(node package/sources.mjs) || fail "the sources of $GITHUB_SHA cannot be read, so it is built"
+            have=$(printf '%s\n' "$notes" | sed -n 's/^Sources: *//p')
+            [ -n "$want" ] || fail "the sources of $GITHUB_SHA are empty, so it is built"
+            [ "$want" = "$have" ] || fail "build-$merged_head was built from other sources than $GITHUB_SHA, so it is built"
+            git fetch --quiet --depth=1 origin "refs/pull/$PULL/head" || fail "the head $merged_head cannot be fetched, so $GITHUB_SHA is built"
+            [ "$(git rev-parse FETCH_HEAD)" = "$merged_head" ] || fail "refs/pull/$PULL/head is no longer $merged_head, so $GITHUB_SHA is built"
+            git diff --quiet "$merged_head" "$GITHUB_SHA" -- . "${unread[@]}" ||
+              fail "the tree differs between $merged_head and $GITHUB_SHA outside the paths no build reads, so $GITHUB_SHA is built"
+            git diff --quiet "$merged_head" "$GITHUB_SHA" -- .github/workflows/publish.yml ||
+              fail "publish.yml differs between $merged_head and $GITHUB_SHA, so $GITHUB_SHA is built"
+            gh release download "build-$merged_head" --repo "$GITHUB_REPOSITORY" --dir "$dir/assets" ||
+              fail "the assets of build-$merged_head cannot be downloaded, so $GITHUB_SHA is built"
+            native="$dir/assets/cascade-bridge-x86_64-unknown-linux-gnu"
+            [ "$(find "$dir/assets" -name '*.tgz' | wc -l)" = 1 ] || fail "build-$merged_head lacks its tarball, so $GITHUB_SHA is built"
+            [ -f "$native" ] || fail "build-$merged_head lacks its binary, so $GITHUB_SHA is built"
+            tarball=$(find "$dir/assets" -name '*.tgz')
+            integrity=$(printf '%s\n' "$notes" | sed -n 's/^Integrity: *//p')
+            native_sha256=$(printf '%s\n' "$notes" | sed -n 's/^Native SHA-256: *//p')
+            [ "sha512-$(openssl dgst -sha512 -binary "$tarball" | openssl base64 -A)" = "$integrity" ] ||
+              fail "the tarball of build-$merged_head matches no Integrity in its notes, so $GITHUB_SHA is built"
+            [ "$(sha256sum "$native" | cut -d' ' -f1)" = "$native_sha256" ] ||
+              fail "the binary of build-$merged_head matches no Native SHA-256 in its notes, so $GITHUB_SHA is built"
+            tar -xzf "$tarball" -C "$dir/unpacked" || fail "the tarball of build-$merged_head cannot be unpacked, so $GITHUB_SHA is built"
+            node -e 'const m = require(process.argv[1]).cascadeBridge; process.exit(m?.profile === "wasm" && m?.dirty === false ? 0 : 1)' \
+              "$dir/unpacked/package/package.json" || fail "build-$merged_head is not a clean wasm profile build, so $GITHUB_SHA is built"
+            rm -rf package/dist
+            if ! mv "$dir/unpacked/package" package/dist ||
+              ! node package/stamp.mjs package/dist/package.json package/dist/package.json "$GITHUB_SHA" ||
+              ! cp "$native" "$RUNNER_TEMP/cascade-bridge-x86_64-unknown-linux-gnu"; then
+              rm -rf package/dist
+              fail "the package of build-$merged_head cannot be restamped, so $GITHUB_SHA is built"
+            fi
+          )
+          mkdir -p "$RUNNER_TEMP/out"
+          exists=false
+          build=true
+          if gh release view "build-$COMMIT" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            exists=true
+            build=false
+            say "build-$COMMIT exists, so nothing is built"
+          elif [ "$GITHUB_EVENT_NAME" = push ] && reuse; then
+            build=false
+            echo "REUSED=$merged_head" >> "$GITHUB_ENV"
+            say "reused build-$merged_head for $GITHUB_SHA: same sources, same publish.yml, restamped, nothing built"
+          else
+            say "building $COMMIT"
+          fi
+          {
+            echo "exists=$exists"
+            echo "build=$build"
+            echo "pull=$PULL"
+          } >> "$GITHUB_OUTPUT"
       # The runner images preinstall different toolchains, and rust-cache hashes every one it finds into its key.
-      - run: |
+      - if: steps.decide.outputs.build == 'true'
+        run: |
           rustup toolchain install --profile minimal
           channel=$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)
           rustup default "$channel"
           rustup toolchain list | cut -d' ' -f1 | grep -v "^$channel-" | xargs -r -n1 rustup toolchain uninstall
-      - uses: Swatinem/rust-cache@v2
+      - if: steps.decide.outputs.build == 'true'
+        uses: Swatinem/rust-cache@v2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - uses: actions/cache@v6
+      - if: steps.decide.outputs.build == 'true'
+        uses: actions/cache@v6
         with:
           path: |
             target/wasm-bindgen-*
             target/binaryen-*
           key: package-tools-${{ hashFiles('Cargo.lock', 'package/build.sh') }}
-      - id: exists
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if gh release view "build-$GITHUB_SHA" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "release=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "release=false" >> "$GITHUB_OUTPUT"
-          fi
-      - if: steps.exists.outputs.release == 'false'
+      - if: steps.decide.outputs.build == 'true'
         run: sh package/build.sh
-      - if: steps.exists.outputs.release == 'false'
+      - if: steps.decide.outputs.build == 'true'
         run: |
           cargo build --release --locked -p cascade-bridge-cli
           cp target/release/cascade-bridge "$RUNNER_TEMP/cascade-bridge-x86_64-unknown-linux-gnu"
-      - if: steps.exists.outputs.release == 'false'
+      - id: pack
+        if: steps.decide.outputs.exists == 'false'
         env:
-          GH_TOKEN: ${{ github.token }}
+          PULL: ${{ github.event.pull_request.number }}
         working-directory: package/dist
         run: |
+          out="$RUNNER_TEMP/out"
           npm pack --json > ../pack.json
           tarball=$(node -e 'console.log(require("../pack.json")[0].filename)')
           integrity=$(node -e 'console.log(require("../pack.json")[0].integrity)')
           sources=$(node -e 'console.log(require("./package.json").cascadeBridge.sources)')
           native="$RUNNER_TEMP/cascade-bridge-x86_64-unknown-linux-gnu"
           native_sha256=$(sha256sum "$native" | cut -d' ' -f1)
-          notes=$(printf 'Commit: %s\nSources: %s\nIntegrity: %s\nNative SHA-256: %s\n' \
-            "$GITHUB_SHA" "$sources" "$integrity" "$native_sha256")
-          gh release create "build-$GITHUB_SHA" "$tarball" "$native" \
-            --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" \
-            --title "build-$GITHUB_SHA" \
-            --notes "$notes" \
-            --prerelease \
-            --latest=false
+          {
+            printf 'Commit: %s\nSources: %s\nIntegrity: %s\nNative SHA-256: %s\n' \
+              "$COMMIT" "$sources" "$integrity" "$native_sha256"
+            if [ "$GITHUB_EVENT_NAME" = pull_request ]; then printf 'Pull request: %s\n' "$PULL"; fi
+            if [ -n "${REUSED-}" ]; then printf 'Reused: build-%s\n' "$REUSED"; fi
+          } > "$out/notes.txt"
+          mv "$tarball" "$out/"
+          cp "$native" "$out/"
+          echo built=true >> "$GITHUB_OUTPUT"
+      - if: steps.pack.outputs.built == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: build
+          path: ${{ runner.temp }}/out
+          if-no-files-found: error
+
+  # Checks out no code: it holds the write token, and the job above ran the pull request's.
+  release:
+    name: release
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - if: needs.publish.outputs.built == 'true'
+        uses: actions/download-artifact@v7
+        with:
+          name: build
+          path: ${{ runner.temp }}/out
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          BUILT: ${{ needs.publish.outputs.built }}
+          PULL: ${{ needs.publish.outputs.pull }}
+        run: |
+          set -eu
+          set -o pipefail
+          out="$RUNNER_TEMP/out"
+          tag="build-$COMMIT"
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            state=$(gh pr view "$PULL" --repo "$GITHUB_REPOSITORY" --json state --jq .state)
+            if [ "$state" != OPEN ]; then
+              echo "release: pull request $PULL is $state, so $tag is not made"
+              exit 0
+            fi
+          fi
+          if [ "$BUILT" = true ]; then
+            gh release create "$tag" "$out"/*.tgz "$out/cascade-bridge-x86_64-unknown-linux-gnu" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$COMMIT" \
+              --title "$tag" \
+              --notes-file "$out/notes.txt" \
+              --prerelease \
+              --latest=false
+          fi
+          if [ -z "$PULL" ] && [ "$GITHUB_EVENT_NAME" = push ]; then
+            PULL=$(gh api "repos/$GITHUB_REPOSITORY/commits/$COMMIT/pulls"               --jq "[.[] | select(.merge_commit_sha == \"$COMMIT\")][0].number // empty" || true)
+          fi
+          if [ -z "$PULL" ]; then
+            echo "release: no pull request is known for $COMMIT, so nothing is pruned"
+            exit 0
+          fi
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases" \
+            --jq ".[] | select(.prerelease and .tag_name != \"$tag\" and ((.body // \"\") | test(\"(^|\\n)Pull request: $PULL\\r?(\\n|\$)\"))) | .tag_name" |
+            while read -r stale; do
+              gh release delete "$stale" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+            done
+
+  prune:
+    name: prune
+    if: github.event_name == 'pull_request' && github.event.action == 'closed' && !github.event.pull_request.merged && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          PULL: ${{ github.event.pull_request.number }}
+        run: |
+          set -eu
+          set -o pipefail
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases" \
+            --jq ".[] | select(.prerelease and ((.body // \"\") | test(\"(^|\\n)Pull request: $PULL\\r?(\\n|\$)\"))) | .tag_name" |
+            while read -r stale; do
+              gh release delete "$stale" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+            done

@@ -62,7 +62,7 @@ fi
 cargo build --profile "$profile" --locked -p cascade-bridge-wasm --target wasm32-unknown-unknown
 built="$target/wasm32-unknown-unknown/$profile/cascade_bridge_wasm.wasm"
 dist=package/dist
-version=$(sed -n '/^\[workspace.package\]$/,/^\[/{s/^version = "\(.*\)"$/\1/p;}' Cargo.toml)
+version=$(node package/stamp.mjs version)
 commit=$(git rev-parse HEAD)
 sources=$(node package/sources.mjs)
 if git status --porcelain -- Cargo.toml Cargo.lock rust-toolchain.toml crates package | grep -q .; then
@@ -102,13 +102,6 @@ fi
 } >"$staged/declarations"
 mv "$staged/declarations" "$staged/cascade_bridge.d.ts"
 cp package/node.js LICENSE "$staged/"
-node -e '
-const [template, out, version, commit, dirty, sources, profile] = process.argv.slice(1);
-const fs = require("node:fs");
-const manifest = JSON.parse(fs.readFileSync(template, "utf8"));
-manifest.version = version;
-manifest.cascadeBridge = { commit, dirty: dirty === "true", sources, profile };
-fs.writeFileSync(out, `${JSON.stringify(manifest, null, 2)}\n`);
-' package/package.json "$staged/package.json" "$version-commit-$commit" "$commit" "$dirty" "$sources" "$profile"
+node package/stamp.mjs package/package.json "$staged/package.json" "$commit" "$dirty" "$sources" "$profile"
 rm -rf "$dist"
 mv "$staged" "$dist"
