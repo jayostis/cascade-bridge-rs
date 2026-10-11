@@ -38,7 +38,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ${{ github.event.repository.name }}
-          key: ${{ hashFiles(format('{0}/Cargo.toml', github.event.repository.name)) }}
+          key: ${{ hashFiles(format('{0}/Cargo.toml', github.event.repository.name), format('{0}/Cargo.lock', github.event.repository.name), format('{0}/rust-toolchain.toml', github.event.repository.name), format('{0}/crates/*/Cargo.toml', github.event.repository.name)) }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          add-rust-environment-hash-key: false
       # build.sh fetches its tools into target/, which rust-cache does not keep.
       - uses: actions/cache@v6
         with:
