@@ -10,7 +10,6 @@ use std::time::Duration;
 // std's clock panics on wasm32-unknown-unknown, where this one asks the host.
 use web_time::Instant;
 
-/// A CONSTRUCT's rows are the triples it constructed; an ASK's, 1 when it answered true.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QueryProfile {
     pub iri: String,

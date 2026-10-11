@@ -223,7 +223,6 @@ impl Loaded {
         self.conversion(run::convert(&self.prepared, source(document))?)
     }
 
-    /// The conversion `convert` returns, and each query's executions, rows and time in it.
     pub fn convert_profiled(
         &self,
         document: &Document<'_>,

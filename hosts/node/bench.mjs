@@ -73,9 +73,7 @@ function globbed(glob) {
   return new RegExp(`^${pattern}$`);
 }
 
-// The repository's root is the manifest's grandparent, as cascade-bridge-spec's
-// bench/manifest.schema.json has it; a document whose bytes are not the ones it
-// names is refused, so no number is taken on the wrong input.
+// The adapter's directory is the manifest's grandparent.
 function listed(parsed) {
   const root = dirname(dirname(resolve(parsed.manifest)));
   const manifest = JSON.parse(at(parsed.manifest, () => readFileSync(parsed.manifest, "utf8")));
@@ -141,7 +139,6 @@ function git(directory, ...args) {
   }
 }
 
-// Keyed by the checkout's directory name, as the compatibility tool names its rows.
 function checkoutCommit(directory) {
   const top = git(directory, "rev-parse", "--show-toplevel");
   const head = git(directory, "rev-parse", "HEAD");
@@ -156,9 +153,7 @@ function osName() {
     try {
       const pretty = /^PRETTY_NAME="?(.*?)"?$/m.exec(readFileSync("/etc/os-release", "utf8"));
       if (pretty) return pretty[1];
-    } catch {
-      // Not every Linux has the file; the kernel's name says less, but something.
-    }
+    } catch {}
   }
   return `${os.type()} ${os.release()}`;
 }
@@ -355,7 +350,6 @@ function resultFile(side, inputs, adapterIri, commits) {
       : { [side.manifest.name]: `${side.built.commit}${side.built.dirty ? "-dirty" : ""}` };
   return {
     env: environment(side),
-    // The package names the engine it was built from, whatever checkout holds the adapter.
     commit: { ...commits, ...engine },
     results: [
       ...inputs.flatMap((input) => inputResults(input, side.outcomes.get(input.id), adapterIri)),

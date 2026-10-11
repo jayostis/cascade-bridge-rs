@@ -1,6 +1,5 @@
-// One sample of `bench.mjs`, in a fresh process so its first convert starts from a cold
-// module: load the adapter, then convert the document twice. It says each phase as it
-// starts, then what it measured, one JSON object per line.
+// One sample of `bench.mjs`: load the adapter, then convert the document twice. It says
+// each phase as it starts, then what it measured, one JSON object per line.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -40,20 +39,16 @@ function loaded() {
   try {
     adapter = complete(inputs, (named, vocabulary) => Adapter.load(named, vocabulary));
   } catch (error) {
-    // complete refuses only a file the load asked for that its folder lacks.
     if (error instanceof Refusal) throw Object.assign(error, { kind: "fileMissingFailure" });
     throw error;
   }
-  return {
-    adapter,
-    document: documentOf(inputs.adapter),
-    load: {
-      identifier: description.identifier,
-      seconds: (performance.now() - started) / 1000,
-      filesRead: count(),
-      missingFiles: count() - listed,
-    },
+  const load = {
+    identifier: description.identifier,
+    seconds: (performance.now() - started) / 1000,
+    filesRead: count(),
+    missingFiles: count() - listed,
   };
+  return { adapter, document: documentOf(inputs.adapter), load };
 }
 
 function converted(adapter, document, options) {
