@@ -50,17 +50,22 @@ jobs:
           set +e
           say() { echo "publish: $*"; }
           fail() { say "$*"; exit 1; }
+          # Paths nothing in package/build.sh or cargo reads. Everything else must be unchanged
+          # between the head and the merge for a reuse, so a new build input forces a build.
+          unread=(':!.github' ':!README.md' ':!CLAUDE.md' ':!compatibility.json' ':!hosts')
           merged_head=
+          lookup_failed=
           if [ "$GITHUB_EVENT_NAME" = push ]; then
             if found=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" \
               --jq "[.[] | select(.merge_commit_sha == \"$GITHUB_SHA\")][0] | \"\(.number) \(.head.sha) \(.head.repo.full_name)\""); then
               read -r number merged_head merged_repo <<<"$found"
               if [ "$number" = null ]; then merged_head=; else PULL=$number; fi
             else
-              say "the pull requests of $GITHUB_SHA could not be read"
+              lookup_failed=1
             fi
           fi
           reuse() (
+            [ -z "$lookup_failed" ] || fail "the pull requests of $GITHUB_SHA could not be read, so it is built"
             [ -n "$merged_head" ] || fail "no pull request was merged as $GITHUB_SHA, so it is built"
             [ "$merged_repo" = "$GITHUB_REPOSITORY" ] || fail "the pull request merged as $GITHUB_SHA is from $merged_repo, so it is built"
             dir="$RUNNER_TEMP/reuse"
@@ -76,6 +81,8 @@ jobs:
             [ "$want" = "$have" ] || fail "build-$merged_head was built from other sources than $GITHUB_SHA, so it is built"
             git fetch --quiet --depth=1 origin "refs/pull/$PULL/head" || fail "the head $merged_head cannot be fetched, so $GITHUB_SHA is built"
             [ "$(git rev-parse FETCH_HEAD)" = "$merged_head" ] || fail "refs/pull/$PULL/head is no longer $merged_head, so $GITHUB_SHA is built"
+            git diff --quiet "$merged_head" "$GITHUB_SHA" -- . "${unread[@]}" ||
+              fail "the tree differs between $merged_head and $GITHUB_SHA outside the paths no build reads, so $GITHUB_SHA is built"
             git diff --quiet "$merged_head" "$GITHUB_SHA" -- .github/workflows/publish.yml ||
               fail "publish.yml differs between $merged_head and $GITHUB_SHA, so $GITHUB_SHA is built"
             gh release download "build-$merged_head" --repo "$GITHUB_REPOSITORY" --dir "$dir/assets" ||
@@ -211,6 +218,9 @@ jobs:
               --notes-file "$out/notes.txt" \
               --prerelease \
               --latest=false
+          fi
+          if [ -z "$PULL" ] && [ "$GITHUB_EVENT_NAME" = push ]; then
+            PULL=$(gh api "repos/$GITHUB_REPOSITORY/commits/$COMMIT/pulls"               --jq "[.[] | select(.merge_commit_sha == \"$COMMIT\")][0].number // empty" || true)
           fi
           if [ -z "$PULL" ]; then
             echo "release: no pull request is known for $COMMIT, so nothing is pruned"

@@ -1,7 +1,5 @@
 // The one place a built package's manifest is written, for a build and for a reuse of another
 // commit's build. Kept fields: a restamp names only the commit, and sources, dirty and profile stay.
-//   node package/stamp.mjs version
-//   node package/stamp.mjs <template> <out> <commit> [<dirty> <sources> <profile>]
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
