@@ -1,0 +1,22 @@
+name: g3
+
+on:
+  push:
+    branches: [perf/85-grow-wasm-memory]
+
+permissions:
+  contents: read
+
+jobs:
+  g3:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - run: node --version
+      - run: node .github/workflows/g3.mjs
+      - run: node .github/workflows/g3.mjs
