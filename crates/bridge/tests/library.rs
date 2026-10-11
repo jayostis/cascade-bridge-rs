@@ -238,6 +238,51 @@ fn one_loaded_adapter_converts_two_documents_each_to_the_graph_a_fresh_load_give
 }
 
 #[test]
+fn a_profiled_convert_converts_as_convert_does_and_profiles_each_query_once_per_record() {
+    let loaded = load(&tiny_to_load(), &vocabulary());
+    let two = fixture("fixtures/in/two.xml");
+    let plain = convert(&loaded, &two);
+    let (profiled, queries) = loaded
+        .convert_profiled(&document(&two))
+        .unwrap_or_else(|error| panic!("the document does not convert: {error}"));
+    let findings =
+        |conversion: &Conversion| canonical(&written(conversion.findings(Format::Turtle, None)));
+    assert_eq!(
+        canonical(&written(profiled.graph(Format::Turtle))),
+        canonical(&written(plain.graph(Format::Turtle)))
+    );
+    assert!(!findings(&plain).is_empty());
+    assert_eq!(findings(&profiled), findings(&plain));
+    let executions: BTreeSet<(String, usize)> = queries
+        .iter()
+        .map(|query| {
+            (
+                query.iri.trim_start_matches(ADAPTER).to_owned(),
+                query.executions,
+            )
+        })
+        .collect();
+    let per_record = |path: &str| (path.to_owned(), plain.records);
+    assert_eq!(
+        executions,
+        BTreeSet::from([
+            per_record("mapping/item.rq"),
+            per_record("mapping/item-code.rq"),
+            per_record("mapping/item-shelf.rq"),
+            per_record("mapping/item-tag.rq"),
+            per_record("mapping/item-findings.rq"),
+            per_record("mapping/item-note-findings.rq"),
+            ("mapping/detect.rq".to_owned(), 1),
+        ])
+    );
+    let item = queries
+        .iter()
+        .find(|query| query.iri == format!("{ADAPTER}{MAPPING}"))
+        .expect("the item mapping is profiled");
+    assert!(item.rows > 0, "{item:?}");
+}
+
+#[test]
 fn accepts_a_catalog_and_not_a_document_the_detect_query_does_not_claim() {
     let loaded = load(&tiny_to_load(), &vocabulary());
     let two = fixture("fixtures/in/two.xml");

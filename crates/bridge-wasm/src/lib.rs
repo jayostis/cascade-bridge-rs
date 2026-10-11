@@ -1,7 +1,7 @@
 #[cfg(target_arch = "wasm32")]
 mod allocator;
 
-use cascade_bridge::{ErrorKind, Files, Format, Loaded, Map, Named};
+use cascade_bridge::{ErrorKind, Files, Format, Loaded, Map, Named, QueryProfile};
 use js_sys::{Array, Object, Reflect, Uint8Array};
 use std::sync::atomic::{AtomicBool, Ordering};
 use wasm_bindgen::prelude::*;
@@ -58,6 +58,16 @@ export interface Description {
 export interface ConvertOptions {
   format?: Format;
   findingsRelativeTo?: string;
+  /** Times each query, and counts its executions and rows, into `Conversion.queries`. */
+  profile?: boolean;
+}
+
+/** A CONSTRUCT's rows are the triples it constructed; an ASK's, 1 when it answered true. */
+export interface QueryProfile {
+  iri: string;
+  executions: number;
+  rows: number;
+  seconds: number;
 }
 
 export interface Conversion {
@@ -68,6 +78,8 @@ export interface Conversion {
   findingCount: number;
   detected?: boolean;
   unvalidated?: string;
+  /** In the order each query first ran, where `ConvertOptions.profile` asked for them. */
+  queries?: QueryProfile[];
 }
 
 export interface TestOptions {
@@ -301,6 +313,21 @@ fn array(bytes: &[u8]) -> JsValue {
     Uint8Array::from(bytes).into()
 }
 
+fn profiles(queries: &[QueryProfile]) -> JsValue {
+    queries
+        .iter()
+        .map(|query| {
+            let value = JsValue::from(Object::new());
+            set(&value, "iri", &query.iri.as_str().into());
+            set(&value, "executions", &(query.executions as f64).into());
+            set(&value, "rows", &(query.rows as f64).into());
+            set(&value, "seconds", &query.elapsed.as_secs_f64().into());
+            value
+        })
+        .collect::<Array>()
+        .into()
+}
+
 fn guarded() -> Result<(), JsValue> {
     guard().map_err(thrown)
 }
@@ -377,15 +404,27 @@ impl Adapter {
     ) -> Result<ConversionValue, JsValue> {
         guarded()?;
         let read = DocumentRead::of(document)?;
-        let (format, relative_to) = match options.filter(|options| !absent(options)) {
+        let (format, relative_to, profiled) = match options.filter(|options| !absent(options)) {
             Some(options) => (
                 self::format(Some(&get(&options, "format")?))?,
                 optional_text(&options, "findingsRelativeTo", "options")?,
+                get(&options, "profile")?.is_truthy(),
             ),
-            None => (Format::Turtle, None),
+            None => (Format::Turtle, None, false),
         };
-        let conversion = self.loaded.convert(&read.document()).map_err(thrown)?;
+        let (conversion, queries) = if profiled {
+            let (conversion, queries) = self
+                .loaded
+                .convert_profiled(&read.document())
+                .map_err(thrown)?;
+            (conversion, Some(queries))
+        } else {
+            (self.loaded.convert(&read.document()).map_err(thrown)?, None)
+        };
         let value = JsValue::from(Object::new());
+        if let Some(queries) = queries {
+            set(&value, "queries", &profiles(&queries));
+        }
         set(
             &value,
             "graph",

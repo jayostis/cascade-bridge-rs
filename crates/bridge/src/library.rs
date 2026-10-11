@@ -2,6 +2,7 @@ use crate::earl::{earl_report, ReportSubject};
 use crate::error::{Error, Result};
 use crate::harness::{run_manifest, RunOptions, OFFERED_PROFILES};
 use crate::load::{self, adapter_of, instances, load_adapter, CRATE};
+use crate::query::Profile;
 use crate::rdf::{serialise, serialise_at};
 use crate::records::Supplied;
 use crate::resolver::{key, Maps};
@@ -17,6 +18,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 
 pub use crate::harness::Outcome;
+pub use crate::query::QueryProfile;
 pub use crate::rdf::GraphFormat as Format;
 
 pub const NAME: &str = "Cascade Bridge for Rust";
@@ -218,7 +220,20 @@ impl Loaded {
     }
 
     pub fn convert(&self, document: &Document<'_>) -> Result<Conversion> {
-        let mut run = run::convert(&self.prepared, source(document))?;
+        self.conversion(run::convert(&self.prepared, source(document))?)
+    }
+
+    /// The conversion `convert` returns, and each query's executions, rows and time in it.
+    pub fn convert_profiled(
+        &self,
+        document: &Document<'_>,
+    ) -> Result<(Conversion, Vec<QueryProfile>)> {
+        let profile = Profile::default();
+        let run = run::convert_profiled(&self.prepared, source(document), &profile)?;
+        Ok((self.conversion(run)?, profile.queries()))
+    }
+
+    fn conversion(&self, mut run: run::Conversion) -> Result<Conversion> {
         if self.unvalidated.is_some() {
             run.findings.clear();
         }
