@@ -1,3 +1,6 @@
+#[cfg(target_arch = "wasm32")]
+mod allocator;
+
 use cascade_bridge::{ErrorKind, Files, Format, Loaded, Map, Named};
 use js_sys::{Array, Object, Reflect, Uint8Array};
 use std::sync::atomic::{AtomicBool, Ordering};
