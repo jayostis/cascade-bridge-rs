@@ -110,6 +110,9 @@ fn must_pass_with() -> Vec<String> {
         .collect()
 }
 
+const WHERE_CODE_LIVES: [&str; 3] = ["crates", "hosts", "package"];
+const BUILT: [&str; 3] = ["dist", "dist.partial", "node_modules"];
+
 fn files_under(directory: &Path) -> Vec<PathBuf> {
     let mut files = Vec::new();
     let mut stack = vec![directory.to_owned()];
@@ -117,7 +120,12 @@ fn files_under(directory: &Path) -> Vec<PathBuf> {
         for entry in std::fs::read_dir(&directory).expect("read directory") {
             let path = entry.expect("entry").path();
             if path.is_dir() {
-                stack.push(path);
+                if !path
+                    .file_name()
+                    .is_some_and(|name| BUILT.iter().any(|built| name == *built))
+                {
+                    stack.push(path);
+                }
             } else {
                 files.push(path);
             }
@@ -128,8 +136,9 @@ fn files_under(directory: &Path) -> Vec<PathBuf> {
 
 fn files_naming(name: &str) -> Vec<String> {
     let workspace = workspace();
-    let mut naming: Vec<String> = files_under(&workspace.join("crates"))
-        .into_iter()
+    let mut naming: Vec<String> = WHERE_CODE_LIVES
+        .iter()
+        .flat_map(|directory| files_under(&workspace.join(directory)))
         .filter(|file| {
             String::from_utf8_lossy(&std::fs::read(file).expect("read file")).contains(name)
         })
