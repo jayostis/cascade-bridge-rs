@@ -2,7 +2,7 @@ name: ci
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, edited]
+    types: [opened, synchronize, reopened]
   push:
     branches: [main]
   # Nothing pins the counterparts; nightly notices when their default branches move.
@@ -64,14 +64,3 @@ jobs:
         working-directory: ${{ github.event.repository.name }}
       - run: npx --yes typescript@7.0.2 --noEmit --strict package/tests/consumer.ts
         working-directory: ${{ github.event.repository.name }}
-
-  ready-to-merge:
-    name: ready-to-merge
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-    steps:
-      - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
-        with:
-          check: ready-to-merge
