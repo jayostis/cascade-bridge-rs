@@ -14,3 +14,6 @@ cascade-bridge = { path = "../bridge", version = "=0.1.0" }
 js-sys = "=0.3.105"
 oxigraph = { version = "=0.5.11", default-features = false, features = ["js"] }
 wasm-bindgen = "=0.2.128"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+dlmalloc = "=0.2.14"

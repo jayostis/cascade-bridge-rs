@@ -73,3 +73,13 @@ test("a freed adapter throws on convert", async () => {
   adapter.free();
   assert.throws(() => adapter.convert(document(two)));
 });
+
+test("wasm memory grows by 16 MiB or more each time it grows", async () => {
+  const { Adapter, initSync } = await bridge();
+  Adapter.load({ iri: ADAPTER, files: toLoad() }, vocabulary).convert(document(two));
+  const { memory, memory_grow_calls } = initSync();
+  const grows = memory_grow_calls();
+  const bytes = memory.buffer.byteLength;
+  assert.ok(grows >= 1, `memory grew ${grows} times`);
+  assert.ok(grows * 16 * 1024 * 1024 <= bytes, `memory grew ${grows} times to ${bytes} bytes`);
+});

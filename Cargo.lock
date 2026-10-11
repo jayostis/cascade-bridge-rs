@@ -191,6 +191,7 @@ name = "cascade-bridge-wasm"
 version = "0.1.0"
 dependencies = [
  "cascade-bridge",
+ "dlmalloc",
  "js-sys",
  "oxigraph",
  "wasm-bindgen",
@@ -423,6 +424,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.5",
+]
+
+[[package]]
+name = "dlmalloc"
+version = "0.2.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ad5208a115eaba24916f7456929832e310a81518c641f93fee4f89aa93aa3675"
+dependencies = [
+ "cfg-if",
+ "libc",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
