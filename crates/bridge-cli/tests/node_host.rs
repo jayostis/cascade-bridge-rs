@@ -875,11 +875,18 @@ fn bench(arguments: &[&str]) -> Output {
 }
 
 fn benched(documents: &[&Path], extra: &[&str]) -> BTreeMap<String, serde_json::Value> {
+    let adapter = tiny();
+    let mut given: Vec<&str> = vec![adapter.to_str().expect("a path")];
+    given.extend(documents.iter().map(|path| path.to_str().expect("a path")));
+    given.extend(extra);
+    benched_with(&given)
+}
+
+fn benched_with(given: &[&str]) -> BTreeMap<String, serde_json::Value> {
     let scratch = scratch();
     let out = scratch.path().join("result.json");
-    let (adapter, vocabularies) = (tiny(), vocabularies());
-    let mut arguments: Vec<&str> = vec![adapter.to_str().expect("a path")];
-    arguments.extend(documents.iter().map(|path| path.to_str().expect("a path")));
+    let vocabularies = vocabularies();
+    let mut arguments: Vec<&str> = given.to_vec();
     arguments.extend([
         "--vocabularies",
         vocabularies.to_str().expect("a path"),
@@ -888,7 +895,6 @@ fn benched(documents: &[&Path], extra: &[&str]) -> BTreeMap<String, serde_json::
         "--out",
         out.to_str().expect("a path"),
     ]);
-    arguments.extend(extra);
     let run = bench(&arguments);
     assert_eq!(
         run.status.code(),
@@ -967,6 +973,51 @@ fn the_bench_writes_each_measure_of_both_converts_and_the_package_it_measured() 
         .expect("the engine's commit");
     let built_commit = built["cascadeBridge"]["commit"].as_str().expect("a commit");
     assert!(commit.starts_with(built_commit), "{commit}");
+}
+
+const ONE_ITEM: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<catalog>\n  <item id=\"1\"><title>First</title></item>\n</catalog>\n";
+const ONE_ITEM_SHA256: &str = "5972608950740eaee2ba162fb8892764b2108e34c91e43fca5ed6c734d9a4181";
+
+#[test]
+fn the_bench_measures_what_a_manifest_lists_and_refuses_bytes_it_does_not_name() {
+    let scratch = scratch();
+    let adapter = scratch.path().join("adapter");
+    copied_to(&tiny(), &adapter);
+    std::fs::create_dir_all(adapter.join("bench")).expect("the bench directory");
+    std::fs::write(adapter.join("bench/one.xml"), ONE_ITEM).expect("the input");
+    let manifest = adapter.join("bench/manifest.json");
+    let listing = |sha256: &str| {
+        serde_json::json!({ "inputs": [{
+            "id": "catalog-one",
+            "path": "bench/one.xml",
+            "sha256": sha256,
+            "bytes": ONE_ITEM.len(),
+            "measures": ["convert", "triples"],
+            "onPullRequests": true,
+            "timeoutSeconds": 60,
+        }]})
+        .to_string()
+    };
+    let manifest_path = manifest.to_str().expect("a path");
+    std::fs::write(&manifest, listing(ONE_ITEM_SHA256)).expect("the manifest");
+    let file = benched_with(&["--inputs", manifest_path]);
+    let named: Vec<&String> = file
+        .keys()
+        .filter(|name| name.starts_with("catalog-one/"))
+        .collect();
+    assert_eq!(
+        named,
+        [
+            "catalog-one/convert/first",
+            "catalog-one/convert/second",
+            "catalog-one/triples"
+        ]
+    );
+    std::fs::write(&manifest, listing(&"0".repeat(64))).expect("the manifest");
+    let refused = bench(&["--inputs", manifest_path, "--samples", "1"]);
+    let said = String::from_utf8_lossy(&refused.stderr);
+    assert_eq!(refused.status.code(), Some(2), "{said}");
+    assert!(said.contains(ONE_ITEM_SHA256), "{said}");
 }
 
 #[test]

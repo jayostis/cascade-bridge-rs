@@ -10,16 +10,17 @@ import { fileURLToPath } from "node:url";
 import { gunzipSync } from "node:zlib";
 import { at, iriOf, Refusal } from "./host.mjs";
 
-const USAGE = `usage: node hosts/node/bench.mjs <adapter-dir> <document>... [--vocabularies <directory>] [--envelope <iri>]
-         [--samples <n>] [--timeout <seconds>] [--package <directory>] [--out <file.json>]
-         [--baseline <directory> [--baseline-out <file.json>]]`;
+const USAGE = `usage: node hosts/node/bench.mjs --inputs <bench/manifest.json> [--only <glob>] [--pull-requests] [options]
+       node hosts/node/bench.mjs <adapter-dir> <document>... [--envelope <iri>] [options]
+options: [--vocabularies <directory>] [--samples <n>] [--timeout <seconds>] [--package <directory>]
+         [--out <file.json>] [--baseline <directory> [--baseline-out <file.json>]]`;
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SAMPLE = join(HERE, "bench-sample.mjs");
 const SECONDS = 6;
 
 function parse(argv) {
-  const parsed = { documents: [], samples: 5, timeout: 300, package: join(HERE, "../../package/dist") };
+  const parsed = { documents: [], samples: 5, package: join(HERE, "../../package/dist") };
   const rest = [...argv];
   const next = () => {
     if (rest.length === 0) throw new Refusal(USAGE);
@@ -41,13 +42,66 @@ function parse(argv) {
     else if (argument === "--out") parsed.out = next();
     else if (argument === "--baseline") parsed.baseline = next();
     else if (argument === "--baseline-out") parsed.baselineOut = next();
+    else if (argument === "--inputs") parsed.manifest = next();
+    else if (argument === "--only") parsed.only = next();
+    else if (argument === "--pull-requests") parsed.pullRequests = true;
     else if (argument.startsWith("--")) throw new Refusal(USAGE);
     else if (parsed.adapter === undefined) parsed.adapter = argument;
     else parsed.documents.push(argument);
   }
-  if (parsed.documents.length === 0) throw new Refusal(USAGE);
+  const fromManifest = parsed.manifest !== undefined;
+  if (fromManifest === (parsed.adapter !== undefined)) throw new Refusal(USAGE);
+  if (!fromManifest && (parsed.documents.length === 0 || parsed.only !== undefined || parsed.pullRequests)) {
+    throw new Refusal(USAGE);
+  }
+  if (fromManifest && parsed.envelope !== undefined) throw new Refusal(USAGE);
   if (parsed.baselineOut !== undefined && parsed.baseline === undefined) throw new Refusal(USAGE);
   return parsed;
+}
+
+function digested(path) {
+  const read = at(path, () => readFileSync(path));
+  const bytes = path.endsWith(".gz") ? gunzipSync(read) : read;
+  return { sha256: createHash("sha256").update(bytes).digest("hex"), bytes: bytes.byteLength };
+}
+
+function globbed(glob) {
+  const pattern = glob
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replaceAll("*", ".*")
+    .replaceAll("?", ".");
+  return new RegExp(`^${pattern}$`);
+}
+
+// The repository's root is the manifest's grandparent, as cascade-bridge-spec's
+// bench/manifest.schema.json has it; a document whose bytes are not the ones it
+// names is refused, so no number is taken on the wrong input.
+function listed(parsed) {
+  const root = dirname(dirname(resolve(parsed.manifest)));
+  const manifest = JSON.parse(at(parsed.manifest, () => readFileSync(parsed.manifest, "utf8")));
+  const only = parsed.only === undefined ? undefined : globbed(parsed.only);
+  const inputs = manifest.inputs
+    .filter((input) => only === undefined || only.test(input.id))
+    .filter((input) => !parsed.pullRequests || input.onPullRequests)
+    .map((input) => {
+      const path = join(root, ...input.path.split("/"));
+      const found = digested(path);
+      if (found.sha256 !== input.sha256 || found.bytes !== input.bytes) {
+        throw new Refusal(
+          `${path}: ${found.bytes} bytes of sha256 ${found.sha256}, where ${parsed.manifest} names ${input.bytes} bytes of sha256 ${input.sha256}`,
+        );
+      }
+      return {
+        path,
+        id: input.id,
+        ...found,
+        envelope: input.envelope,
+        measures: input.measures,
+        timeout: parsed.timeout ?? input.timeoutSeconds,
+      };
+    });
+  if (inputs.length === 0) throw new Refusal(`${parsed.manifest}: no input is chosen`);
+  return { adapter: root, inputs };
 }
 
 function segment(text) {
@@ -59,15 +113,14 @@ function segment(text) {
   return made;
 }
 
-function inputOf(path) {
-  const read = at(path, () => readFileSync(path));
-  const bytes = path.endsWith(".gz") ? gunzipSync(read) : read;
+function inputOf(path, parsed) {
   const name = basename(path).replace(/\.gz$/, "");
   return {
     path,
     id: segment(name.includes(".") ? name.slice(0, name.lastIndexOf(".")) : name),
-    sha256: createHash("sha256").update(bytes).digest("hex"),
-    bytes: bytes.byteLength,
+    ...digested(path),
+    envelope: parsed.envelope,
+    timeout: parsed.timeout ?? 300,
   };
 }
 
@@ -129,7 +182,7 @@ function sampled(side, input, parsed) {
     adapter: parsed.adapter,
     vocabularies: parsed.vocabularies,
     document: input.path,
-    envelope: parsed.envelope,
+    envelope: input.envelope,
   };
   return new Promise((done, failed) => {
     const child = spawn(process.execPath, [SAMPLE, JSON.stringify(given)], { stdio: ["ignore", "pipe", "pipe"] });
@@ -141,7 +194,7 @@ function sampled(side, input, parsed) {
     const timer = setTimeout(() => {
       timedOut = true;
       child.kill();
-    }, parsed.timeout * 1000);
+    }, input.timeout * 1000);
     child.on("error", failed);
     child.on("close", (code) => {
       clearTimeout(timer);
@@ -263,7 +316,9 @@ function inputResults(input, outcomes, adapterIri) {
       );
     }
   }
-  return results;
+  return input.measures === undefined
+    ? results
+    : results.filter(({ name }) => input.measures.includes(name.split("/")[1]));
 }
 
 function loadResults(outcomes) {
@@ -300,7 +355,8 @@ function resultFile(side, inputs, adapterIri, commits) {
       : { [side.manifest.name]: `${side.built.commit}${side.built.dirty ? "-dirty" : ""}` };
   return {
     env: environment(side),
-    commit: { ...engine, ...commits },
+    // The package names the engine it was built from, whatever checkout holds the adapter.
+    commit: { ...commits, ...engine },
     results: [
       ...inputs.flatMap((input) => inputResults(input, side.outcomes.get(input.id), adapterIri)),
       ...loadResults(all),
@@ -357,9 +413,11 @@ function table(inputs, files, sides) {
 }
 
 async function run(parsed) {
+  let inputs;
+  if (parsed.manifest === undefined) inputs = parsed.documents.map((path) => inputOf(path, parsed));
+  else ({ adapter: parsed.adapter, inputs } = listed(parsed));
   at(parsed.adapter, () => statSync(join(parsed.adapter, "ro-crate-metadata.json")));
   if (parsed.vocabularies !== undefined) at(parsed.vocabularies, () => statSync(parsed.vocabularies));
-  const inputs = parsed.documents.map(inputOf);
   const ids = inputs.map(({ id }) => id);
   const twice = ids.find((id, index) => ids.indexOf(id) !== index);
   if (twice !== undefined) throw new Refusal(`two documents are both named ${twice}; rename one`);
@@ -373,7 +431,7 @@ async function run(parsed) {
         const outcomes = side.outcomes.get(input.id);
         if (outcomes.some(({ sample }) => sample === undefined)) continue;
         const outcome = await sampled(side, input, parsed);
-        if (outcome.timeout !== undefined) outcome.seconds = parsed.timeout;
+        if (outcome.timeout !== undefined) outcome.seconds = input.timeout;
         outcomes.push(outcome);
         const ended =
           outcome.sample !== undefined
