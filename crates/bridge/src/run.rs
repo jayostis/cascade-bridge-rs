@@ -3,7 +3,7 @@ use crate::annotation::{self, Record};
 use crate::error::{Error, ErrorKind, Explained, Result};
 use crate::lift::{admitting, Admission, Lift, Paths, Reading, Unit};
 use crate::load::{subject, value, Adapter};
-use crate::query::{Form, Query};
+use crate::query::{Form, Profile, Query};
 use crate::rdf::FINDINGS_PREFIXES;
 use crate::records::{self, Document, Release, Supplied};
 use crate::resolver::Resolver;
@@ -12,7 +12,6 @@ use crate::terms::SCHEMA_ENCODING_FORMAT;
 use crate::validate::Schema;
 use crate::vocabulary::Vocabulary;
 use oxigraph::model::Quad;
-use oxigraph::sparql::QueryResults;
 use oxrdfio::{RdfFormat, RdfParser};
 use std::collections::{HashMap, HashSet};
 
@@ -287,10 +286,26 @@ pub(crate) fn accepts(prepared: &Prepared, source: Source<'_>) -> Result<bool> {
         .explained_by(ErrorKind::Document)?
         .is_some()
     {}
-    detected(detect, lift)
+    detected(detect, lift, None)
 }
 
 pub(crate) fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
+    converted(prepared, source, None)
+}
+
+pub(crate) fn convert_profiled(
+    prepared: &Prepared,
+    source: Source<'_>,
+    profile: &Profile,
+) -> Result<Conversion> {
+    converted(prepared, source, Some(profile))
+}
+
+fn converted(
+    prepared: &Prepared,
+    source: Source<'_>,
+    profile: Option<&Profile>,
+) -> Result<Conversion> {
     let named = source
         .envelope
         .map(|iri| prepared.named_envelope(iri))
@@ -306,8 +321,8 @@ pub(crate) fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Convers
     let reading = reading(prepared, named);
     let arrived_in = Document::new(source.bytes, source.facts).explained_by(ErrorKind::Facts)?;
 
-    let table =
-        document_table(prepared, &text, &reading, &arrived_in).explained_by(ErrorKind::Document)?;
+    let table = document_table(prepared, &text, &reading, &arrived_in, profile)
+        .explained_by(ErrorKind::Document)?;
     let arrived_in = arrived_in.with_table(table);
     let mut lift = syntax
         .lift(&text, &reading, paths)
@@ -332,6 +347,7 @@ pub(crate) fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Convers
             &unit,
             followed.as_ref(),
             &arrived_in,
+            profile,
         )?;
         conversion.quads.extend(produced);
         conversion.findings.extend(findings);
@@ -354,11 +370,12 @@ pub(crate) fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Convers
     conversion.detected = prepared
         .detect
         .as_ref()
-        .map(|detect| detected(detect, lift))
+        .map(|detect| detected(detect, lift, profile))
         .transpose()?;
     Ok(conversion)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn unit_converted(
     prepared: &Prepared,
     schema: Option<&dyn Schema>,
@@ -367,6 +384,7 @@ fn unit_converted(
     unit: &Unit,
     followed: &dyn Addresses,
     arrived_in: &Document,
+    profile: Option<&Profile>,
 ) -> Result<(Vec<Quad>, Vec<Quad>)> {
     let selector = unit.selector();
     let selector_type = prepared.syntax.selector_type();
@@ -380,7 +398,7 @@ fn unit_converted(
         findings.extend(accounting.findings(&record, unit)?);
     }
     unit.store.extend(arrived_in.dataset(&selector))?;
-    let versioned = records::versioned(mapped(prepared, unit)?)?;
+    let versioned = records::versioned(mapped(prepared, unit, profile)?)?;
     for dropped in &versioned.dropped {
         findings.extend(annotation::not_kept(
             &record,
@@ -392,7 +410,7 @@ fn unit_converted(
     if let Some(vocabulary) = &prepared.vocabulary {
         findings.extend(vocabulary.findings(&record, &produced)?);
     }
-    let queried = queried(prepared, &record, unit)?;
+    let queried = queried(prepared, &record, unit, profile)?;
     let document = Record {
         source: iri,
         selector: document,
@@ -419,11 +437,11 @@ fn validated(schema: Option<&dyn Schema>, record: &Record<'_>, text: &str) -> Re
     Ok(findings)
 }
 
-fn mapped(prepared: &Prepared, unit: &Unit) -> Result<Vec<Quad>> {
+fn mapped(prepared: &Prepared, unit: &Unit, profile: Option<&Profile>) -> Result<Vec<Quad>> {
     unit.store.extend(prepared.tables.iter().cloned())?;
     let mut produced = Vec::new();
     for mapping in &prepared.mappings {
-        produced.extend(mapping.graph(&unit.store)?);
+        produced.extend(mapping.graph(&unit.store, profile)?);
     }
     Ok(produced)
 }
@@ -433,6 +451,7 @@ fn document_table(
     text: &str,
     reading: &Reading<'_>,
     arrived_in: &Document,
+    profile: Option<&Profile>,
 ) -> Result<Vec<Quad>> {
     let mut table = Vec::new();
     if prepared.document_table_queries.is_empty() {
@@ -443,16 +462,21 @@ fn document_table(
         unit.store.extend(prepared.tables.iter().cloned())?;
         unit.store.extend(arrived_in.dataset(&unit.selector()))?;
         for query in &prepared.document_table_queries {
-            table.extend(query.graph(&unit.store)?);
+            table.extend(query.graph(&unit.store, profile)?);
         }
     }
     Ok(table)
 }
 
-fn queried(prepared: &Prepared, record: &Record<'_>, unit: &Unit) -> Result<Vec<Quad>> {
+fn queried(
+    prepared: &Prepared,
+    record: &Record<'_>,
+    unit: &Unit,
+    profile: Option<&Profile>,
+) -> Result<Vec<Quad>> {
     let mut findings = Vec::new();
     for findings_query in &prepared.findings_queries {
-        let constructed = findings_query.graph(&unit.store)?;
+        let constructed = findings_query.graph(&unit.store, profile)?;
         findings.extend(annotation::about(
             record,
             &findings_query.iri,
@@ -485,15 +509,9 @@ fn document_findings(
     validated(Some(schema), &record, text)
 }
 
-fn detected(detect: &Query, lift: Box<dyn Lift + '_>) -> Result<bool> {
+fn detected(detect: &Query, lift: Box<dyn Lift + '_>, profile: Option<&Profile>) -> Result<bool> {
     let skeleton = lift.into_skeleton().explained_by(ErrorKind::Document)?;
-    let QueryResults::Boolean(answer) = detect.on(&skeleton)? else {
-        return Err(Error::adapter(format!(
-            "detect query {} is not an ASK",
-            detect.iri
-        )));
-    };
-    Ok(answer)
+    detect.ask(&skeleton, "detect query", profile)
 }
 
 #[cfg(test)]

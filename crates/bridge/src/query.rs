@@ -5,6 +5,64 @@ use oxigraph::model::{GraphName, Quad};
 use oxigraph::sparql::{PreparedSparqlQuery, QueryResults, SparqlEvaluator};
 use oxigraph::store::Store;
 use spargebra::algebra::{AggregateExpression, Expression, GraphPattern, OrderExpression};
+use std::cell::RefCell;
+use std::time::Duration;
+// std's clock panics on wasm32-unknown-unknown, where this one asks the host.
+use web_time::Instant;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QueryProfile {
+    pub iri: String,
+    pub executions: usize,
+    pub rows: usize,
+    pub elapsed: Duration,
+}
+
+/// In the order each query first ran.
+#[derive(Default)]
+pub(crate) struct Profile(RefCell<Vec<QueryProfile>>);
+
+impl Profile {
+    fn add(&self, iri: &str, rows: usize, elapsed: Duration) {
+        let mut profiles = self.0.borrow_mut();
+        match profiles.iter_mut().find(|profile| profile.iri == iri) {
+            Some(profile) => {
+                profile.executions += 1;
+                profile.rows += rows;
+                profile.elapsed += elapsed;
+            }
+            None => profiles.push(QueryProfile {
+                iri: iri.to_owned(),
+                executions: 1,
+                rows,
+                elapsed,
+            }),
+        }
+    }
+
+    pub(crate) fn queries(self) -> Vec<QueryProfile> {
+        self.0.into_inner()
+    }
+}
+
+/// Reads no clock unless a profile is kept.
+struct Timing<'a> {
+    kept: Option<(&'a Profile, Instant)>,
+}
+
+impl<'a> Timing<'a> {
+    fn start(profile: Option<&'a Profile>) -> Self {
+        Self {
+            kept: profile.map(|profile| (profile, Instant::now())),
+        }
+    }
+
+    fn stop(self, iri: &str, rows: usize) {
+        if let Some((profile, started)) = self.kept {
+            profile.add(iri, rows, started.elapsed());
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Form {
@@ -74,7 +132,7 @@ impl Query {
         })
     }
 
-    pub(crate) fn on(&self, store: &Store) -> Result<QueryResults<'static>> {
+    fn on(&self, store: &Store) -> Result<QueryResults<'static>> {
         // Copies the algebra already parsed; the text is not parsed again.
         self.prepared
             .clone()
@@ -83,7 +141,8 @@ impl Query {
             .map_err(|e| Error::from(e).explained_by(ErrorKind::Adapter))
     }
 
-    pub(crate) fn graph(&self, store: &Store) -> Result<Vec<Quad>> {
+    pub(crate) fn graph(&self, store: &Store, profile: Option<&Profile>) -> Result<Vec<Quad>> {
+        let timing = Timing::start(profile);
         let QueryResults::Graph(triples) = self.on(store)? else {
             return Err(Error::adapter(format!(
                 "{} is not a {}",
@@ -101,7 +160,21 @@ impl Query {
                 GraphName::DefaultGraph,
             ));
         }
+        timing.stop(&self.iri, quads.len());
         Ok(Minted::default().apart(quads))
+    }
+
+    pub(crate) fn ask(&self, store: &Store, what: &str, profile: Option<&Profile>) -> Result<bool> {
+        let timing = Timing::start(profile);
+        let QueryResults::Boolean(answer) = self.on(store)? else {
+            return Err(Error::adapter(format!(
+                "{what} {} is not an {}",
+                self.iri,
+                Form::Ask.keyword()
+            )));
+        };
+        timing.stop(&self.iri, usize::from(answer));
+        Ok(answer)
     }
 }
 
