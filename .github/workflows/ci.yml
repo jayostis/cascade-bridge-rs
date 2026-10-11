@@ -33,12 +33,20 @@ jobs:
         with:
           path: ${{ github.event.repository.name }}
           persist-credentials: false
+      # The runner images preinstall different toolchains, and rust-cache hashes every one it finds into its key.
+      # It runs outside the checkout, so it reads the default toolchain, not the pinned one.
+      - run: |
+          rustup toolchain install --profile minimal
+          channel=$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)
+          rustup default "$channel"
+          rustup toolchain list | cut -d' ' -f1 | grep -v "^$channel-" | xargs -r -n1 rustup toolchain uninstall
+        working-directory: ${{ github.event.repository.name }}
       - run: rustc --version
         working-directory: ${{ github.event.repository.name }}
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ${{ github.event.repository.name }}
-          key: ${{ hashFiles(format('{0}/Cargo.toml', github.event.repository.name)) }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       # build.sh fetches its tools into target/, which rust-cache does not keep.
       - uses: actions/cache@v6
         with:
