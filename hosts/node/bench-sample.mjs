@@ -86,8 +86,8 @@ try {
   const { adapter, document, load } = loaded();
   say({ phase: "convert" });
   const [profileFirst, profileSecond] = given.profile ?? [true, false];
-  const first = converted(adapter, document, { profile: profileFirst });
-  const second = converted(adapter, document, { profile: profileSecond });
+  const first = converted(adapter, document, { profile: profileFirst, executor: given.executor });
+  const second = converted(adapter, document, { profile: profileSecond, executor: given.executor });
   say({
     sample: { load, converts: [first, second], rss: process.resourceUsage().maxRSS * 1024, skipped: skip },
   });

@@ -975,6 +975,28 @@ fn the_bench_writes_each_measure_of_both_converts_and_the_package_it_measured() 
     assert!(commit.starts_with(built_commit), "{commit}");
 }
 
+#[test]
+fn the_bench_converts_with_the_executor_it_is_given_and_refuses_a_name_it_does_not_know() {
+    let two = tiny().join("fixtures/in/two.xml");
+    let by_default = benched(&[&two], &[]);
+    for executor in ["compiled", "spareval", "both"] {
+        let file = benched(&[&two], &["--executor", executor]);
+        assert_eq!(
+            file["two/triples"]["value"], by_default["two/triples"]["value"],
+            "{executor}"
+        );
+    }
+    let adapter = tiny();
+    let refused = bench(&[
+        adapter.to_str().expect("a path"),
+        two.to_str().expect("a path"),
+        "--executor",
+        "fast",
+    ]);
+    assert_eq!(refused.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("usage:"));
+}
+
 const ONE_ITEM: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<catalog>\n  <item id=\"1\"><title>First</title></item>\n</catalog>\n";
 const ONE_ITEM_SHA256: &str = "5972608950740eaee2ba162fb8892764b2108e34c91e43fca5ed6c734d9a4181";
 
