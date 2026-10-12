@@ -308,6 +308,21 @@ const DECLINED: &[(&str, &str, &str)] = &[
         "a group reads a variable only the groups around it bind",
     ),
     (
+        "a group in an EXISTS reading a variable of the row the EXISTS runs on, in a filter",
+        "CONSTRUCT { ?i :seen :yes } WHERE { ?i a :Item . FILTER EXISTS { ?z :key ?k . { ?y :label ?l FILTER(?i = :a) } } }",
+        "a group reads a variable only the groups around it bind",
+    ),
+    (
+        "a group in a NOT EXISTS reading a variable of the row the NOT EXISTS runs on, in a filter",
+        "CONSTRUCT { ?i :seen :yes } WHERE { ?i a :Item . FILTER NOT EXISTS { ?z :key ?k . { ?y :label ?l FILTER(?i = :a) } } }",
+        "a group reads a variable only the groups around it bind",
+    ),
+    (
+        "a group in an EXISTS reading a variable of the row the EXISTS runs on, in a NOT EXISTS",
+        "CONSTRUCT { ?i :seen :yes } WHERE { ?i a :Item . FILTER EXISTS { ?z :key ?k . { ?y :label ?l FILTER NOT EXISTS { ?i :name \"alpha\" } } } }",
+        "a group reads a variable only the groups around it bind",
+    ),
+    (
         "a typed literal in a pattern",
         "CONSTRUCT { ?s :p ?o } WHERE { ?s :id ?o . ?s :size 07 }",
         "a typed literal in a pattern, which a store matches by value",
@@ -318,6 +333,101 @@ const DECLINED: &[(&str, &str, &str)] = &[
         "a typed literal in VALUES, which a join matches by value",
     ),
 ];
+
+const KEYED_PLAIN: &str = r#"
+@prefix : <urn:t#> .
+:a :p 1 .
+:a2 :p 2 ; :name "z" .
+:b :q "y" ; :r "y" .
+:b2 :q "z" ; :r "z" .
+"#;
+
+const KEYED_MIXED: &str = r#"
+@prefix : <urn:t#> .
+:b :q "y" ; :r "y" .
+:c :q "y"@en ; :r "y" .
+:d :q 7 ; :r "7" .
+:e :q [ :s :t ] ; :r "x" .
+"#;
+
+const KEYED: &[(&str, &str, &str)] = &[
+    (
+        "a key read from a variable an OPTIONAL binds in some rows only",
+        KEYED_PLAIN,
+        "CONSTRUCT { ?b :got ?k } WHERE { ?a :p ?x . OPTIONAL { ?a :name ?m } ?b :q ?k . ?b :r ?m . FILTER(?k = STR(?m)) }",
+    ),
+    (
+        "a key read from a variable a UNION binds in some rows only",
+        KEYED_PLAIN,
+        "CONSTRUCT { ?b :got ?k } WHERE { { ?a :p ?x } UNION { ?a :p ?x ; :name ?m } ?b :q ?k . ?b :r ?m . FILTER(?k = STR(?m)) }",
+    ),
+    (
+        "a key against plain, language-tagged, typed and blank-node objects",
+        KEYED_MIXED,
+        "CONSTRUCT { ?b :got ?k } WHERE { ?w :r ?m . ?b :q ?k . FILTER(?k = STR(?m)) }",
+    ),
+    (
+        "an equality inside a disjunction, which keys nothing",
+        KEYED_PLAIN,
+        "CONSTRUCT { ?b :got ?k } WHERE { ?w :r ?m . ?b :q ?k . FILTER(?k = STR(?m) || ?k = \"z\") }",
+    ),
+];
+
+/// Each with the data that tells the general evaluator from a plan that is wrong.
+const DIVERGENT: &[(&str, &str, &str)] = &[
+    (
+        "a BIND joined with a dateTime of another offset",
+        r#"@prefix : <urn:t#> . @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+:i :when "2020-01-01T00:00:00Z"^^xsd:dateTime ; :at "2020-01-01T01:00:00+01:00"^^xsd:dateTime .
+:j :when "2020-01-01T00:00:00Z"^^xsd:dateTime ; :at "2020-01-01T00:00:00Z"^^xsd:dateTime ."#,
+        "CONSTRUCT { ?i :named ?n } WHERE { ?i :when ?n . { ?i :at ?d BIND(?d AS ?n) } }",
+    ),
+    (
+        "an EXISTS in an EXISTS reading a variable an OPTIONAL binds in some rows only",
+        r#"@prefix : <urn:t#> .
+:a a :Item ; :name "alpha" . :b a :Item . :c a :Item ; :name "one" .
+:one :key "1" ; :label "one" ."#,
+        "CONSTRUCT { ?i :seen :yes } WHERE { ?i a :Item . OPTIONAL { ?i :name ?n } FILTER EXISTS { ?z :key ?k FILTER EXISTS { ?y :label ?n } } }",
+    ),
+    (
+        "an EXISTS in an EXISTS reading a variable bound in every row",
+        r#"@prefix : <urn:t#> .
+:a a :Item ; :name "alpha" . :c a :Item ; :name "one" .
+:one :key "1" ; :label "one" ."#,
+        "CONSTRUCT { ?i :seen :yes } WHERE { ?i a :Item ; :name ?n . FILTER EXISTS { ?z :key ?k FILTER EXISTS { ?y :label ?n } } }",
+    ),
+];
+
+#[test]
+fn answers_each_key_as_the_general_evaluator_does() {
+    let differing: Vec<_> = KEYED
+        .iter()
+        .filter_map(|(construct, data, query)| {
+            let store = graph_of(data);
+            let theirs = evaluated(query, &store);
+            assert!(
+                !theirs.is_empty(),
+                "{construct} answers nothing, so shows nothing"
+            );
+            let ours = compiled(query, &store);
+            (ours != Ok(theirs.clone())).then(|| (*construct, ours, theirs))
+        })
+        .collect();
+    assert!(differing.is_empty(), "{differing:#?}");
+}
+
+#[test]
+fn answers_as_the_general_evaluator_does_where_the_data_tells_a_wrong_plan_apart() {
+    let differing: Vec<_> = DIVERGENT
+        .iter()
+        .filter_map(|(construct, data, query)| {
+            let store = graph_of(data);
+            let (ours, theirs) = (compiled(query, &store), evaluated(query, &store));
+            (ours != Ok(theirs.clone())).then(|| (*construct, ours, theirs))
+        })
+        .collect();
+    assert!(differing.is_empty(), "{differing:#?}");
+}
 
 fn graph() -> Store {
     graph_of(DATA)
