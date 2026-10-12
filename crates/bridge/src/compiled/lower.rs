@@ -37,36 +37,38 @@ pub(crate) fn compile(query: &Query) -> Result<Compiled, String> {
         .map(|triple| lowering.template(triple, &mut blanks))
         .collect::<Result<_, _>>()?;
     Ok(Compiled {
-        plan: built.steps,
+        plan: built.plan(),
         template,
         blanks: blanks.len(),
         width: lowering.next,
     })
 }
 
+type Placed = (Step, Slots);
+
+/// Each step with what is certainly bound once it has run.
 #[derive(Default)]
 struct Built {
-    steps: Plan,
-    after: Vec<Slots>,
+    steps: Vec<Placed>,
 }
 
 impl Built {
     fn push(&mut self, step: Step, certain: &Slots) {
-        self.steps.push(step);
-        self.after.push(certain.clone());
+        self.steps.push((step, certain.clone()));
     }
 
-    fn certain_after<'a>(&'a self, start: usize, entry: &'a Slots, steps: usize) -> &'a Slots {
-        match steps {
-            0 => entry,
-            _ => &self.after[start + steps - 1],
-        }
+    fn plan(self) -> Plan {
+        self.steps.into_iter().map(|(step, _)| step).collect()
     }
 }
 
-/// What a group of patterns has bound so far. `outer` is what may be bound by the
-/// groups around it, which it does not see: a variable it reads that only they bind
-/// would be unbound here, and a plan that carries a row inward would see it.
+/// What a group of patterns has bound so far.
+/// - `certain` and `maybe` are what is bound in every row, and in some row, including
+///   what the groups around it bind.
+/// - `own` is what its own patterns bind in every row, which it would bind alone.
+/// - `outer` is what may be bound by the groups around it, which it does not see: a
+///   variable it reads that is in `outer` and not in `own` would be unbound here,
+///   and a plan that carries a row inward would see the outer value.
 #[derive(Default)]
 struct Frame {
     certain: Slots,
@@ -138,7 +140,7 @@ impl Lowering {
         };
         let mut built = Built::default();
         self.pattern(body, &mut frame, &mut built)?;
-        Ok(built.steps)
+        Ok(built.plan())
     }
 
     fn pattern(
@@ -225,8 +227,7 @@ impl Lowering {
                 variable.as_str()
             ));
         }
-        let mut read = Slots::new();
-        self.mentions(expression, &mut read, None);
+        let read = self.read_by(expression);
         frame.reads(&read)?;
         let expr = self.expression(expression, &frame.certain)?;
         let constant = matches!(
@@ -254,7 +255,7 @@ impl Lowering {
             let mut child = frame.child();
             let mut built = Built::default();
             self.pattern(branch, &mut child, &mut built)?;
-            plans.push(built.steps);
+            plans.push(built.plan());
             maybe.extend(child.maybe);
             certain = Some(intersect(certain, child.certain));
             own = Some(intersect(own, child.own));
@@ -278,7 +279,7 @@ impl Lowering {
         let mut read = Slots::new();
         self.variables(right, &mut read);
         if let Some(condition) = condition {
-            self.mentions(condition, &mut read, None);
+            read.extend(self.read_by(condition));
         }
         frame.reads(&read)?;
         let mut child = frame.child();
@@ -288,7 +289,7 @@ impl Lowering {
             .map(|e| self.expression(e, &child.certain))
             .transpose()?;
         frame.maybe.extend(child.maybe);
-        out.push(Step::Optional(built.steps, condition), &frame.certain);
+        out.push(Step::Optional(built.plan(), condition), &frame.certain);
         Ok(())
     }
 
@@ -333,11 +334,12 @@ impl Lowering {
         self.scopes.pop();
         lowered?;
         if distinct {
+            child.reads(&keys.iter().copied().collect())?;
             for &slot in &keys {
-                frame.binds(slot, child.certain.contains(&slot));
+                frame.binds(slot, child.own.contains(&slot));
             }
             let step = Step::Group(Group {
-                inner: built.steps,
+                inner: built.plan(),
                 keys,
                 aggregates: Vec::new(),
             });
@@ -361,14 +363,15 @@ impl Lowering {
         self.pattern(inner, &mut child, &mut built)?;
         let keys: Vec<usize> = variables.iter().map(|v| self.slot(v)).collect();
         let aggregates = self.aggregates(aggregates, frame, &child)?;
+        child.reads(&keys.iter().copied().collect())?;
         for &slot in &keys {
-            frame.binds(slot, child.certain.contains(&slot));
+            frame.binds(slot, child.own.contains(&slot));
         }
         for aggregate in &aggregates {
             frame.maybe.insert(aggregate.slot);
         }
         let step = Step::Group(Group {
-            inner: built.steps,
+            inner: built.plan(),
             keys,
             aggregates,
         });
@@ -432,9 +435,7 @@ impl Lowering {
         if distinct {
             return Err("DISTINCT in an aggregate".to_owned());
         }
-        let mut read = Slots::new();
-        self.mentions(expr, &mut read, None);
-        group.reads(&read)?;
+        group.reads(&self.read_by(expr))?;
         let operand = self.expression(expr, &group.certain)?;
         match name {
             AggregateFunction::Sum => Ok(Kind::Sum(operand)),
@@ -570,31 +571,35 @@ impl Lowering {
         frame: &mut Frame,
         out: &mut Built,
     ) -> Result<(), String> {
-        let start = out.steps.len();
         let entry = frame.certain.clone();
+        let start = out.steps.len();
         self.pattern(inner, frame, out)?;
-        let mut group = Slots::new();
-        self.variables(inner, &mut group);
+        let steps = out.steps.split_off(start);
+        let certain_after: Vec<Slots> = std::iter::once(entry)
+            .chain(steps.iter().map(|(_, certain)| certain.clone()))
+            .collect();
+        let mut in_group = Slots::new();
+        self.variables(inner, &mut in_group);
         let mut conjuncts = Vec::new();
         conjunction(expr, &mut conjuncts);
-        let steps = out.steps.len() - start;
-        let mut placed = Vec::new();
+        let mut filters: Vec<Vec<Placed>> = certain_after.iter().map(|_| Vec::new()).collect();
         for conjunct in conjuncts {
-            let mut read = Slots::new();
-            self.mentions(conjunct, &mut read, None);
-            frame.reads(&read)?;
-            let mut needed = Slots::new();
-            self.mentions(conjunct, &mut needed, Some(&group));
-            let at = (0..=steps)
-                .find(|&k| needed.is_subset(out.certain_after(start, &entry, k)))
-                .unwrap_or(steps);
-            let certain = out.certain_after(start, &entry, at).clone();
-            placed.push((start + at, self.expression(conjunct, &certain)?, certain));
+            frame.reads(&self.read_by(conjunct))?;
+            let needed = self.needed_to_place(conjunct, &in_group);
+            let after = certain_after
+                .iter()
+                .position(|certain| needed.is_subset(certain))
+                .unwrap_or(steps.len());
+            let certain = &certain_after[after];
+            let test = Step::Filter(self.expression(conjunct, certain)?);
+            filters[after].push((test, certain.clone()));
         }
-        placed.sort_by_key(|(at, ..)| *at);
-        for (inserted, (at, expr, certain)) in placed.into_iter().enumerate() {
-            out.steps.insert(at + inserted, Step::Filter(expr));
-            out.after.insert(at + inserted, certain);
+        let mut steps = steps.into_iter();
+        for (after, placed) in filters.into_iter().enumerate() {
+            if after > 0 {
+                out.steps.extend(steps.next());
+            }
+            out.steps.extend(placed);
         }
         Ok(())
     }
@@ -617,11 +622,11 @@ impl Lowering {
                 self.variables(left, into);
                 self.variables(right, into);
                 if let Some(expression) = expression {
-                    self.mentions(expression, into, None);
+                    into.extend(self.read_by(expression));
                 }
             }
             GraphPattern::Filter { expr, inner } => {
-                self.mentions(expr, into, None);
+                into.extend(self.read_by(expr));
                 self.variables(inner, into);
             }
             GraphPattern::Extend {
@@ -630,7 +635,7 @@ impl Lowering {
                 expression,
             } => {
                 into.insert(self.slot(variable));
-                self.mentions(expression, into, None);
+                into.extend(self.read_by(expression));
                 self.variables(inner, into);
             }
             GraphPattern::Values { variables, .. } | GraphPattern::Project { variables, .. } => {
@@ -667,9 +672,28 @@ impl Lowering {
         }
     }
 
-    /// Every variable the expression reads. A variable only inside an EXISTS counts
-    /// where `group` is none, or where the group around the filter also holds it.
-    fn mentions(&mut self, expression: &Expression, into: &mut Slots, group: Option<&Slots>) {
+    /// Every variable the expression reads, those inside an EXISTS too.
+    fn read_by(&mut self, expression: &Expression) -> Slots {
+        let mut read = Slots::new();
+        self.collect_reads(expression, &mut read, &|_| true);
+        read
+    }
+
+    /// The variables that must be bound before a conjunct of a filter can be placed:
+    /// those it reads, but of an EXISTS only the ones the filtered group holds, since
+    /// the others are the EXISTS' own.
+    fn needed_to_place(&mut self, conjunct: &Expression, filtered: &Slots) -> Slots {
+        let mut needed = Slots::new();
+        self.collect_reads(conjunct, &mut needed, &|slot| filtered.contains(&slot));
+        needed
+    }
+
+    fn collect_reads(
+        &mut self,
+        expression: &Expression,
+        into: &mut Slots,
+        inside_exists: &dyn Fn(usize) -> bool,
+    ) {
         match expression {
             Expression::Variable(v) | Expression::Bound(v) => {
                 into.insert(self.slot(v));
@@ -677,11 +701,7 @@ impl Lowering {
             Expression::Exists(body) => {
                 let mut inside = Slots::new();
                 self.variables(body, &mut inside);
-                into.extend(
-                    inside
-                        .into_iter()
-                        .filter(|s| group.is_none_or(|g| g.contains(s))),
-                );
+                into.extend(inside.into_iter().filter(|&slot| inside_exists(slot)));
             }
             Expression::Or(a, b)
             | Expression::And(a, b)
@@ -695,26 +715,26 @@ impl Lowering {
             | Expression::Subtract(a, b)
             | Expression::Multiply(a, b)
             | Expression::Divide(a, b) => {
-                self.mentions(a, into, group);
-                self.mentions(b, into, group);
+                self.collect_reads(a, into, inside_exists);
+                self.collect_reads(b, into, inside_exists);
             }
             Expression::UnaryPlus(a) | Expression::UnaryMinus(a) | Expression::Not(a) => {
-                self.mentions(a, into, group);
+                self.collect_reads(a, into, inside_exists);
             }
             Expression::In(a, list) => {
-                self.mentions(a, into, group);
+                self.collect_reads(a, into, inside_exists);
                 for e in list {
-                    self.mentions(e, into, group);
+                    self.collect_reads(e, into, inside_exists);
                 }
             }
             Expression::If(a, b, c) => {
                 for e in [a, b, c] {
-                    self.mentions(e, into, group);
+                    self.collect_reads(e, into, inside_exists);
                 }
             }
             Expression::Coalesce(list) | Expression::FunctionCall(_, list) => {
                 for e in list {
-                    self.mentions(e, into, group);
+                    self.collect_reads(e, into, inside_exists);
                 }
             }
             Expression::NamedNode(_) | Expression::Literal(_) => {}

@@ -253,10 +253,10 @@ fn convert(arguments: &Convert) -> Result<u8, String> {
         envelope: envelope.as_deref(),
         facts: facts.as_ref().map(|(iri, bytes)| Facts { iri, bytes }),
     };
-    let (conversion, queries) = loaded
-        .convert_profiled_with(&document, arguments.executor)
-        .map_err(|e| e.to_string())?;
-    if arguments.profile {
+    let conversion = if arguments.profile {
+        let (conversion, queries) = loaded
+            .convert_profiled_with(&document, arguments.executor)
+            .map_err(|e| e.to_string())?;
         for query in &queries {
             eprintln!(
                 "Query    {}  {} run(s), {} row(s), {:.3} s, {} give-up(s), {}",
@@ -265,13 +265,19 @@ fn convert(arguments: &Convert) -> Result<u8, String> {
                 query.rows,
                 query.elapsed.as_secs_f64(),
                 query.give_ups,
-                query
-                    .fallback
-                    .as_deref()
-                    .map_or_else(|| "compiled".to_owned(), |why| format!("evaluated: {why}")),
+                match (arguments.executor, query.fallback.as_deref()) {
+                    (Executor::Spareval, _) => "evaluated".to_owned(),
+                    (_, Some(why)) => format!("evaluated: {why}"),
+                    (_, None) => "compiled".to_owned(),
+                },
             );
         }
-    }
+        conversion
+    } else {
+        loaded
+            .convert_with(&document, arguments.executor)
+            .map_err(|e| e.to_string())?
+    };
     if let (Some(_), Some(unvalidated)) = (&arguments.findings, &conversion.unvalidated) {
         return Err(unvalidated.clone());
     }

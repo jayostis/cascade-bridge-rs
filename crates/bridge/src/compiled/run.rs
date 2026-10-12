@@ -359,12 +359,12 @@ fn counts(seen: &mut HashSet<Rc<Term>>, of: Option<usize>, distinct: bool, row: 
 }
 
 fn sample(chosen: &mut Picked, expr: &Expr, tree: &Tree, row: &Row) -> Result<(), Fail> {
-    if chosen.is_none() {
-        match expr(tree, row) {
-            Ok(term) => *chosen = Some(Ok(term)),
-            Err(Fail::Error) => {}
-            Err(other) => return Err(other),
-        }
+    match (expr(tree, row), &*chosen) {
+        (Err(Fail::Error), _) => {}
+        (Err(other), _) => return Err(other),
+        (Ok(term), None) => *chosen = Some(Ok(term)),
+        (Ok(term), Some(Ok(kept))) if term != *kept => return Err(Fail::GiveUp),
+        (Ok(_), _) => {}
     }
     Ok(())
 }

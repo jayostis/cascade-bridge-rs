@@ -30,7 +30,39 @@ const DATA: &str = r#"
 :v2 :v "naïve café"@fr .
 :p :next :q ; :other :r .
 :q :next :p ; a :Node .
+:g a :Thing ; :m "z" , "a" , "m" .
 "#;
+
+const GIVEN_UP: &[(&str, &str)] = &[
+    (
+        "a value no builtin covers in a filter",
+        "CONSTRUCT { ?i :big ?s } WHERE { ?i :size ?s . FILTER(?s > 4.5) }",
+    ),
+    (
+        "a value no builtin covers in a BIND",
+        "CONSTRUCT { :v2 :joined ?o } WHERE { :v2 :v ?v . BIND(CONCAT(?v, \"!\") AS ?o) }",
+    ),
+    (
+        "a SUM over a value no builtin covers",
+        "CONSTRUCT { ?i :total ?t } WHERE { SELECT ?i (SUM(?s) AS ?t) WHERE { ?i :size ?s } GROUP BY ?i }",
+    ),
+    (
+        "a MIN over a string and an integer, tested by EXISTS",
+        "CONSTRUCT { ?i :seen :yes } WHERE { ?i a :Item . FILTER EXISTS { { SELECT (MIN(?v) AS ?m) WHERE { ?x :size ?v } } } }",
+    ),
+    (
+        "a MIN over a string and an integer, tested by a BIND of EXISTS",
+        "CONSTRUCT { ?i :seen ?e } WHERE { ?i a :Item . BIND(EXISTS { { SELECT (MIN(?v) AS ?m) WHERE { ?x :size ?v } } } AS ?e) }",
+    ),
+    (
+        "a MAX over a string and an integer",
+        "CONSTRUCT { :root :largest ?m } WHERE { SELECT (MAX(?v) AS ?m) WHERE { ?x :size ?v } }",
+    ),
+    (
+        "a SAMPLE of a group whose values differ",
+        "CONSTRUCT { ?g :any ?s } WHERE { ?g a :Thing . { SELECT ?g (SAMPLE(?x) AS ?s) WHERE { { ?g :m ?x FILTER(?x != \"a\") } UNION { ?g :m ?x FILTER(?x = \"a\") } } GROUP BY ?g } }",
+    ),
+];
 
 const LOWERED: &[(&str, &str)] = &[
     (
@@ -230,6 +262,16 @@ const DECLINED: &[(&str, &str, &str)] = &[
         "a BIND of ?n where a group around it binds it",
     ),
     (
+        "a GROUP BY key only the groups around the subquery bind",
+        "CONSTRUCT { ?k :count ?n } WHERE { ?k a :Item . { SELECT ?k (COUNT(*) AS ?n) WHERE { { ?k :id ?v } UNION { ?w :size ?v } } GROUP BY ?k } }",
+        "a group reads a variable only the groups around it bind",
+    ),
+    (
+        "a SELECT DISTINCT key only the groups around the subquery bind",
+        "CONSTRUCT { [] :k ?k ; :v ?v } WHERE { ?k a :Item . { SELECT DISTINCT ?k ?v WHERE { { ?k :size ?v } UNION { ?w :size ?v } } } }",
+        "a group reads a variable only the groups around it bind",
+    ),
+    (
         "a typed literal in a pattern",
         "CONSTRUCT { ?s :p ?o } WHERE { ?s :id ?o . ?s :size 07 }",
         "a typed literal in a pattern, which a store matches by value",
@@ -380,12 +422,12 @@ fn declines_each_construct_it_does_not_read_and_says_which() {
 #[test]
 fn gives_a_query_up_where_a_value_is_one_no_builtin_covers() {
     let store = graph();
-    for query in [
-        "CONSTRUCT { ?i :big ?s } WHERE { ?i :size ?s . FILTER(?s > 4.5) }",
-        "CONSTRUCT { :v2 :joined ?o } WHERE { :v2 :v ?v . BIND(CONCAT(?v, \"!\") AS ?o) }",
-        "CONSTRUCT { ?i :total ?t } WHERE { SELECT ?i (SUM(?s) AS ?t) WHERE { ?i :size ?s } GROUP BY ?i }",
-    ] {
-        assert_eq!(compiled(query, &store), Err(Fail::GiveUp), "{query}");
+    for (construct, query) in GIVEN_UP {
+        assert_eq!(
+            compiled(query, &store),
+            Err(Fail::GiveUp),
+            "{construct}: {query}"
+        );
     }
 }
 
@@ -431,11 +473,8 @@ fn answers_each_declined_construct_as_the_general_evaluator_and_says_why() {
         }
         let query = read(query);
         let (answer, profiled) = answered(&query, Executor::Compiled);
-        assert_eq!(
-            answer,
-            answered(&query, Executor::Spareval).0,
-            "{construct}"
-        );
+        let (general, general_profiled) = answered(&query, Executor::Spareval);
+        assert_eq!(answer, general, "{construct}");
         assert_eq!(
             profiled
                 .iter()
@@ -444,23 +483,36 @@ fn answers_each_declined_construct_as_the_general_evaluator_and_says_why() {
             [(Some(reason), 0)],
             "{construct}"
         );
+        assert_eq!(
+            general_profiled
+                .iter()
+                .map(|q| q.fallback.as_deref())
+                .collect::<Vec<_>>(),
+            [None],
+            "{construct}: the compiler did not run"
+        );
     }
 }
 
 #[test]
-fn answers_a_given_up_query_as_the_general_evaluator_and_counts_it() {
-    let query =
-        read("CONSTRUCT { :v2 :joined ?o } WHERE { :v2 :v ?v . BIND(CONCAT(?v, \"!\") AS ?o) }");
-    let (answer, profiled) = answered(&query, Executor::Compiled);
-    assert_eq!(answer.len(), 1);
-    assert_eq!(
-        profiled
-            .iter()
-            .map(|q| (q.fallback.as_deref(), q.give_ups))
-            .collect::<Vec<_>>(),
-        [(None, 1)]
-    );
-    assert_eq!(answer, answered(&query, Executor::Spareval).0);
+fn answers_each_given_up_query_as_the_general_evaluator_and_counts_it() {
+    for &(construct, query) in GIVEN_UP {
+        let query = read(query);
+        let (answer, profiled) = answered(&query, Executor::Compiled);
+        assert_eq!(
+            profiled
+                .iter()
+                .map(|q| (q.fallback.as_deref(), q.give_ups))
+                .collect::<Vec<_>>(),
+            [(None, 1)],
+            "{construct}"
+        );
+        assert_eq!(
+            answer,
+            answered(&query, Executor::Spareval).0,
+            "{construct}"
+        );
+    }
 }
 
 #[test]

@@ -64,7 +64,7 @@ pub(super) fn order(a: &T, b: &T) -> Result<Ordering, Fail> {
         _ if ra != rb => Ok(ra.cmp(&rb)),
         (T::BlankNode(a), T::BlankNode(b)) => Ok(a.as_str().cmp(b.as_str())),
         (T::NamedNode(a), T::NamedNode(b)) => Ok(a.as_str().cmp(b.as_str())),
-        _ => compare(a, b),
+        _ => compare(a, b).map_err(|_| Fail::GiveUp),
     }
 }
 

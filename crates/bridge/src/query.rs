@@ -17,7 +17,7 @@ pub struct QueryProfile {
     pub executions: usize,
     pub rows: usize,
     pub elapsed: Duration,
-    /// Why the compiler did not take the query; none where it did.
+    /// Why the compiler did not take the query; none where it did, and where it did not run.
     pub fallback: Option<String>,
     /// Executions a compiled plan gave up on, which the general evaluator then answered.
     pub give_ups: usize,
@@ -55,7 +55,10 @@ impl Profile {
                 executions: 1,
                 rows,
                 elapsed,
-                fallback: query.compiled.as_ref().err().cloned(),
+                fallback: match self.executor {
+                    Executor::Spareval => None,
+                    Executor::Compiled | Executor::Both => query.compiled.as_ref().err().cloned(),
+                },
                 give_ups: usize::from(gave_up),
             }),
         }
