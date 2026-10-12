@@ -1,5 +1,5 @@
 use super::builtin::{self, Call};
-use super::lower::{Lowering, Slots};
+use super::lower::{next_memo, Lowering, Scope, Slots};
 use super::{run, Eval, Expr, Fail, Row, Tree};
 use oxigraph::model::{Term, Variable};
 use oxsdatatypes::{Boolean, Decimal, Integer};
@@ -141,55 +141,58 @@ impl Lowering {
     pub(super) fn expression(
         &mut self,
         expression: &Expression,
-        bound: &Slots,
+        scope: &Scope,
     ) -> Result<Expr, String> {
         match expression {
             Expression::NamedNode(node) => Ok(constant(T::NamedNode(node.clone()))),
             Expression::Literal(value) => Ok(constant(T::from(Term::from(value.clone())))),
-            Expression::Variable(variable) => Ok(self.variable(variable)),
-            Expression::Bound(variable) => Ok(self.is_bound(variable)),
-            Expression::Exists(body) => self.exists_test(body, bound),
-            Expression::Or(a, b) => self.logical(a, b, bound, true),
-            Expression::And(a, b) => self.logical(a, b, bound, false),
+            Expression::Variable(variable) => Ok(self.variable(variable, scope)),
+            Expression::Bound(variable) => Ok(self.is_bound(variable, scope)),
+            Expression::Exists(body) => self.exists_test(body, scope),
+            Expression::Or(a, b) => self.logical(a, b, scope, true),
+            Expression::And(a, b) => self.logical(a, b, scope, false),
             Expression::Not(a) => {
-                let a = self.expression(a, bound)?;
+                let a = self.expression(a, scope)?;
                 Ok(unary(a, |a| boolean(!truth(&a)?)))
             }
-            Expression::Equal(a, b) => self.binary_of(a, b, bound, |a, b| boolean(equals(&a, &b)?)),
-            Expression::SameTerm(a, b) => self.binary_of(a, b, bound, |a, b| boolean(a == b)),
-            Expression::Greater(a, b) => self.ordering(a, b, bound, Ordering::is_gt),
-            Expression::GreaterOrEqual(a, b) => self.ordering(a, b, bound, Ordering::is_ge),
-            Expression::Less(a, b) => self.ordering(a, b, bound, Ordering::is_lt),
-            Expression::LessOrEqual(a, b) => self.ordering(a, b, bound, Ordering::is_le),
-            Expression::In(a, list) => self.membership(a, list, bound),
+            Expression::Equal(a, b) => self.binary_of(a, b, scope, |a, b| boolean(equals(&a, &b)?)),
+            Expression::SameTerm(a, b) => self.binary_of(a, b, scope, |a, b| boolean(a == b)),
+            Expression::Greater(a, b) => self.ordering(a, b, scope, Ordering::is_gt),
+            Expression::GreaterOrEqual(a, b) => self.ordering(a, b, scope, Ordering::is_ge),
+            Expression::Less(a, b) => self.ordering(a, b, scope, Ordering::is_lt),
+            Expression::LessOrEqual(a, b) => self.ordering(a, b, scope, Ordering::is_le),
+            Expression::In(a, list) => self.membership(a, list, scope),
             Expression::Add(a, b) => {
-                self.integers(a, b, bound, |a, b| a.checked_add(b).map(T::IntegerLiteral))
+                self.integers(a, b, scope, |a, b| a.checked_add(b).map(T::IntegerLiteral))
             }
             Expression::Subtract(a, b) => {
-                self.integers(a, b, bound, |a, b| a.checked_sub(b).map(T::IntegerLiteral))
+                self.integers(a, b, scope, |a, b| a.checked_sub(b).map(T::IntegerLiteral))
             }
             Expression::Multiply(a, b) => {
-                self.integers(a, b, bound, |a, b| a.checked_mul(b).map(T::IntegerLiteral))
+                self.integers(a, b, scope, |a, b| a.checked_mul(b).map(T::IntegerLiteral))
             }
-            Expression::Divide(a, b) => self.integers(a, b, bound, |a, b| {
+            Expression::Divide(a, b) => self.integers(a, b, scope, |a, b| {
                 Decimal::from(a).checked_div(b).map(T::DecimalLiteral)
             }),
-            Expression::If(c, a, b) => self.conditional(c, a, b, bound),
+            Expression::If(c, a, b) => self.conditional(c, a, b, scope),
             Expression::Coalesce(list) => {
-                let list = self.operands(list, bound)?;
+                let list = self.operands(list, scope)?;
                 Ok(eval_fn(move |tree, row| first_value(&list, tree, row)))
             }
-            Expression::FunctionCall(function, written) => self.call(function, written, bound),
+            Expression::FunctionCall(function, written) => self.call(function, written, scope),
             other => Err(format!("the expression {other}")),
         }
     }
 
-    fn operands(&mut self, list: &[Expression], bound: &Slots) -> Result<Vec<Expr>, String> {
-        list.iter().map(|e| self.expression(e, bound)).collect()
+    fn operands(&mut self, list: &[Expression], scope: &Scope) -> Result<Vec<Expr>, String> {
+        list.iter().map(|e| self.expression(e, scope)).collect()
     }
 
-    fn variable(&mut self, variable: &Variable) -> Expr {
+    fn variable(&mut self, variable: &Variable, scope: &Scope) -> Expr {
         let slot = self.slot(variable);
+        if scope.hidden.contains(&slot) {
+            return eval_fn(|_, _| Err(Fail::Error));
+        }
         eval_fn(move |_, row| {
             row[slot]
                 .as_deref()
@@ -198,15 +201,27 @@ impl Lowering {
         })
     }
 
-    fn is_bound(&mut self, variable: &Variable) -> Expr {
+    fn is_bound(&mut self, variable: &Variable, scope: &Scope) -> Expr {
         let slot = self.slot(variable);
-        eval_fn(move |_, row| boolean(row[slot].is_some()))
+        let hidden = scope.hidden.contains(&slot);
+        eval_fn(move |_, row| boolean(!hidden && row[slot].is_some()))
     }
 
-    fn exists_test(&mut self, body: &GraphPattern, bound: &Slots) -> Result<Expr, String> {
-        let plan = self.exists(body, bound)?;
+    fn exists_test(&mut self, body: &GraphPattern, scope: &Scope) -> Result<Expr, String> {
+        let mut inside = Slots::new();
+        self.variables(body, &mut inside);
+        let plan = self.exists(body, scope)?;
+        let masked: Vec<usize> = inside.intersection(&scope.hidden).copied().collect();
+        let once = inside
+            .iter()
+            .all(|slot| scope.hidden.contains(slot) || !scope.maybe.contains(slot))
+            .then(next_memo);
         Ok(eval_fn(move |tree, row| {
-            boolean(run::exists(&plan, tree, row)?)
+            let found = || run::exists(&plan, tree, row, &masked);
+            boolean(match once {
+                Some(memo) => tree.remembered(memo, found)?,
+                None => found()?,
+            })
         }))
     }
 
@@ -214,10 +229,10 @@ impl Lowering {
         &mut self,
         a: &Expression,
         b: &Expression,
-        bound: &Slots,
+        scope: &Scope,
         decided_by: bool,
     ) -> Result<Expr, String> {
-        let (a, b) = (self.expression(a, bound)?, self.expression(b, bound)?);
+        let (a, b) = (self.expression(a, scope)?, self.expression(b, scope)?);
         Ok(eval_fn(move |tree, row| {
             connective(&[&a, &b], tree, row, decided_by)
         }))
@@ -227,10 +242,10 @@ impl Lowering {
         &mut self,
         a: &Expression,
         b: &Expression,
-        bound: &Slots,
+        scope: &Scope,
         f: impl Fn(T, T) -> Eval + Send + Sync + 'static,
     ) -> Result<Expr, String> {
-        let (a, b) = (self.expression(a, bound)?, self.expression(b, bound)?);
+        let (a, b) = (self.expression(a, scope)?, self.expression(b, scope)?);
         Ok(binary(a, b, f))
     }
 
@@ -238,20 +253,20 @@ impl Lowering {
         &mut self,
         a: &Expression,
         b: &Expression,
-        bound: &Slots,
+        scope: &Scope,
         wanted: fn(Ordering) -> bool,
     ) -> Result<Expr, String> {
-        self.binary_of(a, b, bound, move |a, b| boolean(wanted(compare(&a, &b)?)))
+        self.binary_of(a, b, scope, move |a, b| boolean(wanted(compare(&a, &b)?)))
     }
 
     fn integers(
         &mut self,
         a: &Expression,
         b: &Expression,
-        bound: &Slots,
+        scope: &Scope,
         arithmetic: fn(Integer, Integer) -> Option<T>,
     ) -> Result<Expr, String> {
-        self.binary_of(a, b, bound, move |a, b| match (a, b) {
+        self.binary_of(a, b, scope, move |a, b| match (a, b) {
             (T::IntegerLiteral(a), T::IntegerLiteral(b)) => arithmetic(a, b).ok_or(Fail::Error),
             _ => Err(Fail::GiveUp),
         })
@@ -261,10 +276,10 @@ impl Lowering {
         &mut self,
         needle: &Expression,
         list: &[Expression],
-        bound: &Slots,
+        scope: &Scope,
     ) -> Result<Expr, String> {
-        let needle = self.expression(needle, bound)?;
-        let list = self.operands(list, bound)?;
+        let needle = self.expression(needle, scope)?;
+        let list = self.operands(list, scope)?;
         Ok(eval_fn(move |tree, row| {
             member(&needle(tree, row)?, &list, tree, row)
         }))
@@ -275,11 +290,11 @@ impl Lowering {
         condition: &Expression,
         then: &Expression,
         otherwise: &Expression,
-        bound: &Slots,
+        scope: &Scope,
     ) -> Result<Expr, String> {
-        let condition = self.expression(condition, bound)?;
-        let then = self.expression(then, bound)?;
-        let otherwise = self.expression(otherwise, bound)?;
+        let condition = self.expression(condition, scope)?;
+        let then = self.expression(then, scope)?;
+        let otherwise = self.expression(otherwise, scope)?;
         Ok(eval_fn(move |tree, row| {
             if truth(&condition(tree, row)?)? {
                 then(tree, row)
@@ -293,9 +308,9 @@ impl Lowering {
         &mut self,
         function: &Function,
         written: &[Expression],
-        bound: &Slots,
+        scope: &Scope,
     ) -> Result<Expr, String> {
-        let arguments = self.operands(written, bound)?;
+        let arguments = self.operands(written, scope)?;
         let builtin = builtin::lookup(function)
             .filter(|builtin| builtin.accepts(arguments.len()))
             .ok_or_else(|| format!("the function {function}"))?;

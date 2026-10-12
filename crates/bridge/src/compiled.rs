@@ -10,6 +10,7 @@ use std::rc::Rc;
 
 mod builtin;
 mod expr;
+mod keys;
 mod lower;
 mod run;
 #[cfg(test)]
@@ -81,6 +82,21 @@ enum Place {
     Const(Term),
     Var(usize),
     Blank(usize),
+    /// A variable a filter equates with an expression, looked up by its value.
+    Key(usize, Key),
+}
+
+/// A lookup by the one string a filter equates the variable with, in place of a scan.
+/// It only skips rows that filter rejects, on three conditions:
+/// - the equality is a conjunct of a filter that every row of the pattern must satisfy;
+/// - an expression whose value is a string is equal, by `=`, only to the simple literal
+///   of that text;
+/// - every variable the expression reads is bound in the row, and none is one a filter
+///   reads as unbound, so its value is the one the filter will see. Where one is not
+///   bound, the pattern is scanned and the filter decides.
+struct Key {
+    expr: Expr,
+    reads: Vec<usize>,
 }
 
 struct Pattern {
@@ -93,6 +109,7 @@ enum Step {
     Triple(Pattern),
     Filter(Expr),
     Bind(usize, Expr),
+    Agree(usize, Expr),
     Values(Vec<usize>, Vec<Vec<Option<Term>>>),
     Union(Vec<Plan>),
     Optional(Plan, Option<Expr>),
