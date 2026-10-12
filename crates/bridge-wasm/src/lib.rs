@@ -1,7 +1,7 @@
 #[cfg(target_arch = "wasm32")]
 mod allocator;
 
-use cascade_bridge::{ErrorKind, Files, Format, Loaded, Map, Named, QueryProfile};
+use cascade_bridge::{ErrorKind, Executor, Files, Format, Loaded, Map, Named, QueryProfile};
 use js_sys::{Array, Object, Reflect, Uint8Array};
 use std::sync::atomic::{AtomicBool, Ordering};
 use wasm_bindgen::prelude::*;
@@ -60,6 +60,8 @@ export interface ConvertOptions {
   findingsRelativeTo?: string;
   /** Times each query, and counts its executions and rows, into `Conversion.queries`. */
   profile?: boolean;
+  /** The engine that answers a query: the plan it compiles to, with the general evaluator behind it (the default), the general evaluator alone, or both, failing where they differ. */
+  executor?: "compiled" | "spareval" | "both";
 }
 
 /** A CONSTRUCT's rows are the triples it constructed; an ASK's, 1 when it answered true. */
@@ -68,6 +70,10 @@ export interface QueryProfile {
   executions: number;
   rows: number;
   seconds: number;
+  /** Why the query was not compiled; absent where it was. */
+  fallback?: string;
+  /** Executions a compiled plan gave up on, which the general evaluator answered. */
+  giveUps: number;
 }
 
 export interface Conversion {
@@ -84,6 +90,7 @@ export interface Conversion {
 
 export interface TestOptions {
   datasets?: boolean;
+  executor?: "compiled" | "spareval" | "both";
 }
 
 export interface TestEntry {
@@ -322,10 +329,23 @@ fn profiles(queries: &[QueryProfile]) -> JsValue {
             set(&value, "executions", &(query.executions as f64).into());
             set(&value, "rows", &(query.rows as f64).into());
             set(&value, "seconds", &query.elapsed.as_secs_f64().into());
+            set(&value, "giveUps", &(query.give_ups as f64).into());
+            set(&value, "fallback", &optional(query.fallback.as_deref()));
             value
         })
         .collect::<Array>()
         .into()
+}
+
+fn executor(options: &JsValue) -> Result<Executor, JsValue> {
+    match optional_text(options, "executor", "options")? {
+        None => Ok(Executor::default()),
+        Some(name) => Executor::named(&name).ok_or_else(|| {
+            mistaken(format!(
+                "options.executor {name} is not compiled, spareval or both"
+            ))
+        }),
+    }
 }
 
 fn guarded() -> Result<(), JsValue> {
@@ -404,22 +424,29 @@ impl Adapter {
     ) -> Result<ConversionValue, JsValue> {
         guarded()?;
         let read = DocumentRead::of(document)?;
-        let (format, relative_to, profiled) = match options.filter(|options| !absent(options)) {
-            Some(options) => (
-                self::format(Some(&get(&options, "format")?))?,
-                optional_text(&options, "findingsRelativeTo", "options")?,
-                get(&options, "profile")?.is_truthy(),
-            ),
-            None => (Format::Turtle, None, false),
-        };
+        let (format, relative_to, profiled, executor) =
+            match options.filter(|options| !absent(options)) {
+                Some(options) => (
+                    self::format(Some(&get(&options, "format")?))?,
+                    optional_text(&options, "findingsRelativeTo", "options")?,
+                    get(&options, "profile")?.is_truthy(),
+                    self::executor(&options)?,
+                ),
+                None => (Format::Turtle, None, false, Executor::default()),
+            };
         let (conversion, queries) = if profiled {
             let (conversion, queries) = self
                 .loaded
-                .convert_profiled(&read.document())
+                .convert_profiled_with(&read.document(), executor)
                 .map_err(thrown)?;
             (conversion, Some(queries))
         } else {
-            (self.loaded.convert(&read.document()).map_err(thrown)?, None)
+            (
+                self.loaded
+                    .convert_with(&read.document(), executor)
+                    .map_err(thrown)?,
+                None,
+            )
         };
         let value = JsValue::from(Object::new());
         if let Some(queries) = queries {
@@ -471,14 +498,17 @@ pub fn test(
     guarded()?;
     let adapter = named(adapter, "adapter")?;
     let vocabulary = vocabulary_named(vocabulary)?;
-    let datasets = match options.filter(|options| !absent(options)) {
-        Some(options) => get(&options, "datasets")?.is_truthy(),
-        None => false,
+    let (datasets, executor) = match options.filter(|options| !absent(options)) {
+        Some(options) => (
+            get(&options, "datasets")?.is_truthy(),
+            self::executor(&options)?,
+        ),
+        None => (false, Executor::default()),
     };
     let report = cascade_bridge::test(
         as_named(&adapter),
         vocabulary.as_ref().map(as_named),
-        cascade_bridge::TestOptions { datasets },
+        cascade_bridge::TestOptions { datasets, executor },
     )
     .map_err(thrown)?;
     let entries: Array = report

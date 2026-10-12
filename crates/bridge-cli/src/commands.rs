@@ -1,13 +1,14 @@
 use crate::folder::{Folder, Inputs};
 use crate::iri::file_iri;
 use cascade_bridge::{
-    describe, load, test, Description, Document, Facts, Format, Outcome, TestOptions, NAME, VERSION,
+    describe, load, test, Description, Document, Executor, Facts, Format, Outcome, TestOptions,
+    NAME, VERSION,
 };
 use std::fmt::Write as _;
 use std::io::Write as _;
 
-const USAGE: &str = "usage: cascade-bridge test <adapter-dir> [--vocabularies <directory>] [--earl <out.ttl>] [--datasets]
-       cascade-bridge convert <adapter-dir> <document> [--envelope <iri>] [--facts <file>] [--vocabularies <directory>] [--out <file>] [--findings <file>] [--format turtle|ntriples]
+const USAGE: &str = "usage: cascade-bridge test <adapter-dir> [--vocabularies <directory>] [--earl <out.ttl>] [--datasets] [--executor compiled|spareval|both]
+       cascade-bridge convert <adapter-dir> <document> [--envelope <iri>] [--facts <file>] [--vocabularies <directory>] [--out <file>] [--findings <file>] [--format turtle|ntriples] [--executor compiled|spareval|both] [--profile]
        cascade-bridge library <calls file> <results directory>";
 
 const METADATA: &str = "ro-crate-metadata.json";
@@ -17,6 +18,7 @@ struct Test {
     vocabularies: Option<String>,
     earl: Option<String>,
     datasets: bool,
+    executor: Executor,
 }
 
 struct Convert {
@@ -28,6 +30,8 @@ struct Convert {
     out: Option<String>,
     findings: Option<String>,
     format: Format,
+    executor: Executor,
+    profile: bool,
 }
 
 enum Command {
@@ -45,12 +49,14 @@ fn parse(argv: impl IntoIterator<Item = String>) -> Option<Command> {
                 vocabularies: None,
                 earl: None,
                 datasets: false,
+                executor: Executor::default(),
             };
             while let Some(flag) = argv.next() {
                 match flag.as_str() {
                     "--vocabularies" => arguments.vocabularies = Some(argv.next()?),
                     "--earl" => arguments.earl = Some(argv.next()?),
                     "--datasets" => arguments.datasets = true,
+                    "--executor" => arguments.executor = Executor::named(&argv.next()?)?,
                     _ => return None,
                 }
             }
@@ -66,6 +72,8 @@ fn parse(argv: impl IntoIterator<Item = String>) -> Option<Command> {
                 out: None,
                 findings: None,
                 format: Format::Turtle,
+                executor: Executor::default(),
+                profile: false,
             };
             while let Some(flag) = argv.next() {
                 match flag.as_str() {
@@ -75,6 +83,8 @@ fn parse(argv: impl IntoIterator<Item = String>) -> Option<Command> {
                     "--out" => arguments.out = Some(argv.next()?),
                     "--findings" => arguments.findings = Some(argv.next()?),
                     "--format" => arguments.format = Format::named(&argv.next()?)?,
+                    "--executor" => arguments.executor = Executor::named(&argv.next()?)?,
+                    "--profile" => arguments.profile = true,
                     _ => return None,
                 }
             }
@@ -173,6 +183,7 @@ fn run_test(arguments: &Test) -> Result<u8, String> {
     inputs.adapter = inputs.adapter.with_every_file()?;
     let options = TestOptions {
         datasets: arguments.datasets,
+        executor: arguments.executor,
     };
     let report = inputs.complete(|adapter, vocabulary| test(adapter, vocabulary, options))?;
     let mut said = format!(
@@ -236,14 +247,37 @@ fn convert(arguments: &Convert) -> Result<u8, String> {
         Some(path) => Some((iri_of(path)?, read(path)?)),
         None => None,
     };
-    let conversion = loaded
-        .convert(&Document {
-            iri: &iri,
-            bytes: &bytes,
-            envelope: envelope.as_deref(),
-            facts: facts.as_ref().map(|(iri, bytes)| Facts { iri, bytes }),
-        })
-        .map_err(|e| e.to_string())?;
+    let document = Document {
+        iri: &iri,
+        bytes: &bytes,
+        envelope: envelope.as_deref(),
+        facts: facts.as_ref().map(|(iri, bytes)| Facts { iri, bytes }),
+    };
+    let conversion = if arguments.profile {
+        let (conversion, queries) = loaded
+            .convert_profiled_with(&document, arguments.executor)
+            .map_err(|e| e.to_string())?;
+        for query in &queries {
+            eprintln!(
+                "Query    {}  {} run(s), {} row(s), {:.3} s, {} give-up(s), {}",
+                query.iri,
+                query.executions,
+                query.rows,
+                query.elapsed.as_secs_f64(),
+                query.give_ups,
+                match (arguments.executor, query.fallback.as_deref()) {
+                    (Executor::Spareval, _) => "evaluated".to_owned(),
+                    (_, Some(why)) => format!("evaluated: {why}"),
+                    (_, None) => "compiled".to_owned(),
+                },
+            );
+        }
+        conversion
+    } else {
+        loaded
+            .convert_with(&document, arguments.executor)
+            .map_err(|e| e.to_string())?
+    };
     if let (Some(_), Some(unvalidated)) = (&arguments.findings, &conversion.unvalidated) {
         return Err(unvalidated.clone());
     }

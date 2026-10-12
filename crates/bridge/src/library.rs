@@ -17,6 +17,7 @@ use oxrdf::{GraphName, Literal, NamedNode, NamedOrBlankNode, Quad, Term, TermRef
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 
+pub use crate::compiled::Executor;
 pub use crate::harness::Outcome;
 pub use crate::query::QueryProfile;
 pub use crate::rdf::GraphFormat as Format;
@@ -220,15 +221,32 @@ impl Loaded {
     }
 
     pub fn convert(&self, document: &Document<'_>) -> Result<Conversion> {
-        self.conversion(run::convert(&self.prepared, source(document))?)
+        self.convert_with(document, Executor::default())
+    }
+
+    pub fn convert_with(&self, document: &Document<'_>, executor: Executor) -> Result<Conversion> {
+        let run = run::convert_with(
+            &self.prepared,
+            source(document),
+            &Profile::new(executor, false),
+        )?;
+        self.conversion(run)
     }
 
     pub fn convert_profiled(
         &self,
         document: &Document<'_>,
     ) -> Result<(Conversion, Vec<QueryProfile>)> {
-        let profile = Profile::default();
-        let run = run::convert_profiled(&self.prepared, source(document), &profile)?;
+        self.convert_profiled_with(document, Executor::default())
+    }
+
+    pub fn convert_profiled_with(
+        &self,
+        document: &Document<'_>,
+        executor: Executor,
+    ) -> Result<(Conversion, Vec<QueryProfile>)> {
+        let profile = Profile::new(executor, true);
+        let run = run::convert_with(&self.prepared, source(document), &profile)?;
         Ok((self.conversion(run)?, profile.queries()))
     }
 
@@ -293,6 +311,7 @@ impl Conversion {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct TestOptions {
     pub datasets: bool,
+    pub executor: Executor,
 }
 
 #[derive(Debug, Clone)]
@@ -326,6 +345,7 @@ pub fn test(
         &maps,
         RunOptions {
             datasets: options.datasets,
+            executor: options.executor,
         },
     )?;
     let subject = ReportSubject {

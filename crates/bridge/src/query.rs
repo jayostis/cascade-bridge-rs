@@ -1,4 +1,5 @@
 use crate::annotation::Minted;
+use crate::compiled::{self, Compiled, Dataset, Executor};
 use crate::error::{Error, ErrorKind, Result};
 use crate::resolver::Resolver;
 use oxigraph::model::{GraphName, Quad};
@@ -16,32 +17,55 @@ pub struct QueryProfile {
     pub executions: usize,
     pub rows: usize,
     pub elapsed: Duration,
+    /// Why the compiler did not take the query; none where it did, and where it did not run.
+    pub fallback: Option<String>,
+    /// Executions a compiled plan gave up on, which the general evaluator then answered.
+    pub give_ups: usize,
 }
 
-/// In the order each query first ran.
+/// How a run executes its queries, and what it keeps of them, in the order each
+/// query first ran.
 #[derive(Default)]
-pub(crate) struct Profile(RefCell<Vec<QueryProfile>>);
+pub(crate) struct Profile {
+    executor: Executor,
+    kept: bool,
+    queries: RefCell<Vec<QueryProfile>>,
+}
 
 impl Profile {
-    fn add(&self, iri: &str, rows: usize, elapsed: Duration) {
-        let mut profiles = self.0.borrow_mut();
-        match profiles.iter_mut().find(|profile| profile.iri == iri) {
+    pub(crate) fn new(executor: Executor, kept: bool) -> Self {
+        Self {
+            executor,
+            kept,
+            queries: RefCell::default(),
+        }
+    }
+
+    fn add(&self, query: &Query, rows: usize, elapsed: Duration, gave_up: bool) {
+        let mut profiles = self.queries.borrow_mut();
+        match profiles.iter_mut().find(|profile| profile.iri == query.iri) {
             Some(profile) => {
                 profile.executions += 1;
                 profile.rows += rows;
                 profile.elapsed += elapsed;
+                profile.give_ups += usize::from(gave_up);
             }
             None => profiles.push(QueryProfile {
-                iri: iri.to_owned(),
+                iri: query.iri.clone(),
                 executions: 1,
                 rows,
                 elapsed,
+                fallback: match self.executor {
+                    Executor::Spareval => None,
+                    Executor::Compiled | Executor::Both => query.compiled.as_ref().err().cloned(),
+                },
+                give_ups: usize::from(gave_up),
             }),
         }
     }
 
     pub(crate) fn queries(self) -> Vec<QueryProfile> {
-        self.0.into_inner()
+        self.queries.into_inner()
     }
 }
 
@@ -51,15 +75,15 @@ struct Timing<'a> {
 }
 
 impl<'a> Timing<'a> {
-    fn start(profile: Option<&'a Profile>) -> Self {
+    fn start(profile: &'a Profile) -> Self {
         Self {
-            kept: profile.map(|profile| (profile, Instant::now())),
+            kept: profile.kept.then(|| (profile, Instant::now())),
         }
     }
 
-    fn stop(self, iri: &str, rows: usize) {
+    fn stop(self, query: &Query, rows: usize, gave_up: bool) {
         if let Some((profile, started)) = self.kept {
-            profile.add(iri, rows, started.elapsed());
+            profile.add(query, rows, started.elapsed(), gave_up);
         }
     }
 }
@@ -96,6 +120,7 @@ pub(crate) struct Query {
     pub(crate) iri: String,
     pub(crate) prefixes: Vec<(String, String)>,
     prepared: PreparedSparqlQuery,
+    compiled: std::result::Result<Compiled, String>,
 }
 
 impl Query {
@@ -128,6 +153,7 @@ impl Query {
         Ok(Self {
             iri: iri.to_owned(),
             prefixes: prologue_prefixes(&text),
+            compiled: compiled::compile(&parsed),
             prepared: SparqlEvaluator::new().for_query(parsed),
         })
     }
@@ -141,8 +167,7 @@ impl Query {
             .map_err(|e| Error::from(e).explained_by(ErrorKind::Adapter))
     }
 
-    pub(crate) fn graph(&self, store: &Store, profile: Option<&Profile>) -> Result<Vec<Quad>> {
-        let timing = Timing::start(profile);
+    fn evaluated(&self, store: &Store) -> Result<Vec<Quad>> {
         let QueryResults::Graph(triples) = self.on(store)? else {
             return Err(Error::adapter(format!(
                 "{} is not a {}",
@@ -160,11 +185,33 @@ impl Query {
                 GraphName::DefaultGraph,
             ));
         }
-        timing.stop(&self.iri, quads.len());
+        Ok(quads)
+    }
+
+    fn constructed(&self, data: &Dataset<'_>, executor: Executor) -> Result<(Vec<Quad>, bool)> {
+        let plan = match (&self.compiled, executor) {
+            (Ok(plan), Executor::Compiled | Executor::Both) => plan,
+            _ => return Ok((self.evaluated(data.store)?, false)),
+        };
+        match (plan.construct(data.tree()?), executor) {
+            (Ok(quads), Executor::Both) => {
+                let evaluated = self.evaluated(data.store)?;
+                compiled::agree(&self.iri, &quads, &evaluated)?;
+                Ok((evaluated, false))
+            }
+            (Ok(quads), _) => Ok((quads, false)),
+            (Err(_), _) => Ok((self.evaluated(data.store)?, true)),
+        }
+    }
+
+    pub(crate) fn graph(&self, data: &Dataset<'_>, profile: &Profile) -> Result<Vec<Quad>> {
+        let timing = Timing::start(profile);
+        let (quads, gave_up) = self.constructed(data, profile.executor)?;
+        timing.stop(self, quads.len(), gave_up);
         Ok(Minted::default().apart(quads))
     }
 
-    pub(crate) fn ask(&self, store: &Store, what: &str, profile: Option<&Profile>) -> Result<bool> {
+    pub(crate) fn ask(&self, store: &Store, what: &str, profile: &Profile) -> Result<bool> {
         let timing = Timing::start(profile);
         let QueryResults::Boolean(answer) = self.on(store)? else {
             return Err(Error::adapter(format!(
@@ -173,7 +220,7 @@ impl Query {
                 Form::Ask.keyword()
             )));
         };
-        timing.stop(&self.iri, usize::from(answer));
+        timing.stop(self, usize::from(answer), false);
         Ok(answer)
     }
 }
