@@ -1,6 +1,8 @@
-use crate::error::Result;
-use oxigraph::model::Term;
+use crate::error::{Error, Result};
+use crate::rdf::canonical_parts;
+use oxigraph::model::{Quad, Term};
 use oxigraph::store::Store;
+use rustc_hash::FxHashMap;
 use spareval::ExpressionTerm;
 use std::cell::OnceCell;
 use std::rc::Rc;
@@ -8,6 +10,8 @@ use std::rc::Rc;
 mod expr;
 mod lower;
 mod run;
+#[cfg(test)]
+mod tests;
 mod tree;
 
 pub(crate) use lower::compile;
@@ -121,4 +125,32 @@ enum Kind {
     Min(Expr),
     Max(Expr),
     Sample(Expr),
+}
+
+/// Equal as graphs: each part no blank node reaches out of, compared on its own.
+pub(crate) fn agree(query: &str, compiled: &[Quad], evaluated: &[Quad]) -> Result<()> {
+    let counted = |quads: &[Quad]| -> Result<FxHashMap<String, usize>> {
+        let mut counts = FxHashMap::default();
+        for part in canonical_parts(quads.iter().cloned())? {
+            *counts.entry(part).or_default() += 1;
+        }
+        Ok(counts)
+    };
+    let (mine, theirs) = (counted(compiled)?, counted(evaluated)?);
+    let differing = mine
+        .iter()
+        .find(|(part, times)| theirs.get(*part) != Some(*times))
+        .map(|(part, _)| ("the compiled plan", part))
+        .or_else(|| {
+            theirs
+                .iter()
+                .find(|(part, times)| mine.get(*part) != Some(*times))
+                .map(|(part, _)| ("the general evaluator", part))
+        });
+    match differing {
+        None => Ok(()),
+        Some((whose, part)) => Err(Error::adapter(format!(
+            "{query}: the compiled plan and the general evaluator differ; {whose} has {part} where the other has not as many"
+        ))),
+    }
 }

@@ -1,10 +1,12 @@
 #![allow(dead_code)]
 
+use crate::compiled::Executor;
 use crate::library::{Files, Named};
 use crate::load::load_adapter;
+use crate::query::Profile;
 use crate::records::Supplied;
 use crate::resolver::{Maps, Resolver};
-use crate::run::{convert, prepare, Conversion, Source};
+use crate::run::{convert, convert_with, prepare, Conversion, Source};
 use crate::Result;
 use oxrdf::{Quad, Term};
 use std::fs;
@@ -152,11 +154,19 @@ pub fn tiny_with_vocabularies() -> Fixture {
 /// The whole run, from the crate to the conversion: which stage refuses is not a test's
 /// to say.
 pub fn conversion(resolver: &dyn Resolver, input: &str) -> Result<Conversion> {
+    conversion_under(resolver, input, Executor::default())
+}
+
+pub fn conversion_under(
+    resolver: &dyn Resolver,
+    input: &str,
+    executor: Executor,
+) -> Result<Conversion> {
     let adapter = load_adapter(resolver)?;
     let prepared = prepare(&adapter, resolver)?;
     let iri = format!("{}fixtures/in/{input}", resolver.root());
     let xml = resolver.read(&iri)?;
-    convert(
+    convert_with(
         &prepared,
         Source {
             iri: &iri,
@@ -164,6 +174,7 @@ pub fn conversion(resolver: &dyn Resolver, input: &str) -> Result<Conversion> {
             bytes: &xml,
             facts: None,
         },
+        &Profile::new(executor, false),
     )
 }
 

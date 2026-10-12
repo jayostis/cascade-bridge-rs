@@ -1,6 +1,7 @@
 use super::run::Compiled;
 use super::{Aggregate, Group, Kind, Pattern, Place, Plan, Reach, Step};
-use oxigraph::model::{BlankNode, Term, Variable};
+use oxigraph::model::vocab::xsd;
+use oxigraph::model::{BlankNode, Literal, Term, Variable};
 use oxiri::Iri;
 use spargebra::algebra::{
     AggregateExpression, AggregateFunction, Expression, GraphPattern, PropertyPathExpression,
@@ -160,7 +161,10 @@ impl Lowering {
                 self.pattern(inner, frame, out)?;
                 let slot = self.slot(variable);
                 if frame.maybe.contains(&slot) {
-                    return Err("a BIND of a variable already bound".to_owned());
+                    return Err(format!(
+                        "a BIND of ?{} where a group around it binds it",
+                        variable.as_str()
+                    ));
                 }
                 let mut read = Slots::new();
                 self.mentions(expression, &mut read, None);
@@ -231,7 +235,13 @@ impl Lowering {
                             .map(|cell| match cell {
                                 None => Ok(None),
                                 Some(GroundTerm::NamedNode(n)) => Ok(Some(Term::from(n.clone()))),
-                                Some(GroundTerm::Literal(l)) => Ok(Some(Term::from(l.clone()))),
+                                Some(GroundTerm::Literal(l)) if by_term(l) => {
+                                    Ok(Some(Term::from(l.clone())))
+                                }
+                                Some(GroundTerm::Literal(_)) => {
+                                    Err("a typed literal in VALUES, which a join matches by value"
+                                        .to_owned())
+                                }
                                 Some(_) => Err("a quoted triple in VALUES".to_owned()),
                             })
                             .collect::<Result<Vec<_>, _>>()
@@ -378,6 +388,12 @@ impl Lowering {
             .iter()
             .map(|triple| self.triple(triple))
             .collect::<Result<Vec<_>, _>>()?;
+        if pending
+            .iter()
+            .any(|t| !exact(&t.subject) || !exact(&t.object))
+        {
+            return Err("a typed literal in a pattern, which a store matches by value".to_owned());
+        }
         while !pending.is_empty() {
             let (at, rank) = pending
                 .iter()
@@ -685,6 +701,15 @@ impl Pattern {
             (false, false, false) => UNREACHABLE,
         }
     }
+}
+
+/// Whether a place is matched by its term: a typed literal is matched by its value.
+fn exact(place: &Place) -> bool {
+    !matches!(place, Place::Const(Term::Literal(l)) if !by_term(l))
+}
+
+fn by_term(literal: &Literal) -> bool {
+    literal.datatype() == xsd::STRING || literal.language().is_some()
 }
 
 fn union_branches<'a>(pattern: &'a GraphPattern, into: &mut Vec<&'a GraphPattern>) {

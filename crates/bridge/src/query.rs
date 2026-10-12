@@ -1,14 +1,12 @@
 use crate::annotation::Minted;
 use crate::compiled::{self, Compiled, Dataset, Executor};
 use crate::error::{Error, ErrorKind, Result};
-use crate::rdf::canonical_parts;
 use crate::resolver::Resolver;
 use oxigraph::model::{GraphName, Quad};
 use oxigraph::sparql::{PreparedSparqlQuery, QueryResults, SparqlEvaluator};
 use oxigraph::store::Store;
 use spargebra::algebra::{AggregateExpression, Expression, GraphPattern, OrderExpression};
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::time::Duration;
 // std's clock panics on wasm32-unknown-unknown, where this one asks the host.
 use web_time::Instant;
@@ -196,40 +194,11 @@ impl Query {
         match (plan.construct(data.tree()?), executor) {
             (Ok(quads), Executor::Both) => {
                 let evaluated = self.evaluated(data.store)?;
-                self.agree(&quads, &evaluated)?;
+                compiled::agree(&self.iri, &quads, &evaluated)?;
                 Ok((evaluated, false))
             }
             (Ok(quads), _) => Ok((quads, false)),
             (Err(_), _) => Ok((self.evaluated(data.store)?, true)),
-        }
-    }
-
-    /// Equal as graphs: each part no blank node reaches out of, compared on its own.
-    fn agree(&self, compiled: &[Quad], evaluated: &[Quad]) -> Result<()> {
-        let counted = |quads: &[Quad]| -> Result<HashMap<String, usize>> {
-            let mut counts = HashMap::new();
-            for part in canonical_parts(quads.iter().cloned())? {
-                *counts.entry(part).or_default() += 1;
-            }
-            Ok(counts)
-        };
-        let (mine, theirs) = (counted(compiled)?, counted(evaluated)?);
-        let differing = mine
-            .iter()
-            .find(|(part, times)| theirs.get(*part) != Some(*times))
-            .map(|(part, _)| ("the compiled plan", part))
-            .or_else(|| {
-                theirs
-                    .iter()
-                    .find(|(part, times)| mine.get(*part) != Some(*times))
-                    .map(|(part, _)| ("the general evaluator", part))
-            });
-        match differing {
-            None => Ok(()),
-            Some((whose, part)) => Err(Error::adapter(format!(
-                "{}: the compiled plan and the general evaluator differ; {whose} has {part} where the other has not as many",
-                self.iri
-            ))),
         }
     }
 
