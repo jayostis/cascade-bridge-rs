@@ -1,14 +1,14 @@
-use super::analysis::{Binding, Declined, Filter};
+use super::analysis::{Binding, Filter};
 use super::*;
+use crate::compiled::compile;
 use spargebra::algebra::GraphPattern;
 use spargebra::{Query, SparqlParser};
 
 const PREFIXES: &str =
     "PREFIX : <urn:t#> PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> ";
 
-/// Analyzes the patterns, without the projection the parser puts around them, as a group, or, where `row` names variables, as the body of an
-/// EXISTS that runs on a row binding them.
-fn with_scope<T>(body: &str, row: &[&str], check: impl FnOnce(&Scoped, &Names, &Frame) -> T) -> T {
+/// Analyzes the patterns, without the projection the parser puts around them, as a group.
+fn with_scope<T>(body: &str, check: impl FnOnce(&Scoped, &Names, &Frame) -> T) -> T {
     let text = format!("{PREFIXES} ASK {{ {body} }}");
     let query = SparqlParser::new().parse_query(&text).expect("a query");
     let Query::Ask { pattern, .. } = &query else {
@@ -19,15 +19,7 @@ fn with_scope<T>(body: &str, row: &[&str], check: impl FnOnce(&Scoped, &Names, &
         other => other,
     };
     let mut names = Names::default();
-    let on_row: Certain = row
-        .iter()
-        .map(|name| names.slot(&Variable::new_unchecked(*name)))
-        .collect();
-    let mut frame = Frame::within_exists(&Scope {
-        certain: on_row.clone(),
-        maybe: on_row.iter().collect(),
-        hidden: Hidden::new(),
-    });
+    let mut frame = Frame::default();
     let scoped = analyze(&mut names, pattern, &mut frame);
     check(&scoped, &names, &frame)
 }
@@ -45,53 +37,6 @@ fn named<Role>(names: &Names, slots: &Slots<Role>) -> Vec<String> {
 
 fn strings(names: &[&str]) -> Vec<String> {
     names.iter().map(|name| (*name).to_owned()).collect()
-}
-
-/// The checks that fail, in the order the plan is built.
-fn declines(scoped: &Scoped, into: &mut Vec<Declined>) {
-    match scoped {
-        Scoped::Declined(reason) => into.push(*reason),
-        Scoped::Triples(_) | Scoped::Values(_) => {}
-        Scoped::Join(left, right) => {
-            declines(left, into);
-            declines(right, into);
-        }
-        Scoped::Filter(filter) => {
-            declines(&filter.inner, into);
-            for conjunct in &filter.conjuncts {
-                into.extend(conjunct.hidden.as_ref().err());
-            }
-        }
-        Scoped::Extend(extend) => {
-            declines(&extend.inner, into);
-            into.extend(extend.reads.err());
-        }
-        Scoped::Union(union) => {
-            for branch in &union.branches {
-                declines(&branch.scoped, into);
-            }
-        }
-        Scoped::Optional(optional) => {
-            declines(&optional.left, into);
-            into.extend(optional.reads.err());
-            declines(&optional.right, into);
-        }
-        Scoped::Subquery(subquery) => {
-            declines(&subquery.inner, into);
-            if let Some(distinct) = &subquery.distinct {
-                into.extend(distinct.reads.err());
-            }
-        }
-        Scoped::Group(group) => {
-            declines(&group.inner, into);
-            for aggregate in &group.aggregates {
-                into.extend(aggregate.fresh.err());
-                into.extend(aggregate.reads.err());
-            }
-            into.extend(group.reads.err());
-        }
-        Scoped::Path(path) => into.extend(path.starts.err()),
-    }
 }
 
 fn parts<'a, 'q>(scoped: &'a Scoped<'q>, into: &mut Vec<&'a Scoped<'q>>) {
@@ -203,7 +148,7 @@ fn works_out_what_a_pattern_binds_in_every_row_and_in_some_row() {
     let wrong: Vec<_> = BOUND
         .iter()
         .filter_map(|&(construct, patterns, certain, maybe)| {
-            let (found_certain, found_maybe) = with_scope(patterns, &[], |_, names, frame| {
+            let (found_certain, found_maybe) = with_scope(patterns, |_, names, frame| {
                 (
                     named(names, &frame.bound.certain),
                     named(names, &frame.bound.maybe),
@@ -219,81 +164,6 @@ fn works_out_what_a_pattern_binds_in_every_row_and_in_some_row() {
     assert!(wrong.is_empty(), "{wrong:#?}");
 }
 
-/// (construct, patterns, the reason it is declined)
-const DECLINED: &[(&str, &[&str], &str, Declined)] = &[
-    (
-        "an OPTIONAL over a variable another OPTIONAL may leave unbound",
-        &[],
-        "?i a :Item . OPTIONAL { ?i :size ?n } { ?i :id ?id OPTIONAL { ?i :name ?n } }",
-        READS_OUTER,
-    ),
-    (
-        "a filter over a variable the group around it binds and it may bind",
-        &[],
-        "?i :size ?n . { ?i :id ?id OPTIONAL { ?i :name ?n } FILTER(BOUND(?n)) }",
-        READS_OUTER,
-    ),
-    (
-        "a BIND over a variable only the groups around it bind",
-        &[],
-        "?i :size ?n . { ?i :id ?id BIND(STR(?n) AS ?s) }",
-        READS_OUTER,
-    ),
-    (
-        "a GROUP BY key only the groups around the subquery bind",
-        &[],
-        "?k a :Item . { SELECT ?k (COUNT(*) AS ?n) WHERE { { ?k :id ?v } UNION { ?w :size ?v } } GROUP BY ?k }",
-        READS_OUTER,
-    ),
-    (
-        "a SELECT DISTINCT key only the groups around the subquery bind",
-        &[],
-        "?k a :Item . { SELECT DISTINCT ?k ?v WHERE { { ?k :size ?v } UNION { ?w :size ?v } } }",
-        READS_OUTER,
-    ),
-    (
-        "a group in an EXISTS reading a variable of the row the EXISTS runs on",
-        &["i"],
-        "?z :key ?k . { ?y :label ?l FILTER(?i = :a) }",
-        READS_OUTER,
-    ),
-    (
-        "a NOT EXISTS in a group in an EXISTS reading a variable of the row",
-        &["i"],
-        "?z :key ?k . { ?y :label ?l FILTER NOT EXISTS { ?i :name \"alpha\" } }",
-        READS_OUTER,
-    ),
-    (
-        "a property path from a node not yet bound",
-        &[],
-        "?s (!rdf:type)* ?m",
-        "a property path from a node not yet bound",
-    ),
-    ("a MINUS", &[], "?s a :Item MINUS { ?s :id \"1\" }", "MINUS"),
-    (
-        "an ORDER BY",
-        &[],
-        "{ SELECT * WHERE { ?s a :Item } ORDER BY ?s }",
-        "ORDER BY",
-    ),
-];
-
-#[test]
-fn declines_each_pattern_that_reads_a_variable_as_the_general_evaluator_would_not() {
-    let wrong: Vec<_> = DECLINED
-        .iter()
-        .filter_map(|&(construct, row, patterns, reason)| {
-            let found = with_scope(patterns, row, |scoped, _, _| {
-                let mut found = Vec::new();
-                declines(scoped, &mut found);
-                found
-            });
-            (found.first() != Some(&reason)).then_some((construct, found))
-        })
-        .collect();
-    assert!(wrong.is_empty(), "{wrong:#?}");
-}
-
 #[test]
 fn declines_nothing_where_a_group_reads_what_it_binds_or_what_only_the_groups_around_it_bind_and_it_does_not(
 ) {
@@ -303,12 +173,9 @@ fn declines_nothing_where_a_group_reads_what_it_binds_or_what_only_the_groups_ar
         "?i :id ?v . { ?i :id ?v FILTER(?v = \"1\") }",
         "?i a :Item . OPTIONAL { ?i :name ?n FILTER(?n != \"x\") }",
     ] {
-        let found = with_scope(patterns, &[], |scoped, _, _| {
-            let mut found = Vec::new();
-            declines(scoped, &mut found);
-            found
-        });
-        assert!(found.is_empty(), "{patterns}: {found:?}");
+        let text = format!("{PREFIXES} CONSTRUCT {{ ?i :p ?i }} WHERE {{ {patterns} }}");
+        let query = SparqlParser::new().parse_query(&text).expect("a query");
+        assert_eq!(compile(&query).err(), None, "{patterns}");
     }
 }
 
@@ -341,7 +208,7 @@ fn works_out_what_a_filter_reads_as_unbound() {
     let wrong: Vec<_> = HIDDEN
         .iter()
         .filter_map(|&(construct, patterns, hidden)| {
-            let found = with_scope(patterns, &[], |scoped, names, _| {
+            let found = with_scope(patterns, |scoped, names, _| {
                 let filter = *filters(scoped).first().expect("a filter");
                 let conjunct = filter.conjuncts.first().expect("a conjunct");
                 named(names, conjunct.hidden.as_ref().expect("not declined"))
@@ -389,7 +256,7 @@ fn works_out_where_a_bind_joins_and_where_it_binds_in_every_row() {
     let wrong: Vec<_> = BINDS
         .iter()
         .filter_map(|&(construct, patterns, expected)| {
-            let found = with_scope(patterns, &[], |scoped, _, _| {
+            let found = with_scope(patterns, |scoped, _, _| {
                 extends(scoped)
                     .iter()
                     .map(|extend| (extend.joins, extend.certainly))

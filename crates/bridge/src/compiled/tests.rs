@@ -147,7 +147,7 @@ const LOWERED: &[(&str, &str)] = &[
         "CONSTRUCT { ?i :named ?n } WHERE { ?i a :Item . BIND(\"p\" AS ?c) { { ?i :name ?n BIND(\"p\" AS ?c) } UNION { ?i :id ?n BIND(\"q\" AS ?c) } } }",
     ),
     (
-        "an aggregate named for a variable the group around it binds",
+        "a projection joins the variable an aggregate is named for, which the group around it binds",
         "CONSTRUCT { ?i :count ?c } WHERE { ?i a :Item . BIND(2 AS ?c) { SELECT ?i (COUNT(?x) AS ?c) WHERE { ?i ?p ?x . ?x a :Note } GROUP BY ?i } }",
     ),
     (
@@ -296,6 +296,16 @@ const DECLINED: &[(&str, &str, &str)] = &[
         "a filter over a variable the group around it binds and it may bind",
         "CONSTRUCT { ?i :named ?n } WHERE { ?i :size ?n . { ?i :id ?id OPTIONAL { ?i :name ?n } FILTER(BOUND(?n)) } }",
         "a group reads a variable only the groups around it bind",
+    ),
+    (
+        "a BIND over a variable only the groups around it bind",
+        "CONSTRUCT { ?i :named ?s } WHERE { ?i :size ?n . { ?i :id ?id BIND(STR(?n) AS ?s) } }",
+        "a group reads a variable only the groups around it bind",
+    ),
+    (
+        "a key that reads a variable a filter reads as unbound",
+        "CONSTRUCT { ?o :label ?l } WHERE { ?i :id ?d . { ?o :key ?k . ?o :label ?l FILTER(?k = ?d) } }",
+        "a key reads a variable a filter reads as unbound",
     ),
     (
         "a GROUP BY key only the groups around the subquery bind",
