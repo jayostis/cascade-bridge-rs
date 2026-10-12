@@ -185,7 +185,6 @@ impl Query {
         Ok(quads)
     }
 
-    /// The constructed triples, and whether a compiled plan gave the query up.
     fn constructed(&self, data: &Dataset<'_>, executor: Executor) -> Result<(Vec<Quad>, bool)> {
         let plan = match (&self.compiled, executor) {
             (Ok(plan), Executor::Compiled | Executor::Both) => plan,

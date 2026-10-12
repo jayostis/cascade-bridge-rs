@@ -6,8 +6,6 @@ use std::rc::Rc;
 
 pub(super) type Id = u32;
 
-/// A unit's default graph, indexed for the lookups a plan that starts from a bound
-/// node makes.
 pub(crate) struct Tree {
     terms: Vec<Rc<Term>>,
     ids: FxHashMap<Rc<Term>, Id>,

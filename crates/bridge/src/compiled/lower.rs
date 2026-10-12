@@ -14,8 +14,6 @@ pub(super) type Slots = BTreeSet<usize>;
 
 const UNREACHABLE: u8 = u8::MAX;
 
-/// What a CONSTRUCT query lowers to, or why it does not: the general evaluator then
-/// answers it.
 pub(crate) fn compile(query: &Query) -> Result<Compiled, String> {
     let Query::Construct {
         template,
@@ -46,7 +44,6 @@ pub(crate) fn compile(query: &Query) -> Result<Compiled, String> {
     })
 }
 
-/// A plan with, after each step, the slots certainly bound there.
 #[derive(Default)]
 struct Built {
     steps: Plan,
@@ -57,6 +54,13 @@ impl Built {
     fn push(&mut self, step: Step, certain: &Slots) {
         self.steps.push(step);
         self.after.push(certain.clone());
+    }
+
+    fn certain_after<'a>(&'a self, start: usize, entry: &'a Slots, steps: usize) -> &'a Slots {
+        match steps {
+            0 => entry,
+            _ => &self.after[start + steps - 1],
+        }
     }
 }
 
@@ -145,114 +149,23 @@ impl Lowering {
     ) -> Result<(), String> {
         match pattern {
             GraphPattern::Bgp { patterns } => self.triples(patterns, frame, out),
-            GraphPattern::Join { left, right } => {
-                self.pattern(left, frame, out)?;
-                let mut child = frame.child();
-                self.pattern(right, &mut child, out)?;
-                frame.absorb(child);
-                Ok(())
-            }
+            GraphPattern::Join { left, right } => self.join(left, right, frame, out),
             GraphPattern::Filter { expr, inner } => self.filter(expr, inner, frame, out),
             GraphPattern::Extend {
                 inner,
                 variable,
                 expression,
-            } => {
-                self.pattern(inner, frame, out)?;
-                let slot = self.slot(variable);
-                if frame.maybe.contains(&slot) {
-                    return Err(format!(
-                        "a BIND of ?{} where a group around it binds it",
-                        variable.as_str()
-                    ));
-                }
-                let mut read = Slots::new();
-                self.mentions(expression, &mut read, None);
-                frame.reads(&read)?;
-                let expr = self.expression(expression, &frame.certain)?;
-                let constant = matches!(
-                    expression,
-                    Expression::NamedNode(_) | Expression::Literal(_)
-                );
-                frame.binds(slot, constant);
-                out.push(Step::Bind(slot, expr), &frame.certain);
-                Ok(())
-            }
-            GraphPattern::Union { .. } => {
-                let mut branches = Vec::new();
-                union_branches(pattern, &mut branches);
-                let mut plans = Vec::new();
-                let mut certain: Option<Slots> = None;
-                let mut own: Option<Slots> = None;
-                let mut maybe = Slots::new();
-                for branch in branches {
-                    let mut child = frame.child();
-                    let mut built = Built::default();
-                    self.pattern(branch, &mut child, &mut built)?;
-                    plans.push(built.steps);
-                    maybe.extend(child.maybe);
-                    certain = Some(intersect(certain, child.certain));
-                    own = Some(intersect(own, child.own));
-                }
-                frame.maybe.extend(maybe);
-                frame.certain = certain.unwrap_or_default();
-                frame.own.extend(own.unwrap_or_default());
-                out.push(Step::Union(plans), &frame.certain);
-                Ok(())
-            }
+            } => self.extend(inner, variable, expression, frame, out),
+            GraphPattern::Union { .. } => self.union(pattern, frame, out),
             GraphPattern::LeftJoin {
                 left,
                 right,
                 expression,
-            } => {
-                self.pattern(left, frame, out)?;
-                let mut read = Slots::new();
-                self.variables(right, &mut read);
-                if let Some(expression) = expression {
-                    self.mentions(expression, &mut read, None);
-                }
-                frame.reads(&read)?;
-                let mut child = frame.child();
-                let mut built = Built::default();
-                self.pattern(right, &mut child, &mut built)?;
-                let condition = expression
-                    .as_ref()
-                    .map(|e| self.expression(e, &child.certain))
-                    .transpose()?;
-                frame.maybe.extend(child.maybe);
-                out.push(Step::Optional(built.steps, condition), &frame.certain);
-                Ok(())
-            }
+            } => self.optional(left, right, expression.as_ref(), frame, out),
             GraphPattern::Values {
                 variables,
                 bindings,
-            } => {
-                let slots: Vec<usize> = variables.iter().map(|v| self.slot(v)).collect();
-                let table = bindings
-                    .iter()
-                    .map(|row| {
-                        row.iter()
-                            .map(|cell| match cell {
-                                None => Ok(None),
-                                Some(GroundTerm::NamedNode(n)) => Ok(Some(Term::from(n.clone()))),
-                                Some(GroundTerm::Literal(l)) if by_term(l) => {
-                                    Ok(Some(Term::from(l.clone())))
-                                }
-                                Some(GroundTerm::Literal(_)) => {
-                                    Err("a typed literal in VALUES, which a join matches by value"
-                                        .to_owned())
-                                }
-                                Some(_) => Err("a quoted triple in VALUES".to_owned()),
-                            })
-                            .collect::<Result<Vec<_>, _>>()
-                    })
-                    .collect::<Result<Vec<_>, _>>()?;
-                for (at, &slot) in slots.iter().enumerate() {
-                    frame.binds(slot, table.iter().all(|row| row[at].is_some()));
-                }
-                out.push(Step::Values(slots, table), &frame.certain);
-                Ok(())
-            }
+            } => self.values(variables, bindings, frame, out),
             GraphPattern::Project { inner, variables } => {
                 self.subquery(inner, variables, false, frame, out)
             }
@@ -266,71 +179,12 @@ impl Lowering {
                 inner,
                 variables,
                 aggregates,
-            } => {
-                let mut child = frame.child();
-                let mut built = Built::default();
-                self.pattern(inner, &mut child, &mut built)?;
-                let keys: Vec<usize> = variables.iter().map(|v| self.slot(v)).collect();
-                let mut specs = Vec::new();
-                for (variable, aggregate) in aggregates {
-                    let slot = self.slot(variable);
-                    if frame.maybe.contains(&slot) {
-                        return Err("an aggregate named for a variable already bound".to_owned());
-                    }
-                    specs.push(Aggregate {
-                        slot,
-                        kind: self.aggregate(aggregate, &child)?,
-                    });
-                }
-                for &slot in &keys {
-                    frame.binds(slot, child.certain.contains(&slot));
-                }
-                for aggregate in &specs {
-                    frame.maybe.insert(aggregate.slot);
-                }
-                out.push(
-                    Step::Group(Group {
-                        inner: built.steps,
-                        keys,
-                        aggregates: specs,
-                    }),
-                    &frame.certain,
-                );
-                Ok(())
-            }
+            } => self.group(inner, variables, aggregates, frame, out),
             GraphPattern::Path {
                 subject,
                 path,
                 object,
-            } => {
-                let (PropertyPathExpression::ZeroOrMore(edges)
-                | PropertyPathExpression::OneOrMore(edges)) = path
-                else {
-                    return Err("a property path that is not a walk".to_owned());
-                };
-                let PropertyPathExpression::NegatedPropertySet(skipped) = &**edges else {
-                    return Err(
-                        "a property path that is not a walk over all but some edges".to_owned()
-                    );
-                };
-                let (from, to) = (self.place(subject)?, self.place(object)?);
-                if !matches!(&from, Place::Const(_))
-                    && !matches!(&from, Place::Var(s) if frame.certain.contains(s))
-                {
-                    return Err("a property path from a node not yet bound".to_owned());
-                }
-                if let Place::Var(slot) = to {
-                    frame.binds(slot, true);
-                }
-                let step = Step::Reach(Reach {
-                    from,
-                    to,
-                    skipped: skipped.iter().map(|n| Term::from(n.clone())).collect(),
-                    from_itself: matches!(path, PropertyPathExpression::ZeroOrMore(_)),
-                });
-                out.push(step, &frame.certain);
-                Ok(())
-            }
+            } => self.walk(subject, path, object, frame, out),
             GraphPattern::Minus { .. } => Err("MINUS".to_owned()),
             GraphPattern::Reduced { .. } => Err("REDUCED".to_owned()),
             GraphPattern::Slice { .. } => Err("LIMIT or OFFSET".to_owned()),
@@ -339,6 +193,122 @@ impl Lowering {
             GraphPattern::Service { .. } => Err("SERVICE".to_owned()),
             GraphPattern::Lateral { .. } => Err("LATERAL".to_owned()),
         }
+    }
+
+    fn join(
+        &mut self,
+        left: &GraphPattern,
+        right: &GraphPattern,
+        frame: &mut Frame,
+        out: &mut Built,
+    ) -> Result<(), String> {
+        self.pattern(left, frame, out)?;
+        let mut child = frame.child();
+        self.pattern(right, &mut child, out)?;
+        frame.absorb(child);
+        Ok(())
+    }
+
+    fn extend(
+        &mut self,
+        inner: &GraphPattern,
+        variable: &Variable,
+        expression: &Expression,
+        frame: &mut Frame,
+        out: &mut Built,
+    ) -> Result<(), String> {
+        self.pattern(inner, frame, out)?;
+        let slot = self.slot(variable);
+        if frame.maybe.contains(&slot) {
+            return Err(format!(
+                "a BIND of ?{} where a group around it binds it",
+                variable.as_str()
+            ));
+        }
+        let mut read = Slots::new();
+        self.mentions(expression, &mut read, None);
+        frame.reads(&read)?;
+        let expr = self.expression(expression, &frame.certain)?;
+        let constant = matches!(
+            expression,
+            Expression::NamedNode(_) | Expression::Literal(_)
+        );
+        frame.binds(slot, constant);
+        out.push(Step::Bind(slot, expr), &frame.certain);
+        Ok(())
+    }
+
+    fn union(
+        &mut self,
+        pattern: &GraphPattern,
+        frame: &mut Frame,
+        out: &mut Built,
+    ) -> Result<(), String> {
+        let mut branches = Vec::new();
+        union_branches(pattern, &mut branches);
+        let mut plans = Vec::new();
+        let mut certain: Option<Slots> = None;
+        let mut own: Option<Slots> = None;
+        let mut maybe = Slots::new();
+        for branch in branches {
+            let mut child = frame.child();
+            let mut built = Built::default();
+            self.pattern(branch, &mut child, &mut built)?;
+            plans.push(built.steps);
+            maybe.extend(child.maybe);
+            certain = Some(intersect(certain, child.certain));
+            own = Some(intersect(own, child.own));
+        }
+        frame.maybe.extend(maybe);
+        frame.certain = certain.unwrap_or_default();
+        frame.own.extend(own.unwrap_or_default());
+        out.push(Step::Union(plans), &frame.certain);
+        Ok(())
+    }
+
+    fn optional(
+        &mut self,
+        left: &GraphPattern,
+        right: &GraphPattern,
+        condition: Option<&Expression>,
+        frame: &mut Frame,
+        out: &mut Built,
+    ) -> Result<(), String> {
+        self.pattern(left, frame, out)?;
+        let mut read = Slots::new();
+        self.variables(right, &mut read);
+        if let Some(condition) = condition {
+            self.mentions(condition, &mut read, None);
+        }
+        frame.reads(&read)?;
+        let mut child = frame.child();
+        let mut built = Built::default();
+        self.pattern(right, &mut child, &mut built)?;
+        let condition = condition
+            .map(|e| self.expression(e, &child.certain))
+            .transpose()?;
+        frame.maybe.extend(child.maybe);
+        out.push(Step::Optional(built.steps, condition), &frame.certain);
+        Ok(())
+    }
+
+    fn values(
+        &mut self,
+        variables: &[Variable],
+        bindings: &[Vec<Option<GroundTerm>>],
+        frame: &mut Frame,
+        out: &mut Built,
+    ) -> Result<(), String> {
+        let slots: Vec<usize> = variables.iter().map(|v| self.slot(v)).collect();
+        let table = bindings
+            .iter()
+            .map(|row| row.iter().map(value).collect::<Result<Vec<_>, _>>())
+            .collect::<Result<Vec<_>, _>>()?;
+        for (at, &slot) in slots.iter().enumerate() {
+            frame.binds(slot, table.iter().all(|row| row[at].is_some()));
+        }
+        out.push(Step::Values(slots, table), &frame.certain);
+        Ok(())
     }
 
     /// A subquery shares only the variables it projects with the group around it. Its
@@ -375,6 +345,131 @@ impl Lowering {
         } else {
             frame.absorb(child);
         }
+        Ok(())
+    }
+
+    fn group(
+        &mut self,
+        inner: &GraphPattern,
+        variables: &[Variable],
+        aggregates: &[(Variable, AggregateExpression)],
+        frame: &mut Frame,
+        out: &mut Built,
+    ) -> Result<(), String> {
+        let mut child = frame.child();
+        let mut built = Built::default();
+        self.pattern(inner, &mut child, &mut built)?;
+        let keys: Vec<usize> = variables.iter().map(|v| self.slot(v)).collect();
+        let aggregates = self.aggregates(aggregates, frame, &child)?;
+        for &slot in &keys {
+            frame.binds(slot, child.certain.contains(&slot));
+        }
+        for aggregate in &aggregates {
+            frame.maybe.insert(aggregate.slot);
+        }
+        let step = Step::Group(Group {
+            inner: built.steps,
+            keys,
+            aggregates,
+        });
+        out.push(step, &frame.certain);
+        Ok(())
+    }
+
+    fn aggregates(
+        &mut self,
+        aggregates: &[(Variable, AggregateExpression)],
+        frame: &Frame,
+        group: &Frame,
+    ) -> Result<Vec<Aggregate>, String> {
+        aggregates
+            .iter()
+            .map(|(variable, aggregate)| {
+                let slot = self.slot(variable);
+                if frame.maybe.contains(&slot) {
+                    return Err("an aggregate named for a variable already bound".to_owned());
+                }
+                Ok(Aggregate {
+                    slot,
+                    kind: self.aggregate(aggregate, group)?,
+                })
+            })
+            .collect()
+    }
+
+    fn aggregate(
+        &mut self,
+        aggregate: &AggregateExpression,
+        group: &Frame,
+    ) -> Result<Kind, String> {
+        match aggregate {
+            AggregateExpression::CountSolutions { distinct: false } => Ok(Kind::Count {
+                of: None,
+                distinct: false,
+            }),
+            AggregateExpression::CountSolutions { .. } => Err("COUNT(DISTINCT *)".to_owned()),
+            AggregateExpression::FunctionCall {
+                name,
+                expr,
+                distinct,
+            } => self.aggregate_call(name, expr, *distinct, group),
+        }
+    }
+
+    fn aggregate_call(
+        &mut self,
+        name: &AggregateFunction,
+        expr: &Expression,
+        distinct: bool,
+        group: &Frame,
+    ) -> Result<Kind, String> {
+        if let (AggregateFunction::Count, Expression::Variable(variable)) = (name, expr) {
+            return Ok(Kind::Count {
+                of: Some(self.slot(variable)),
+                distinct,
+            });
+        }
+        if distinct {
+            return Err("DISTINCT in an aggregate".to_owned());
+        }
+        let mut read = Slots::new();
+        self.mentions(expr, &mut read, None);
+        group.reads(&read)?;
+        let operand = self.expression(expr, &group.certain)?;
+        match name {
+            AggregateFunction::Sum => Ok(Kind::Sum(operand)),
+            AggregateFunction::Min => Ok(Kind::Min(operand)),
+            AggregateFunction::Max => Ok(Kind::Max(operand)),
+            AggregateFunction::Sample => Ok(Kind::Sample(operand)),
+            _ => Err("an aggregate other than COUNT, SUM, MIN, MAX or SAMPLE".to_owned()),
+        }
+    }
+
+    fn walk(
+        &mut self,
+        subject: &TermPattern,
+        path: &PropertyPathExpression,
+        object: &TermPattern,
+        frame: &mut Frame,
+        out: &mut Built,
+    ) -> Result<(), String> {
+        let (skipped, from_itself) = walked(path)?;
+        let (from, to) = (self.place(subject)?, self.place(object)?);
+        if !matches!(&from, Place::Const(_))
+            && !matches!(&from, Place::Var(s) if frame.certain.contains(s))
+        {
+            return Err("a property path from a node not yet bound".to_owned());
+        }
+        if let Place::Var(slot) = to {
+            frame.binds(slot, true);
+        }
+        let step = Step::Reach(Reach {
+            from,
+            to,
+            skipped,
+            from_itself,
+        });
+        out.push(step, &frame.certain);
         Ok(())
     }
 
@@ -418,12 +513,16 @@ impl Lowering {
     fn triple(&mut self, triple: &TriplePattern) -> Result<Pattern, String> {
         Ok(Pattern {
             subject: self.place(&triple.subject)?,
-            predicate: match &triple.predicate {
-                NamedNodePattern::NamedNode(node) => Place::Const(Term::from(node.clone())),
-                NamedNodePattern::Variable(variable) => Place::Var(self.slot(variable)),
-            },
+            predicate: self.predicate(&triple.predicate),
             object: self.place(&triple.object)?,
         })
+    }
+
+    fn predicate(&mut self, predicate: &NamedNodePattern) -> Place {
+        match predicate {
+            NamedNodePattern::NamedNode(node) => Place::Const(Term::from(node.clone())),
+            NamedNodePattern::Variable(variable) => Place::Var(self.slot(variable)),
+        }
     }
 
     fn place(&mut self, term: &TermPattern) -> Result<Place, String> {
@@ -440,16 +539,10 @@ impl Lowering {
         triple: &TriplePattern,
         blanks: &mut Vec<BlankNode>,
     ) -> Result<Pattern, String> {
-        let subject = self.constructed(&triple.subject, blanks)?;
-        let object = self.constructed(&triple.object, blanks)?;
-        let predicate = match &triple.predicate {
-            NamedNodePattern::NamedNode(node) => Place::Const(Term::from(node.clone())),
-            NamedNodePattern::Variable(variable) => Place::Var(self.slot(variable)),
-        };
         Ok(Pattern {
-            subject,
-            predicate,
-            object,
+            subject: self.constructed(&triple.subject, blanks)?,
+            predicate: self.predicate(&triple.predicate),
+            object: self.constructed(&triple.object, blanks)?,
         })
     }
 
@@ -484,6 +577,7 @@ impl Lowering {
         self.variables(inner, &mut group);
         let mut conjuncts = Vec::new();
         conjunction(expr, &mut conjuncts);
+        let steps = out.steps.len() - start;
         let mut placed = Vec::new();
         for conjunct in conjuncts {
             let mut read = Slots::new();
@@ -491,18 +585,10 @@ impl Lowering {
             frame.reads(&read)?;
             let mut needed = Slots::new();
             self.mentions(conjunct, &mut needed, Some(&group));
-            let steps = out.steps.len() - start;
-            let certain_after = |k: usize| {
-                if k == 0 {
-                    &entry
-                } else {
-                    &out.after[start + k - 1]
-                }
-            };
             let at = (0..=steps)
-                .find(|&k| needed.is_subset(certain_after(k)))
+                .find(|&k| needed.is_subset(out.certain_after(start, &entry, k)))
                 .unwrap_or(steps);
-            let certain = certain_after(at).clone();
+            let certain = out.certain_after(start, &entry, at).clone();
             placed.push((start + at, self.expression(conjunct, &certain)?, certain));
         }
         placed.sort_by_key(|(at, ..)| *at);
@@ -513,65 +599,9 @@ impl Lowering {
         Ok(())
     }
 
-    fn aggregate(
-        &mut self,
-        aggregate: &AggregateExpression,
-        group: &Frame,
-    ) -> Result<Kind, String> {
-        let (name, expr, distinct) = match aggregate {
-            AggregateExpression::CountSolutions { distinct: false } => {
-                return Ok(Kind::Count {
-                    of: None,
-                    distinct: false,
-                })
-            }
-            AggregateExpression::CountSolutions { .. } => {
-                return Err("COUNT(DISTINCT *)".to_owned())
-            }
-            AggregateExpression::FunctionCall {
-                name,
-                expr,
-                distinct,
-            } => (name, expr, *distinct),
-        };
-        if let (AggregateFunction::Count, Expression::Variable(variable)) = (name, expr) {
-            return Ok(Kind::Count {
-                of: Some(self.slot(variable)),
-                distinct,
-            });
-        }
-        if distinct {
-            return Err("DISTINCT in an aggregate".to_owned());
-        }
-        let mut read = Slots::new();
-        self.mentions(expr, &mut read, None);
-        group.reads(&read)?;
-        let operand = self.expression(expr, &group.certain)?;
-        match name {
-            AggregateFunction::Sum => Ok(Kind::Sum(operand)),
-            AggregateFunction::Min => Ok(Kind::Min(operand)),
-            AggregateFunction::Max => Ok(Kind::Max(operand)),
-            AggregateFunction::Sample => Ok(Kind::Sample(operand)),
-            _ => Err("an aggregate other than COUNT, SUM, MIN, MAX or SAMPLE".to_owned()),
-        }
-    }
-
-    /// Every variable the pattern shows to the group around it. Where `only` is
-    /// given, the variables inside an EXISTS count only if the group holds them.
     fn variables(&mut self, pattern: &GraphPattern, into: &mut Slots) {
         match pattern {
-            GraphPattern::Bgp { patterns } => {
-                for triple in patterns {
-                    for term in [&triple.subject, &triple.object] {
-                        if let TermPattern::Variable(v) = term {
-                            into.insert(self.slot(v));
-                        }
-                    }
-                    if let NamedNodePattern::Variable(v) = &triple.predicate {
-                        into.insert(self.slot(v));
-                    }
-                }
-            }
+            GraphPattern::Bgp { patterns } => self.triple_variables(patterns, into),
             GraphPattern::Join { left, right }
             | GraphPattern::Union { left, right }
             | GraphPattern::Minus { left, right }
@@ -603,10 +633,7 @@ impl Lowering {
                 self.mentions(expression, into, None);
                 self.variables(inner, into);
             }
-            GraphPattern::Values { variables, .. } => {
-                into.extend(variables.iter().map(|v| self.slot(v)));
-            }
-            GraphPattern::Project { variables, .. } => {
+            GraphPattern::Values { variables, .. } | GraphPattern::Project { variables, .. } => {
                 into.extend(variables.iter().map(|v| self.slot(v)));
             }
             GraphPattern::Group {
@@ -624,6 +651,19 @@ impl Lowering {
             | GraphPattern::Graph { inner, .. }
             | GraphPattern::Service { inner, .. } => self.variables(inner, into),
             GraphPattern::Path { .. } => {}
+        }
+    }
+
+    fn triple_variables(&mut self, patterns: &[TriplePattern], into: &mut Slots) {
+        for triple in patterns {
+            for term in [&triple.subject, &triple.object] {
+                if let TermPattern::Variable(v) = term {
+                    into.insert(self.slot(v));
+                }
+            }
+            if let NamedNodePattern::Variable(v) = &triple.predicate {
+                into.insert(self.slot(v));
+            }
         }
     }
 
@@ -700,6 +740,33 @@ impl Pattern {
             (false, true, false) => 3,
             (false, false, false) => UNREACHABLE,
         }
+    }
+}
+
+fn walked(path: &PropertyPathExpression) -> Result<(Vec<Term>, bool), String> {
+    let (PropertyPathExpression::ZeroOrMore(edges) | PropertyPathExpression::OneOrMore(edges)) =
+        path
+    else {
+        return Err("a property path that is not a walk".to_owned());
+    };
+    let PropertyPathExpression::NegatedPropertySet(skipped) = &**edges else {
+        return Err("a property path that is not a walk over all but some edges".to_owned());
+    };
+    Ok((
+        skipped.iter().map(|n| Term::from(n.clone())).collect(),
+        matches!(path, PropertyPathExpression::ZeroOrMore(_)),
+    ))
+}
+
+fn value(cell: &Option<GroundTerm>) -> Result<Option<Term>, String> {
+    match cell {
+        None => Ok(None),
+        Some(GroundTerm::NamedNode(n)) => Ok(Some(Term::from(n.clone()))),
+        Some(GroundTerm::Literal(l)) if by_term(l) => Ok(Some(Term::from(l.clone()))),
+        Some(GroundTerm::Literal(_)) => {
+            Err("a typed literal in VALUES, which a join matches by value".to_owned())
+        }
+        Some(_) => Err("a quoted triple in VALUES".to_owned()),
     }
 }
 

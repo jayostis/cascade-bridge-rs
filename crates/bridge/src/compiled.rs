@@ -7,6 +7,7 @@ use spareval::ExpressionTerm;
 use std::cell::OnceCell;
 use std::rc::Rc;
 
+mod builtin;
 mod expr;
 mod lower;
 mod run;
@@ -18,8 +19,6 @@ pub(crate) use lower::compile;
 pub(crate) use run::Compiled;
 pub(crate) use tree::Tree;
 
-/// Which engine answers a query: the plan this module compiles it to, the general
-/// evaluator, or both, refusing where they differ.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum Executor {
     #[default]
@@ -39,8 +38,6 @@ impl Executor {
     }
 }
 
-/// A unit's store, and the tree over it that a compiled plan reads, built when the
-/// first plan asks.
 pub(crate) struct Dataset<'a> {
     pub(crate) store: &'a Store,
     tree: OnceCell<Tree>,
@@ -100,7 +97,6 @@ enum Step {
     Reach(Reach),
 }
 
-/// A walk from a bound node over every edge but a few, to each node it reaches once.
 struct Reach {
     from: Place,
     to: Place,
