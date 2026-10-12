@@ -1,5 +1,6 @@
 import { Adapter, describe, test } from "../dist/cascade_bridge.js";
-import type { BridgeError, Conversion, Document, Named, TestReport } from "../dist/cascade_bridge.js";
+import type { BridgeError, Conversion, Document, FilesRead, Named, TestReport } from "../dist/cascade_bridge.js";
+import { restore, snapshotName } from "../dist/node.js";
 
 const files: Map<string, Uint8Array> = new Map();
 const adapter: Named = { iri: "https://example.org/adapters/catalog/", files };
@@ -20,8 +21,12 @@ const accepted: boolean = loaded.accepts(document);
 const conversion: Conversion = loaded.convert(document);
 const graph: Uint8Array = conversion.graph;
 const findings: Uint8Array = conversion.findings;
+const read: FilesRead = loaded.filesRead();
+const image: Uint8Array = loaded.snapshot();
+const restored: Adapter | undefined = restore(image, adapter, vocabulary);
+const name: string = snapshotName(image);
 loaded.free();
-void [accepted, graph, findings];
+void [accepted, graph, findings, read, restored, name];
 
 const report: TestReport = test(adapter, vocabulary);
 const earl: Uint8Array = report.earl;

@@ -71,11 +71,11 @@ else
   dirty=false
 fi
 fresh() {
-  for made in cascade_bridge_bg.wasm cascade_bridge.js cascade_bridge.d.ts node.js LICENSE package.json; do
+  for made in cascade_bridge_bg.wasm cascade_bridge.js cascade_bridge.d.ts node.js node.d.ts snapshot.js LICENSE package.json; do
     [ -f "$dist/$made" ] || return 1
   done
   [ ! "$built" -nt "$dist/cascade_bridge_bg.wasm" ] || return 1
-  for hand in package/build.sh package/node.js package/package.json LICENSE; do
+  for hand in package/build.sh package/node.js package/node.d.ts package/snapshot.js package/package.json LICENSE; do
     [ ! "$hand" -nt "$dist/package.json" ] || return 1
   done
   grep -q "\"$version-commit-$commit\"" "$dist/package.json" &&
@@ -101,7 +101,7 @@ fi
   cat "$staged/cascade_bridge.d.ts"
 } >"$staged/declarations"
 mv "$staged/declarations" "$staged/cascade_bridge.d.ts"
-cp package/node.js LICENSE "$staged/"
+cp package/node.js package/node.d.ts package/snapshot.js LICENSE "$staged/"
 node package/stamp.mjs package/package.json "$staged/package.json" "$commit" "$dirty" "$sources" "$profile"
 rm -rf "$dist"
 mv "$staged" "$dist"

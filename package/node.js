@@ -5,3 +5,4 @@ initSync({ module: readFileSync(new URL("./cascade_bridge_bg.wasm", import.meta.
 
 export * from "./cascade_bridge.js";
 export { default } from "./cascade_bridge.js";
+export { restore, snapshotName } from "./snapshot.js";

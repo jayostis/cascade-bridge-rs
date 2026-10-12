@@ -5,7 +5,8 @@ use crate::load::{self, adapter_of, instances, load_adapter, CRATE};
 use crate::query::Profile;
 use crate::rdf::{serialise, serialise_at};
 use crate::records::Supplied;
-use crate::resolver::{key, Maps};
+pub use crate::resolver::FilesRead;
+use crate::resolver::{key, Maps, Recording};
 use crate::run::{self, prepare, Prepared, Source};
 use crate::terms::{
     BRIDGE_ADAPTER, BRIDGE_CASCADE_VOCABULARY_REPOSITORY, BRIDGE_CRATE_FILE, BRIDGE_ENVELOPE,
@@ -177,13 +178,14 @@ pub struct Loaded {
     adapter: load::Adapter,
     prepared: Prepared,
     unvalidated: Option<String>,
+    files_read: FilesRead,
 }
 
 pub fn load(adapter: Named<'_>, vocabulary: Option<Named<'_>>) -> Result<Loaded> {
-    let maps = Maps {
+    let maps = Recording::of(Maps {
         adapter,
         vocabulary,
-    };
+    });
     let loaded = load_adapter(&maps)?;
     let unoffered: Vec<&str> = loaded
         .required_profiles
@@ -198,14 +200,20 @@ pub fn load(adapter: Named<'_>, vocabulary: Option<Named<'_>>) -> Result<Loaded>
         )));
     }
     let prepared = prepare(&loaded, &maps)?;
+    let unvalidated = unvalidated_output(&loaded, &maps);
     Ok(Loaded {
-        unvalidated: unvalidated_output(&loaded, &maps),
+        unvalidated,
         adapter: loaded,
         prepared,
+        files_read: maps.into_read(),
     })
 }
 
 impl Loaded {
+    pub fn files_read(&self) -> &FilesRead {
+        &self.files_read
+    }
+
     /// The crate's root entity.
     pub fn iri(&self) -> &str {
         &self.adapter.root

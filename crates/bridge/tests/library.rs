@@ -197,6 +197,27 @@ fn describes_the_tiny_adapter_from_its_metadata_alone() {
 }
 
 #[test]
+fn names_the_files_a_load_read_in_each_map_and_none_it_did_not() {
+    let mut vocabulary = vocabulary();
+    vocabulary.insert("ontologies/unread.ttl".to_owned(), b"unread".to_vec());
+    let loaded = load(&tiny(), &vocabulary);
+    let read = loaded.files_read();
+    assert!(read.adapter.contains("ro-crate-metadata.json"), "{read:?}");
+    assert!(read.adapter.contains(MAPPING), "{read:?}");
+    assert!(
+        read.adapter
+            .iter()
+            .all(|path| !path.starts_with("fixtures/")),
+        "{read:?}"
+    );
+    let vocabulary_read: BTreeSet<&str> = read.vocabulary.iter().map(String::as_str).collect();
+    assert_eq!(
+        vocabulary_read,
+        BTreeSet::from(["ontologies/catalog/v1/catalog.shapes.ttl", VOCABULARY_FILE])
+    );
+}
+
+#[test]
 fn loads_with_the_test_manifest_and_every_fixture_left_out_and_then_converts() {
     let adapter = tiny_to_load();
     assert!(!adapter.contains_key("fixtures/manifest.ttl"));

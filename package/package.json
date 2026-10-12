@@ -10,8 +10,11 @@
   "type": "module",
   "exports": {
     ".": {
+      "node": {
+        "types": "./node.d.ts",
+        "default": "./node.js"
+      },
       "types": "./cascade_bridge.d.ts",
-      "node": "./node.js",
       "default": "./cascade_bridge.js"
     }
   },
@@ -21,6 +24,8 @@
   },
   "files": [
     "node.js",
+    "node.d.ts",
+    "snapshot.js",
     "cascade_bridge.js",
     "cascade_bridge.d.ts",
     "cascade_bridge_bg.wasm",
