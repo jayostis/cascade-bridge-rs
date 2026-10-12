@@ -123,12 +123,12 @@ fn prints_a_line_per_entry_and_exits_non_zero_when_an_entry_fails() {
 }
 
 #[test]
-fn offers_the_vocabularies_directory_on_both_commands() {
+fn offers_the_vocabularies_directory_on_each_command_that_loads_an_adapter() {
     let run = cascade_bridge(&["validate"]);
     let stderr = String::from_utf8_lossy(&run.stderr);
     assert_eq!(
         stderr.matches("--vocabularies <directory>").count(),
-        2,
+        3,
         "{stderr}"
     );
 }
@@ -322,6 +322,24 @@ fn profile_reports_the_time_of_each_stage_of_loading_and_of_converting_and_what_
             "{stage}: {said}"
         );
     }
+}
+
+#[test]
+fn explain_prints_each_query_of_an_adapter_as_the_plan_made_of_it_or_the_reason_it_has_none() {
+    let run = cascade_bridge(&[
+        "explain",
+        &tiny().to_string_lossy(),
+        "--vocabularies",
+        &vocabularies().to_string_lossy(),
+    ]);
+    succeeded(&run);
+    let said = String::from_utf8_lossy(&run.stdout);
+    assert!(
+        said.lines().any(|line| line.starts_with("Query    ")),
+        "{said}"
+    );
+    assert!(said.lines().any(|line| line.starts_with("scan ")), "{said}");
+    assert!(said.lines().any(|line| line == "construct"), "{said}");
 }
 
 #[test]
