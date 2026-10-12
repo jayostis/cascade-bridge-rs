@@ -1,3 +1,4 @@
+use crate::budget::Watch;
 use crate::error::{Error, Result};
 use crate::rdf::canonical_parts;
 use oxigraph::model::{Quad, Term};
@@ -52,9 +53,9 @@ impl<'a> Dataset<'a> {
         }
     }
 
-    pub(crate) fn tree(&self) -> Result<&Tree> {
+    pub(crate) fn tree(&self, watch: &Watch) -> Result<&Tree> {
         if self.tree.get().is_none() {
-            let _ = self.tree.set(Tree::of(self.store)?);
+            let _ = self.tree.set(Tree::of(self.store, watch.clone())?);
         }
         Ok(self.tree.get().expect("the tree was just set"))
     }
@@ -63,11 +64,13 @@ impl<'a> Dataset<'a> {
 /// What a plan cannot answer itself. An error is SPARQL's, which a filter reads as
 /// false. A give-up is a value no compiled builtin covers: the general evaluator
 /// answers the query instead. `Done` ends a search that has found what it was for.
+/// `Stopped` ends the run, because a budget of the convert is spent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Fail {
     Error,
     GiveUp,
     Done,
+    Stopped,
 }
 
 type Row = Vec<Option<Rc<Term>>>;

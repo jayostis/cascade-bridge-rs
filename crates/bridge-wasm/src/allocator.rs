@@ -3,6 +3,7 @@ compile_error!(
     "the global allocator is shared without a lock, which is sound only while wasm32 runs one thread: build without the atomics target feature"
 );
 
+use cascade_bridge::Counted;
 use core::alloc::{GlobalAlloc, Layout};
 use core::arch::wasm32::memory_size;
 use core::cell::UnsafeCell;
@@ -18,7 +19,7 @@ struct GrowingInLargeSteps {
 unsafe impl Sync for GrowingInLargeSteps {}
 
 #[global_allocator]
-static ALLOCATOR: GrowingInLargeSteps = GrowingInLargeSteps {
+static ALLOCATOR: Counted<GrowingInLargeSteps> = Counted(GrowingInLargeSteps {
     dlmalloc: UnsafeCell::new(
         const {
             let mut dlmalloc = Dlmalloc::new();
@@ -26,7 +27,7 @@ static ALLOCATOR: GrowingInLargeSteps = GrowingInLargeSteps {
             dlmalloc
         },
     ),
-};
+});
 
 static MEMORY_GROW_CALLS: AtomicU32 = AtomicU32::new(0);
 

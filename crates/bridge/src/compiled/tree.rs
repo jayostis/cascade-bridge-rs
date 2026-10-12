@@ -1,4 +1,5 @@
 use super::Fail;
+use crate::budget::Watch;
 use crate::error::Result;
 use oxigraph::model::{GraphName, Term};
 use oxigraph::store::Store;
@@ -16,10 +17,11 @@ pub(crate) struct Tree {
     by_predicate: Vec<Vec<(Id, Id)>>,
     by_predicate_object: FxHashMap<(Id, Id), Vec<Id>>,
     answers: RefCell<FxHashMap<usize, bool>>,
+    watch: Watch,
 }
 
 impl Tree {
-    pub(crate) fn of(store: &Store) -> Result<Self> {
+    pub(crate) fn of(store: &Store, watch: Watch) -> Result<Self> {
         let mut terms: Vec<Rc<Term>> = Vec::new();
         let mut ids: FxHashMap<Rc<Term>, Id> = FxHashMap::default();
         let mut intern = |term: Term| -> Id {
@@ -49,6 +51,7 @@ impl Tree {
             answers: RefCell::default(),
             terms,
             ids,
+            watch,
         };
         for (subject, predicate, object) in triples {
             tree.outgoing[subject as usize].push((predicate, object));
@@ -60,6 +63,10 @@ impl Tree {
                 .push(subject);
         }
         Ok(tree)
+    }
+
+    pub(super) fn stopped(&self) -> bool {
+        self.watch.pulse()
     }
 
     pub(super) fn id(&self, term: &Term) -> Option<Id> {

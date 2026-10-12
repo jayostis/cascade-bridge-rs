@@ -1,5 +1,6 @@
 use super::builtin::BUILTINS;
 use super::{agree, compile, Dataset, Executor, Fail, Tree};
+use crate::budget::{Budgets, Watch};
 use crate::error::Result;
 use crate::fixtures::{conversion_under, profiled_under, tiny, tiny_json, Variant};
 use crate::query::{Form, Profile, Query, QueryProfile};
@@ -361,7 +362,7 @@ fn evaluated(query: &str, store: &Store) -> Vec<String> {
 
 fn compiled(query: &str, store: &Store) -> std::result::Result<Vec<String>, Fail> {
     let plan = compile(&parse(query)).expect("a query the compiler reads");
-    let quads = plan.construct(&Tree::of(store).expect("a tree"))?;
+    let quads = plan.construct(&Tree::of(store, Watch::default()).expect("a tree"))?;
     Ok(canonical_parts(quads).expect("canonical"))
 }
 
@@ -513,7 +514,7 @@ fn answers_an_exists_that_shares_no_variable_afresh_for_each_tree() {
     let unkeyed = graph_of(&DATA.replace(":one :key \"1\" ; :label \"one\" .", ""));
     for store in [&keyed, &unkeyed, &keyed] {
         let answered = plan
-            .construct(&Tree::of(store).expect("a tree"))
+            .construct(&Tree::of(store, Watch::default()).expect("a tree"))
             .expect("constructed");
         assert_eq!(
             canonical_parts(answered).expect("canonical"),
@@ -547,7 +548,7 @@ fn read(query: &str) -> Query {
 
 fn answered(query: &Query, executor: Executor) -> (Vec<String>, Vec<QueryProfile>) {
     let store = graph();
-    let profile = Profile::new(executor, true);
+    let profile = Profile::new(executor, true, Budgets::default());
     let quads = query
         .graph(&Dataset::new(&store), &profile)
         .expect("constructed");
@@ -622,7 +623,7 @@ fn names_the_query_and_the_triple_where_the_two_executors_differ() {
         "CONSTRUCT { ?i :named ?n } WHERE { ?i a :Item ; :name ?n }",
     ))
     .expect("compiled")
-    .construct(&Tree::of(&store).expect("a tree"))
+    .construct(&Tree::of(&store, Watch::default()).expect("a tree"))
     .expect("constructed");
     let refused = agree("urn:t:query.rq", &theirs[1..], &theirs).expect_err("a difference");
     assert!(
