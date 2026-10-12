@@ -8,6 +8,8 @@ adapter=$1
 observed=$2
 allowed=${3:-"$(dirname "$0")/../allowed-fallbacks.json"}
 
+jq -e "type == \"array\"" "$observed" > /dev/null
+
 problems=$(jq -r --arg adapter "$adapter" --slurpfile allowed "$allowed" '
   def key: "\(.query)\t\(.reason)";
   ($allowed[0] | map(select(.adapter == $adapter))) as $listed
@@ -23,4 +25,6 @@ if [ -n "$problems" ]; then
   echo "$problems"
   exit 1
 fi
-echo "$adapter: $(jq length "$observed") query(ies) fall back, all of them allowed"
+count=$(jq length "$observed")
+if [ "$count" -eq 1 ]; then noun=query; else noun=queries; fi
+echo "$adapter: $count $noun not compiled, so evaluated by stock Oxigraph; all of them allowed"

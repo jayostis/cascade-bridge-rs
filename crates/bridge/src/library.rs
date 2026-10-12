@@ -403,6 +403,8 @@ pub struct TestReport {
     pub earl: Vec<u8>,
     pub entries: Vec<TestEntry>,
     pub profiles: Vec<String>,
+    /// Every query of the adapter the compiler does not compile, whatever the executor of this run (unlike
+    /// `QueryProfile::fallback`, which is set only where this run fell back); a plan giving up on given data is not here.
     pub fallbacks: Vec<Fallback>,
 }
 
