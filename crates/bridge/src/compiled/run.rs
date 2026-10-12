@@ -65,12 +65,16 @@ fn term_at(place: &Place, row: &Row) -> Option<Term> {
     match place {
         Place::Const(term) => Some(term.clone()),
         Place::Var(slot) => row[*slot].as_deref().cloned(),
-        Place::Blank(_) => unreachable!("only a template holds a blank node"),
+        Place::Blank(_) | Place::Key(..) => {
+            unreachable!("only a pattern holds a key, a template a blank node")
+        }
     }
 }
 
-pub(super) fn exists(plan: &Plan, tree: &Tree, row: &Row) -> Result<bool, Fail> {
-    match run(plan, &mut row.clone(), tree, &mut |_| Err(Fail::Done)) {
+pub(super) fn exists(plan: &Plan, tree: &Tree, row: &Row, hidden: &[usize]) -> Result<bool, Fail> {
+    let mut seen = row.clone();
+    unbind(&mut seen, hidden);
+    match run(plan, &mut seen, tree, &mut |_| Err(Fail::Done)) {
         Ok(()) => Ok(false),
         Err(Fail::Done) => Ok(true),
         Err(other) => Err(other),
@@ -92,6 +96,7 @@ fn run(steps: &[Step], row: &mut Row, tree: &Tree, sink: Sink<'_>) -> Result<(),
             }
         }
         Step::Bind(slot, expr) => bind(*slot, expr, row, tree, &mut next),
+        Step::Agree(slot, expr) => agree(*slot, expr, row, tree, &mut next),
         Step::Values(slots, table) => each_values(slots, table, row, &mut next),
         Step::Union(branches) => {
             for branch in branches {
@@ -116,6 +121,27 @@ fn bind(slot: usize, expr: &Expr, row: &mut Row, tree: &Tree, next: Sink<'_>) ->
     let done = next(row);
     row[slot] = None;
     done
+}
+
+/// A BIND of a variable a group around it binds: a join on that variable. An error
+/// leaves the variable unbound in the group alone, which no row of ours says, so the
+/// plan gives up.
+fn agree(slot: usize, expr: &Expr, row: &mut Row, tree: &Tree, next: Sink<'_>) -> Result<(), Fail> {
+    let computed = match expr(tree, row) {
+        Ok(term) => term,
+        Err(Fail::Error) => return Err(Fail::GiveUp),
+        Err(other) => return Err(other),
+    };
+    match &row[slot] {
+        Some(bound) if ExpressionTerm::from((**bound).clone()) != computed => Ok(()),
+        Some(_) => next(row),
+        None => {
+            row[slot] = Some(Rc::new(Term::from(computed)));
+            let done = next(row);
+            row[slot] = None;
+            done
+        }
+    }
 }
 
 fn each_values(
@@ -233,7 +259,7 @@ fn joined(row: &mut Row, slots: &[usize], values: &[Option<Term>]) -> Option<Vec
 }
 
 fn scan(pattern: &Pattern, row: &mut Row, tree: &Tree, next: Sink<'_>) -> Result<(), Fail> {
-    let Some((subject, predicate, object)) = fixed(pattern, row, tree) else {
+    let Some((subject, predicate, object)) = fixed(pattern, row, tree)? else {
         return Ok(());
     };
     tree.scan(subject, predicate, object, &mut |s, p, o| {
@@ -248,22 +274,45 @@ fn scan(pattern: &Pattern, row: &mut Row, tree: &Tree, next: Sink<'_>) -> Result
 
 type Fixed = (Option<Id>, Option<Id>, Option<Id>);
 
-fn fixed(pattern: &Pattern, row: &Row, tree: &Tree) -> Option<Fixed> {
-    let id_of = |place: &Place| -> Option<Option<Id>> {
-        match place {
-            Place::Const(term) => tree.id(term).map(Some),
-            Place::Blank(_) => unreachable!("only a template holds a blank node"),
-            Place::Var(slot) => match &row[*slot] {
-                Some(term) => tree.id(term).map(Some),
-                None => Some(None),
-            },
-        }
+/// What a pattern fixes in the tree, or none where a part is a term the tree lacks.
+fn fixed(pattern: &Pattern, row: &Row, tree: &Tree) -> Result<Option<Fixed>, Fail> {
+    let (Some(subject), Some(predicate), Some(object)) = (
+        id_of(&pattern.subject, row, tree)?,
+        id_of(&pattern.predicate, row, tree)?,
+        id_of(&pattern.object, row, tree)?,
+    ) else {
+        return Ok(None);
     };
-    Some((
-        id_of(&pattern.subject)?,
-        id_of(&pattern.predicate)?,
-        id_of(&pattern.object)?,
-    ))
+    Ok(Some((subject, predicate, object)))
+}
+
+fn id_of(place: &Place, row: &Row, tree: &Tree) -> Result<Option<Option<Id>>, Fail> {
+    Ok(match place {
+        Place::Const(term) => tree.id(term).map(Some),
+        Place::Blank(_) => unreachable!("only a template holds a blank node"),
+        Place::Var(slot) => match &row[*slot] {
+            Some(term) => tree.id(term).map(Some),
+            None => Some(None),
+        },
+        Place::Key(slot, key) => match &row[*slot] {
+            Some(term) => tree.id(term).map(Some),
+            None => keyed(key, row, tree)?,
+        },
+    })
+}
+
+/// The one string a filter equating the variable with an expression admits. A value
+/// of another kind is equal by value to terms the tree holds under other names, so
+/// it fixes nothing and the filter decides.
+fn keyed(key: &Expr, row: &Row, tree: &Tree) -> Result<Option<Option<Id>>, Fail> {
+    match key(tree, row) {
+        Ok(ExpressionTerm::StringLiteral(text)) => Ok(tree
+            .id(&Term::from(Literal::new_simple_literal(text)))
+            .map(Some)),
+        Ok(_) => Ok(Some(None)),
+        Err(Fail::Error) => Ok(None),
+        Err(other) => Err(other),
+    }
 }
 
 fn unify(
@@ -275,7 +324,9 @@ fn unify(
     let mut set = [None; 3];
     let places = [&pattern.subject, &pattern.predicate, &pattern.object];
     for (at, (place, id)) in places.into_iter().zip(ids).enumerate() {
-        let Place::Var(slot) = place else { continue };
+        let (Place::Var(slot) | Place::Key(slot, _)) = place else {
+            continue;
+        };
         let term = tree.term(id);
         match &row[*slot] {
             Some(existing) if **existing != **term => {

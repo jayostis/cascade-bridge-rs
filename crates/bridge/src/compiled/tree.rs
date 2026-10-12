@@ -1,7 +1,9 @@
+use super::Fail;
 use crate::error::Result;
 use oxigraph::model::{GraphName, Term};
 use oxigraph::store::Store;
 use rustc_hash::FxHashMap;
+use std::cell::RefCell;
 use std::rc::Rc;
 
 pub(super) type Id = u32;
@@ -13,6 +15,7 @@ pub(crate) struct Tree {
     incoming: Vec<Vec<(Id, Id)>>,
     by_predicate: Vec<Vec<(Id, Id)>>,
     by_predicate_object: FxHashMap<(Id, Id), Vec<Id>>,
+    answers: RefCell<FxHashMap<usize, bool>>,
 }
 
 impl Tree {
@@ -43,6 +46,7 @@ impl Tree {
             incoming: vec![Vec::new(); terms.len()],
             by_predicate: vec![Vec::new(); terms.len()],
             by_predicate_object: FxHashMap::default(),
+            answers: RefCell::default(),
             terms,
             ids,
         };
@@ -64,6 +68,20 @@ impl Tree {
 
     pub(super) fn term(&self, id: Id) -> &Rc<Term> {
         &self.terms[id as usize]
+    }
+
+    /// An answer that depends on the tree alone, computed the first time it is asked.
+    pub(super) fn remembered(
+        &self,
+        question: usize,
+        compute: impl FnOnce() -> std::result::Result<bool, Fail>,
+    ) -> std::result::Result<bool, Fail> {
+        if let Some(&answer) = self.answers.borrow().get(&question) {
+            return Ok(answer);
+        }
+        let answer = compute()?;
+        self.answers.borrow_mut().insert(question, answer);
+        Ok(answer)
     }
 
     /// Every triple that agrees with what is fixed, by the narrowest index that

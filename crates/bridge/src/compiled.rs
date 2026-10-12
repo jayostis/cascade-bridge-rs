@@ -9,6 +9,7 @@ use std::rc::Rc;
 
 mod builtin;
 mod expr;
+mod keys;
 mod lower;
 mod run;
 #[cfg(test)]
@@ -78,6 +79,8 @@ enum Place {
     Const(Term),
     Var(usize),
     Blank(usize),
+    /// A variable a filter equates with an expression of variables bound before.
+    Key(usize, Expr),
 }
 
 struct Pattern {
@@ -90,6 +93,7 @@ enum Step {
     Triple(Pattern),
     Filter(Expr),
     Bind(usize, Expr),
+    Agree(usize, Expr),
     Values(Vec<usize>, Vec<Vec<Option<Term>>>),
     Union(Vec<Plan>),
     Optional(Plan, Option<Expr>),

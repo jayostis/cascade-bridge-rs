@@ -122,6 +122,46 @@ const LOWERED: &[(&str, &str)] = &[
         "CONSTRUCT { ?i :label ?l } WHERE { ?i a :Item ; :id ?id . ?row :key ?k ; :label ?l . FILTER(CONCAT(\"\", ?k) = STR(?id)) }",
     ),
     (
+        "a key from a BIND that follows the patterns it reads, ahead of the pattern it keys",
+        "CONSTRUCT { ?i :label ?l } WHERE { ?i a :Item ; :id ?id . ?row :key ?key ; :label ?l . BIND(CONCAT(?id, \"\") AS ?k) FILTER(?key = ?k) }",
+    ),
+    (
+        "a key under a conditional the branches' constants decide",
+        "CONSTRUCT { ?i :label ?l } WHERE { ?i a :Item ; :id ?id . { { ?row :key ?key ; :label ?l BIND(:p AS ?gap) } UNION { ?row :key ?key ; :label ?l BIND(:q AS ?gap) } } FILTER(IF(?gap = :q, ?key != ?id, ?key = ?id)) }",
+    ),
+    (
+        "a filter equating a value with an expression whose value is not a string",
+        "CONSTRUCT { ?i :same ?j } WHERE { ?i a :Item ; :size ?s . ?j a :Item ; :size ?t . FILTER(?t = ?s) }",
+    ),
+    (
+        "a filter equating a value with a string no language-tagged value equals",
+        "CONSTRUCT { ?a :same ?b } WHERE { ?a :v ?x . ?b :v ?y . FILTER(?y = STR(?x)) }",
+    ),
+    (
+        "a BIND of a variable a group around it binds",
+        "CONSTRUCT { ?i :named ?n } WHERE { ?i :id ?n . { ?i :id ?id BIND(?id AS ?n) } }",
+    ),
+    (
+        "a BIND of a constant, the group around it binding the same and another",
+        "CONSTRUCT { ?i :named ?n } WHERE { ?i a :Item . BIND(\"p\" AS ?c) { { ?i :name ?n BIND(\"p\" AS ?c) } UNION { ?i :id ?n BIND(\"q\" AS ?c) } } }",
+    ),
+    (
+        "an aggregate named for a variable the group around it binds",
+        "CONSTRUCT { ?i :count ?c } WHERE { ?i a :Item . BIND(2 AS ?c) { SELECT ?i (COUNT(?x) AS ?c) WHERE { ?i ?p ?x . ?x a :Note } GROUP BY ?i } }",
+    ),
+    (
+        "a filter in a group reading a variable only the groups around it bind, in an EXISTS",
+        "CONSTRUCT { ?i :seen ?k } WHERE { ?i a :Item . { ?x :key ?k FILTER EXISTS { ?i :name \"alpha\" } } }",
+    ),
+    (
+        "a filter in a group reading a variable only the groups around it bind, in BOUND",
+        "CONSTRUCT { ?i :seen ?k } WHERE { ?i a :Item . { ?x :key ?k FILTER(!BOUND(?i)) } }",
+    ),
+    (
+        "an EXISTS that shares no variable with its group",
+        "CONSTRUCT { ?i :seen :yes } WHERE { ?i a :Item . FILTER NOT EXISTS { ?z :key \"3\" } }",
+    ),
+    (
         "a filter on the predicate and the kind of the object",
         "CONSTRUCT { ?o :text ?t } WHERE { ?o a :Note ; ?s ?t . FILTER(isLiteral(?t) && STRSTARTS(STR(?s), STR(rdf:_))) }",
     ),
@@ -247,19 +287,14 @@ const DECLINED: &[(&str, &str, &str)] = &[
         "DISTINCT in an aggregate",
     ),
     (
-        "an aggregate named for a variable the group around it binds",
-        "CONSTRUCT { ?i :count ?c } WHERE { ?i :size ?c . { SELECT ?i (COUNT(?x) AS ?c) WHERE { ?i rdf:_1 ?x } GROUP BY ?i } }",
-        "a BIND of ?c where a group around it binds it",
-    ),
-    (
         "an OPTIONAL over a variable another OPTIONAL may leave unbound",
         "CONSTRUCT { ?i :named ?n } WHERE { ?i a :Item . OPTIONAL { ?i :size ?n } { ?i :id ?id OPTIONAL { ?i :name ?n } } }",
         "a group reads a variable only the groups around it bind",
     ),
     (
-        "a BIND over a variable the group around it binds",
-        "CONSTRUCT { ?i :named ?n } WHERE { ?i :name ?n . { ?i :id ?id BIND(?id AS ?n) } }",
-        "a BIND of ?n where a group around it binds it",
+        "a filter over a variable the group around it binds and it may bind",
+        "CONSTRUCT { ?i :named ?n } WHERE { ?i :size ?n . { ?i :id ?id OPTIONAL { ?i :name ?n } FILTER(BOUND(?n)) } }",
+        "a group reads a variable only the groups around it bind",
     ),
     (
         "a GROUP BY key only the groups around the subquery bind",
@@ -284,8 +319,12 @@ const DECLINED: &[(&str, &str, &str)] = &[
 ];
 
 fn graph() -> Store {
+    graph_of(DATA)
+}
+
+fn graph_of(data: &str) -> Store {
     let store = Store::new().expect("a store");
-    for quad in RdfParser::from_format(RdfFormat::Turtle).for_slice(DATA) {
+    for quad in RdfParser::from_format(RdfFormat::Turtle).for_slice(data) {
         let quad = quad.expect("data");
         let quad = Quad::new(
             quad.subject,
@@ -429,6 +468,59 @@ fn gives_a_query_up_where_a_value_is_one_no_builtin_covers() {
             "{construct}: {query}"
         );
     }
+}
+
+/// Where a plan that reads a group's variable from the row around it, instead of
+/// as unbound, would answer something.
+const NOTHING: &[(&str, &str)] = &[
+    (
+        "a NOT EXISTS over a variable only the groups around it bind",
+        "CONSTRUCT { ?i :seen ?k } WHERE { ?i a :Item . { ?x :key ?k FILTER NOT EXISTS { ?i :name \"alpha\" } } }",
+    ),
+    (
+        "a filter comparing a variable only the groups around it bind",
+        "CONSTRUCT { ?i :seen ?k } WHERE { ?i :id ?v . { ?x :key ?k FILTER(?v = \"1\") } }",
+    ),
+    (
+        "a BIND that disagrees with the group around it",
+        "CONSTRUCT { ?i :named ?n } WHERE { ?i :name ?n . { ?i :id ?id BIND(?id AS ?n) } }",
+    ),
+    (
+        "an aggregate that disagrees with the group around it",
+        "CONSTRUCT { ?i :count ?c } WHERE { ?i a :Item . BIND(7 AS ?c) { SELECT ?i (COUNT(?x) AS ?c) WHERE { ?i ?p ?x . ?x a :Note } GROUP BY ?i } }",
+    ),
+];
+
+#[test]
+fn answers_nothing_where_the_general_evaluator_answers_nothing() {
+    let store = graph();
+    for (construct, query) in NOTHING {
+        assert_eq!(
+            evaluated(query, &store),
+            Vec::<String>::new(),
+            "{construct}"
+        );
+        assert_eq!(compiled(query, &store), Ok(Vec::new()), "{construct}");
+    }
+}
+
+#[test]
+fn answers_an_exists_that_shares_no_variable_afresh_for_each_tree() {
+    let query =
+        "CONSTRUCT { ?i :seen :yes } WHERE { ?i a :Item . FILTER EXISTS { ?z :key \"1\" } }";
+    let plan = compile(&parse(query)).expect("compiled");
+    let keyed = graph();
+    let unkeyed = graph_of(&DATA.replace(":one :key \"1\" ; :label \"one\" .", ""));
+    for store in [&keyed, &unkeyed, &keyed] {
+        let answered = plan
+            .construct(&Tree::of(store).expect("a tree"))
+            .expect("constructed");
+        assert_eq!(
+            canonical_parts(answered).expect("canonical"),
+            evaluated(query, store)
+        );
+    }
+    assert_ne!(evaluated(query, &keyed), evaluated(query, &unkeyed));
 }
 
 struct Text(String);
