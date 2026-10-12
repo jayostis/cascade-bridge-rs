@@ -13,7 +13,7 @@ import { at, iriOf, Refusal } from "./host.mjs";
 const USAGE = `usage: node hosts/node/bench.mjs --inputs <bench/manifest.json> [--only <glob>] [--pull-requests] [options]
        node hosts/node/bench.mjs <adapter-dir> <document>... [--envelope <iri>] [options]
 options: [--vocabularies <directory>] [--samples <n>] [--timeout <seconds>] [--package <directory>]
-         [--out <file.json>] [--baseline <directory> [--baseline-out <file.json>]]`;
+         [--executor compiled|spareval|both] [--out <file.json>] [--baseline <directory> [--baseline-out <file.json>]]`;
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SAMPLE = join(HERE, "bench-sample.mjs");
@@ -39,7 +39,10 @@ function parse(argv) {
     else if (argument === "--samples") parsed.samples = number(argument, next(), true);
     else if (argument === "--timeout") parsed.timeout = number(argument, next(), false);
     else if (argument === "--package") parsed.package = next();
-    else if (argument === "--out") parsed.out = next();
+    else if (argument === "--executor") {
+      parsed.executor = next();
+      if (!["compiled", "spareval", "both"].includes(parsed.executor)) throw new Refusal(USAGE);
+    } else if (argument === "--out") parsed.out = next();
     else if (argument === "--baseline") parsed.baseline = next();
     else if (argument === "--baseline-out") parsed.baselineOut = next();
     else if (argument === "--inputs") parsed.manifest = next();
@@ -178,6 +181,7 @@ function sampled(side, input, parsed) {
     vocabularies: parsed.vocabularies,
     document: input.path,
     envelope: input.envelope,
+    executor: parsed.executor,
   };
   return new Promise((done, failed) => {
     const child = spawn(process.execPath, [SAMPLE, JSON.stringify(given)], { stdio: ["ignore", "pipe", "pipe"] });
@@ -294,6 +298,12 @@ function inputResults(input, outcomes, adapterIri) {
     one(`${input.id}/records`, "{count}", first.records),
     one(`${input.id}/triples`, "{count}", first.triples),
     one(`${input.id}/findings`, "{count}", first.findings),
+    one(
+      `${input.id}/index-built`,
+      "{count}",
+      first.stages?.some(({ stage }) => stage === "index") ? 1 : 0,
+      "only the compiled executor builds an index",
+    ),
     one(`${input.id}/output-bytes/graph`, "By", first.graphBytes, "turtle"),
     one(`${input.id}/output-bytes/findings`, "By", first.findingsBytes, "turtle"),
   );

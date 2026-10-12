@@ -937,6 +937,7 @@ fn the_bench_writes_each_measure_of_both_converts_and_the_package_it_measured() 
         ("two/records", "output"),
         ("two/triples", "output"),
         ("two/findings", "output"),
+        ("two/index-built", "output"),
         ("two/output-bytes/graph", "output"),
         ("two/output-bytes/findings", "output"),
         ("two/query-time/item.rq", "clock"),
@@ -973,6 +974,30 @@ fn the_bench_writes_each_measure_of_both_converts_and_the_package_it_measured() 
         .expect("the engine's commit");
     let built_commit = built["cascadeBridge"]["commit"].as_str().expect("a commit");
     assert!(commit.starts_with(built_commit), "{commit}");
+}
+
+#[test]
+fn the_bench_converts_with_the_executor_it_is_given_and_refuses_a_name_it_does_not_know() {
+    let two = tiny().join("fixtures/in/two.xml");
+    let by_default = benched(&[&two], &[]);
+    assert_eq!(by_default["two/index-built"]["value"], 1);
+    for (executor, index_built) in [("compiled", 1), ("spareval", 0), ("both", 1)] {
+        let file = benched(&[&two], &["--executor", executor]);
+        assert_eq!(file["two/index-built"]["value"], index_built, "{executor}");
+        assert_eq!(
+            file["two/triples"]["value"], by_default["two/triples"]["value"],
+            "{executor}"
+        );
+    }
+    let adapter = tiny();
+    let refused = bench(&[
+        adapter.to_str().expect("a path"),
+        two.to_str().expect("a path"),
+        "--executor",
+        "fast",
+    ]);
+    assert_eq!(refused.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("usage:"));
 }
 
 const ONE_ITEM: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<catalog>\n  <item id=\"1\"><title>First</title></item>\n</catalog>\n";
