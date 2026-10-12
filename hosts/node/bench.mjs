@@ -298,6 +298,12 @@ function inputResults(input, outcomes, adapterIri) {
     one(`${input.id}/records`, "{count}", first.records),
     one(`${input.id}/triples`, "{count}", first.triples),
     one(`${input.id}/findings`, "{count}", first.findings),
+    one(
+      `${input.id}/index-built`,
+      "{count}",
+      first.stages?.some(({ stage }) => stage === "index") ? 1 : 0,
+      "only the compiled executor builds an index",
+    ),
     one(`${input.id}/output-bytes/graph`, "By", first.graphBytes, "turtle"),
     one(`${input.id}/output-bytes/findings`, "By", first.findingsBytes, "turtle"),
   );
