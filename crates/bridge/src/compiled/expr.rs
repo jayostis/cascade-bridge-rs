@@ -210,7 +210,7 @@ impl Lowering {
     fn exists_test(&mut self, body: &GraphPattern, scope: &Scope) -> Result<Expr, String> {
         let mut inside = Slots::new();
         self.variables(body, &mut inside);
-        let plan = self.exists(body, &scope.visible())?;
+        let plan = self.exists(body, scope)?;
         let masked: Vec<usize> = inside.intersection(&scope.hidden).copied().collect();
         let once = inside
             .iter()

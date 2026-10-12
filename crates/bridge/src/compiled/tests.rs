@@ -410,7 +410,7 @@ fn answers_each_key_as_the_general_evaluator_does() {
                 "{construct} answers nothing, so shows nothing"
             );
             let ours = compiled(query, &store);
-            (ours != Ok(theirs.clone())).then(|| (*construct, ours, theirs))
+            (ours != Ok(theirs.clone())).then_some((*construct, ours, theirs))
         })
         .collect();
     assert!(differing.is_empty(), "{differing:#?}");
@@ -423,7 +423,7 @@ fn answers_as_the_general_evaluator_does_where_the_data_tells_a_wrong_plan_apart
         .filter_map(|(construct, data, query)| {
             let store = graph_of(data);
             let (ours, theirs) = (compiled(query, &store), evaluated(query, &store));
-            (ours != Ok(theirs.clone())).then(|| (*construct, ours, theirs))
+            (ours != Ok(theirs.clone())).then_some((*construct, ours, theirs))
         })
         .collect();
     assert!(differing.is_empty(), "{differing:#?}");

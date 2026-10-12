@@ -1,6 +1,6 @@
 use super::expr::{holds, order};
 use super::tree::{Id, Tree};
-use super::{Aggregate, Expr, Fail, Group, Kind, Pattern, Place, Plan, Reach, Row, Step};
+use super::{Aggregate, Expr, Fail, Group, Key, Kind, Pattern, Place, Plan, Reach, Row, Step};
 use oxigraph::model::{
     BlankNode, GraphName, Literal, NamedNode, NamedOrBlankNode, Quad, Term, Triple,
 };
@@ -136,7 +136,7 @@ fn agree(slot: usize, expr: &Expr, row: &mut Row, tree: &Tree, next: Sink<'_>) -
         Err(other) => return Err(other),
     };
     match &row[slot] {
-        Some(bound) if ExpressionTerm::from((**bound).clone()) != computed => Ok(()),
+        Some(bound) if **bound != Term::from(computed.clone()) => Ok(()),
         Some(_) => next(row),
         None => {
             row[slot] = Some(Rc::new(Term::from(computed)));
@@ -307,8 +307,11 @@ fn id_of(place: &Place, row: &Row, tree: &Tree) -> Result<Option<Option<Id>>, Fa
 /// The one string a filter equating the variable with an expression admits. A value
 /// of another kind is equal by value to terms the tree holds under other names, so
 /// it fixes nothing and the filter decides.
-fn keyed(key: &Expr, row: &Row, tree: &Tree) -> Result<Option<Option<Id>>, Fail> {
-    match key(tree, row) {
+fn keyed(key: &Key, row: &Row, tree: &Tree) -> Result<Option<Option<Id>>, Fail> {
+    if key.reads.iter().any(|&slot| row[slot].is_none()) {
+        return Ok(Some(None));
+    }
+    match (key.expr)(tree, row) {
         Ok(ExpressionTerm::StringLiteral(text)) => Ok(tree
             .id(&Term::from(Literal::new_simple_literal(text)))
             .map(Some)),

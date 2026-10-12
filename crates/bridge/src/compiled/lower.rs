@@ -1,6 +1,6 @@
 use super::keys::{known_values, settled};
 use super::run::Compiled;
-use super::{Aggregate, Group, Kind, Pattern, Place, Plan, Reach, Step};
+use super::{Aggregate, Group, Key, Kind, Pattern, Place, Plan, Reach, Step};
 use oxigraph::model::vocab::xsd;
 use oxigraph::model::{BlankNode, Literal, Term, Variable};
 use oxiri::Iri;
@@ -96,6 +96,8 @@ impl Built {
 ///   variable it reads that is in `outer` and not in `own` would be unbound here,
 ///   and a plan that carries a row inward would see the outer value.
 /// - `touched` is what its own patterns may bind, in some row or every row.
+/// - `row` is what the row an EXISTS body runs on may bind. A general evaluator runs the
+///   whole body on that row, nested groups included, so they read these as bound.
 #[derive(Default)]
 struct Frame {
     certain: Slots,
@@ -103,6 +105,7 @@ struct Frame {
     own: Slots,
     outer: Slots,
     touched: Slots,
+    row: Slots,
 }
 
 const READS_OUTER: &str = "a group reads a variable only the groups around it bind";
@@ -115,6 +118,7 @@ impl Frame {
             own: Slots::new(),
             outer: self.maybe.clone(),
             touched: Slots::new(),
+            row: self.row.clone(),
         }
     }
 
@@ -150,12 +154,13 @@ impl Frame {
 
     /// What a filter of this group reads that only the groups around it bind: a
     /// general evaluator keeps the group apart from them, so there it is unbound.
-    /// Where the group may bind it as well, the row cannot say which it is.
+    /// Where the group may bind it as well, or an EXISTS body's row binds it, the row
+    /// cannot say which it is.
     fn hidden_among(&self, slots: &Slots) -> Result<Slots, String> {
         let outside = |slot: &&usize| self.outer.contains(slot) && !self.own.contains(slot);
         let mut hidden = Slots::new();
         for slot in slots.iter().filter(outside) {
-            if self.touched.contains(slot) {
+            if self.touched.contains(slot) || self.row.contains(slot) {
                 return Err(READS_OUTER.to_owned());
             }
             hidden.insert(*slot);
@@ -198,17 +203,25 @@ impl Lowering {
         slot
     }
 
-    pub(super) fn exists(&mut self, body: &GraphPattern, bound: &Slots) -> Result<Plan, String> {
+    /// Runs `lower` with the filters around the pattern set aside: a row of an OPTIONAL's
+    /// right side, a subquery, a group or an EXISTS need not satisfy them.
+    fn apart<T>(&mut self, lower: impl FnOnce(&mut Self) -> T) -> T {
+        let hints = std::mem::take(&mut self.hints);
+        let lowered = lower(self);
+        self.hints = hints;
+        lowered
+    }
+
+    pub(super) fn exists(&mut self, body: &GraphPattern, scope: &Scope) -> Result<Plan, String> {
+        let row: Slots = scope.maybe.difference(&scope.hidden).copied().collect();
         let mut frame = Frame {
-            certain: bound.clone(),
-            maybe: bound.clone(),
+            certain: scope.visible(),
+            maybe: row.clone(),
+            row,
             ..Frame::default()
         };
         let mut built = Built::default();
-        let hints = std::mem::take(&mut self.hints);
-        let lowered = self.pattern(body, &mut frame, &mut built);
-        self.hints = hints;
-        lowered?;
+        self.apart(|me| me.pattern(body, &mut frame, &mut built))?;
         Ok(built.plan())
     }
 
@@ -383,10 +396,7 @@ impl Lowering {
         frame.reads(&read)?;
         let mut child = frame.child();
         let mut built = Built::default();
-        let hints = std::mem::take(&mut self.hints);
-        let lowered = self.pattern(right, &mut child, &mut built);
-        self.hints = hints;
-        lowered?;
+        self.apart(|me| me.pattern(right, &mut child, &mut built))?;
         let condition = condition
             .map(|e| self.expression(e, &child.scope(Slots::new())))
             .transpose()?;
@@ -431,12 +441,11 @@ impl Lowering {
             .collect();
         let keys: Vec<usize> = variables.iter().map(|v| self.slot(v)).collect();
         self.scopes.push(shared);
-        let hints = std::mem::take(&mut self.hints);
         let mut child = frame.child();
         let mut built = Built::default();
-        let lowered = self.pattern(inner, &mut child, if distinct { &mut built } else { out });
+        let into = if distinct { &mut built } else { &mut *out };
+        let lowered = self.apart(|me| me.pattern(inner, &mut child, into));
         self.scopes.pop();
-        self.hints = hints;
         lowered?;
         if distinct {
             child.reads(&keys.iter().copied().collect())?;
@@ -465,10 +474,7 @@ impl Lowering {
     ) -> Result<(), String> {
         let mut child = frame.child();
         let mut built = Built::default();
-        let hints = std::mem::take(&mut self.hints);
-        let lowered = self.pattern(inner, &mut child, &mut built);
-        self.hints = hints;
-        lowered?;
+        self.apart(|me| me.pattern(inner, &mut child, &mut built))?;
         let keys: Vec<usize> = variables.iter().map(|v| self.slot(v)).collect();
         let aggregates = self.aggregates(aggregates, frame, &child)?;
         child.reads(&keys.iter().copied().collect())?;
@@ -666,9 +672,10 @@ impl Lowering {
             let mut triple = pending.remove(at);
             if let (Some(key), Place::Var(slot)) = (&keys[at], &triple.object) {
                 let reads = self.read_by(key);
-                self.key_reads.push(reads);
-                let key = self.expression(key, &frame.scope(Slots::new()))?;
-                triple.object = Place::Key(*slot, key);
+                self.key_reads.push(reads.clone());
+                let expr = self.expression(key, &frame.scope(Slots::new()))?;
+                let reads = reads.into_iter().collect();
+                triple.object = Place::Key(*slot, Key { expr, reads });
             }
             for place in [&triple.subject, &triple.predicate, &triple.object] {
                 if let Place::Var(slot) | Place::Key(slot, _) = place {
