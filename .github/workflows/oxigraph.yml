@@ -1,6 +1,5 @@
 name: oxigraph
 
-# Not started on an edit, like test.yml.
 on:
   pull_request:
   push:
@@ -16,7 +15,8 @@ permissions:
 
 env:
   OXIGRAPH_FORK: https://github.com/jayostis/oxigraph
-  OXIGRAPH_FORK_BRANCH: fix/sparopt-estimates-v0.5.11
+  # The fork's fix/sparopt-estimates-v0.5.11 at this commit. To bump it, push to that branch, then put the new full SHA here in a commit of its own.
+  OXIGRAPH_FORK_REV: fdbada1f9e7d309411493af8ba0bf690502450dc
 
 jobs:
   # No variant is a required status check. Required checks are named on main, and a
@@ -28,10 +28,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # What ships: the compiler, with spareval where it gives up.
-          - variant: executor compiled
-            executor: compiled
-            cache: native
           # Stock Oxigraph alone. Its peak wasm memory is reported and never checked: it is the
           # regression the fork removes.
           - variant: executor spareval
@@ -70,7 +66,7 @@ jobs:
             echo
             echo '[patch.crates-io]'
             for crate in oxrdf oxsdatatypes spargebra sparopt; do
-              echo "$crate = { git = \"$OXIGRAPH_FORK\", branch = \"$OXIGRAPH_FORK_BRANCH\" }"
+              echo "$crate = { git = \"$OXIGRAPH_FORK\", rev = \"$OXIGRAPH_FORK_REV\" }"
             done
           } >> Cargo.toml
           cargo metadata --format-version 1 > /dev/null
@@ -123,9 +119,17 @@ jobs:
           set -euo pipefail
           node hosts/node/bench.mjs --inputs ../cascade-bridge-adapter-ccda/bench/manifest.json --only ccda-entries-x10 \
             --vocabularies ../cascade-vocabulary --executor "$EXECUTOR" --samples 1 --out "$RUNNER_TEMP/memory.json"
-          peak=$(jq '.results[] | select(.name == "ccda-entries-x10/wasm-memory/first") | .value' "$RUNNER_TEMP/memory.json")
+          measure() {
+            jq -r --arg name "ccda-entries-x10/$1" '[.results[] | select(.name == $name) | .value | numbers] | first // empty' "$RUNNER_TEMP/memory.json"
+          }
+          peak=$(measure wasm-memory/first)
+          seconds=$(measure convert/first)
+          if ! [[ "$peak" =~ ^[0-9]+$ ]]; then
+            echo "::error::the x10 C-CDA reported no wasm-memory/first number (got '$peak'): the check would pass on nothing"
+            exit 1
+          fi
           mib=$((peak / 1048576))
-          echo "$VARIANT: peak wasm memory $mib MiB under --executor $EXECUTOR" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "$VARIANT: peak wasm memory $mib MiB, first convert ${seconds:-unreported} s, under --executor $EXECUTOR" | tee -a "$GITHUB_STEP_SUMMARY"
           if [ "$LIMIT" != report ] && [ "$mib" -gt "$LIMIT" ]; then
             echo "::error::$mib MiB is over the $LIMIT MiB the x10 C-CDA may take"
             exit 1
