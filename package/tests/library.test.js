@@ -1,19 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { bridge, files } from "./package.js";
+import { ADAPTER, bridge, DOCUMENT, files, toLoad, VOCABULARY } from "./package.js";
 
-const ADAPTER = "https://example.org/adapters/catalog/";
-const VOCABULARY = "https://example.org/vocabularies/";
-const DOCUMENT = "https://example.org/documents/catalog.xml";
 const MAPPING = "mapping/item.rq";
-
-function toLoad() {
-  const adapter = files("tiny-adapter");
-  for (const path of [...adapter.keys()]) {
-    if (path.startsWith("fixtures/")) adapter.delete(path);
-  }
-  return adapter;
-}
 
 const tiny = files("tiny-adapter");
 const two = tiny.get("fixtures/in/two.xml");
@@ -72,6 +61,14 @@ test("a freed adapter throws on convert", async () => {
   const adapter = Adapter.load({ iri: ADAPTER, files: toLoad() }, vocabulary);
   adapter.free();
   assert.throws(() => adapter.convert(document(two)));
+});
+
+test("a loaded adapter names the files it read, from each map, and none it did not", async () => {
+  const { Adapter } = await bridge();
+  const read = Adapter.load({ iri: ADAPTER, files: tiny }, vocabulary).filesRead();
+  assert.ok(read.adapter.includes("ro-crate-metadata.json") && read.adapter.includes(MAPPING), `${read.adapter}`);
+  assert.ok(read.adapter.every((path) => !path.startsWith("fixtures/")), `${read.adapter}`);
+  assert.deepEqual(read.vocabulary, [...vocabulary.files.keys()].sort());
 });
 
 test("wasm memory grows by 16 MiB or more each time it grows", async () => {

@@ -1,6 +1,8 @@
 use crate::error::{Error, Map, Result};
 use crate::library::Named;
 use oxiri::Iri;
+use std::cell::RefCell;
+use std::collections::BTreeSet;
 
 pub(crate) trait Resolver {
     /// The IRI the crate's root entity resolves to, ending in "/".
@@ -39,6 +41,58 @@ impl Resolver for Maps<'_> {
             Some(vocabulary) => served(vocabulary, Map::Vocabulary, iri),
             None => Err(Error::vocabulary(format!("no vocabulary was given: {iri}"))),
         }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct FilesRead {
+    pub adapter: BTreeSet<String>,
+    pub vocabulary: BTreeSet<String>,
+}
+
+pub(crate) struct Recording<'a> {
+    maps: Maps<'a>,
+    read: RefCell<FilesRead>,
+}
+
+impl<'a> Recording<'a> {
+    pub(crate) fn of(maps: Maps<'a>) -> Self {
+        Self {
+            maps,
+            read: RefCell::default(),
+        }
+    }
+
+    pub(crate) fn into_read(self) -> FilesRead {
+        self.read.into_inner()
+    }
+}
+
+impl Resolver for Recording<'_> {
+    fn root(&self) -> &str {
+        self.maps.root()
+    }
+
+    fn vocabularies(&self) -> Option<&str> {
+        self.maps.vocabularies()
+    }
+
+    fn read(&self, iri: &str) -> Result<Vec<u8>> {
+        if let Some(path) = key(self.maps.adapter.iri, iri) {
+            self.read.borrow_mut().adapter.insert(path);
+        }
+        self.maps.read(iri)
+    }
+
+    fn read_vocabulary(&self, iri: &str) -> Result<Vec<u8>> {
+        if let Some(path) = self
+            .maps
+            .vocabulary
+            .and_then(|vocabulary| key(vocabulary.iri, iri))
+        {
+            self.read.borrow_mut().vocabulary.insert(path);
+        }
+        self.maps.read_vocabulary(iri)
     }
 }
 

@@ -38,7 +38,7 @@ test("the package's exports have the types, node and default conditions", () => 
   }
 });
 
-test("the package packs exactly its manifest, licence, Node entry, module, declarations and wasm", () => {
+test("the package packs exactly its manifest, licence, Node entry, snapshots, module, declarations and wasm", () => {
   manifest();
   const [packed] = JSON.parse(run("npm", ["pack", "--dry-run", "--json"], dist));
   assert.deepEqual(
@@ -48,8 +48,10 @@ test("the package packs exactly its manifest, licence, Node entry, module, decla
       "cascade_bridge.d.ts",
       "cascade_bridge.js",
       "cascade_bridge_bg.wasm",
+      "node.d.ts",
       "node.js",
       "package.json",
+      "snapshot.js",
     ],
   );
 });

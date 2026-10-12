@@ -31,6 +31,12 @@ export interface Named {
   files: Map<string, Uint8Array>;
 }
 
+/** The paths a load read from each of its maps: all that a loaded adapter depends on. */
+export interface FilesRead {
+  adapter: string[];
+  vocabulary: string[];
+}
+
 export interface Facts {
   iri: string;
   bytes: Uint8Array;
@@ -104,6 +110,8 @@ export interface TestReport {
 extern "C" {
     #[wasm_bindgen(typescript_type = "Named")]
     pub type NamedValue;
+    #[wasm_bindgen(typescript_type = "FilesRead")]
+    pub type FilesReadValue;
     #[wasm_bindgen(typescript_type = "Document")]
     pub type DocumentValue;
     #[wasm_bindgen(typescript_type = "Format")]
@@ -389,6 +397,24 @@ impl Adapter {
         let loaded = cascade_bridge::load(as_named(&adapter), vocabulary.as_ref().map(as_named))
             .map_err(thrown)?;
         Ok(Self { loaded })
+    }
+
+    #[wasm_bindgen(js_name = filesRead)]
+    pub fn files_read(&self) -> Result<FilesReadValue, JsValue> {
+        guarded()?;
+        let read = self.loaded.files_read();
+        let value = JsValue::from(Object::new());
+        set(
+            &value,
+            "adapter",
+            &strings(&read.adapter.iter().cloned().collect::<Vec<_>>()),
+        );
+        set(
+            &value,
+            "vocabulary",
+            &strings(&read.vocabulary.iter().cloned().collect::<Vec<_>>()),
+        );
+        Ok(value.unchecked_into())
     }
 
     pub fn accepts(&self, document: &DocumentValue) -> Result<bool, JsValue> {
