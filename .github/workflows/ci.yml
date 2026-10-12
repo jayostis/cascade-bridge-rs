@@ -64,3 +64,19 @@ jobs:
         working-directory: ${{ github.event.repository.name }}
       - run: npx --yes typescript@7.0.2 --noEmit --strict package/tests/consumer.ts
         working-directory: ${{ github.event.repository.name }}
+      # A required check, so a pull request whose compiler change makes a shipped query fall back to
+      # stock Oxigraph cannot merge. It reads the compiler's decision on every query of each adapter, whatever
+      # the executor, from the release build that start made.
+      - name: no shipped adapter query falls back to stock Oxigraph
+        run: |
+          set -o pipefail
+          failed=0
+          for adapter in ccda fhir-r4 clinvar; do
+            directory="../cascade-bridge-adapter-$adapter"
+            vocabulary=$(jq -r '."@graph"[] | ."bridge:cascadeVocabularyRepository"."@id" // empty' "$directory/ro-crate-metadata.json")
+            fallbacks="$RUNNER_TEMP/fallbacks-$adapter.json"
+            cargo run --release --locked -q -p cascade-bridge-cli -- test "$directory" --vocabularies "../${vocabulary##*/}" --fallbacks "$fallbacks" > /dev/null || failed=1
+            bash .github/scripts/no-fallbacks.sh "$adapter" "$fallbacks" | tee -a "$GITHUB_STEP_SUMMARY" || failed=1
+          done
+          exit "$failed"
+        working-directory: ${{ github.event.repository.name }}

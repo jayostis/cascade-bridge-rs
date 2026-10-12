@@ -26,6 +26,13 @@ pub struct QueryProfile {
     pub stage: Option<Stage>,
 }
 
+/// A query of an adapter that the compiler did not take, so stock spareval evaluates it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Fallback {
+    pub query: String,
+    pub reason: String,
+}
+
 /// How a run executes its queries, what it may spend, and what it keeps of them, in
 /// the order each query first ran.
 #[derive(Default)]
@@ -181,6 +188,13 @@ impl Query {
             prefixes: prologue_prefixes(&text),
             compiled: compiled::compile(&parsed),
             parsed,
+        })
+    }
+
+    pub(crate) fn fallback(&self) -> Option<Fallback> {
+        Some(Fallback {
+            query: self.iri.clone(),
+            reason: self.compiled.as_ref().err()?.clone(),
         })
     }
 

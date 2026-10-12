@@ -1,7 +1,7 @@
 use crate::budget::Budgets;
 use crate::earl::{earl_report, ReportSubject};
 use crate::error::{Error, Result};
-use crate::harness::{run_manifest, RunOptions, OFFERED_PROFILES};
+use crate::harness::{run_manifest_noting_fallbacks, RunOptions, OFFERED_PROFILES};
 use crate::load::{self, adapter_of, instances, load_adapter, CRATE};
 use crate::measure::{Skip, Stage, StageTime};
 use crate::query::Profile;
@@ -24,7 +24,7 @@ use web_time::Instant;
 
 pub use crate::compiled::Executor;
 pub use crate::harness::Outcome;
-pub use crate::query::QueryProfile;
+pub use crate::query::{Fallback, QueryProfile};
 pub use crate::rdf::GraphFormat as Format;
 
 pub const NAME: &str = "Cascade Bridge for Rust";
@@ -403,6 +403,9 @@ pub struct TestReport {
     pub earl: Vec<u8>,
     pub entries: Vec<TestEntry>,
     pub profiles: Vec<String>,
+    /// Every query of the adapter the compiler does not compile, whatever the executor of this run (unlike
+    /// `QueryProfile::fallback`, which is set only where this run fell back); a plan giving up on given data is not here.
+    pub fallbacks: Vec<Fallback>,
 }
 
 pub fn test(
@@ -416,7 +419,7 @@ pub fn test(
     };
     let loaded = load_adapter(&maps)?;
     require_vocabularies(&loaded, &maps)?;
-    let results = run_manifest(
+    let (results, fallbacks) = run_manifest_noting_fallbacks(
         &loaded,
         &maps,
         RunOptions {
@@ -442,5 +445,6 @@ pub fn test(
             })
             .collect(),
         profiles: OFFERED_PROFILES.iter().map(|&p| p.to_owned()).collect(),
+        fallbacks,
     })
 }

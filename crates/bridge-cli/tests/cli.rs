@@ -827,6 +827,28 @@ fn test_says_where_it_wrote_the_report_and_writes_none_where_none_was_asked_for(
 }
 
 #[test]
+fn test_writes_each_query_the_compiler_did_not_take_and_why_where_fallbacks_names_a_file() {
+    let scratch = common::scratch();
+    let fallbacks = scratch.path().join("fallbacks.json");
+    let mut arguments = tiny_with_vocabularies("test");
+    arguments.extend([
+        "--fallbacks".to_owned(),
+        fallbacks.to_string_lossy().into_owned(),
+    ]);
+    run_in(scratch.path(), &arguments);
+    let written: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&fallbacks).expect("the file --fallbacks named"))
+            .expect("JSON");
+    assert_eq!(
+        written,
+        serde_json::json!([
+            {"query": "mapping/item-findings.rq", "reason": "MINUS"},
+            {"query": "mapping/detect.rq", "reason": "it is not a CONSTRUCT"},
+        ]),
+    );
+}
+
+#[test]
 fn refuses_what_it_cannot_parse_with_the_usage_and_status_two() {
     let adapter = tiny().to_string_lossy().into_owned();
     for argv in [
