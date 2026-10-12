@@ -2,8 +2,9 @@ use cascade_bridge::oxrdf::dataset::{CanonicalizationAlgorithm, Canonicalization
 use cascade_bridge::oxrdf::{Dataset, Quad, Term};
 use cascade_bridge::oxrdfio::{RdfFormat, RdfParser};
 use cascade_bridge::{
-    describe, load as load_named, Budgets, Conversion, ConvertOptions, Document, ErrorKind,
-    Executor, Facts, Files, Format, Loaded, Map, Named, Result, TestOptions,
+    describe, load as load_named, load_skipping, Budgets, Conversion, ConvertOptions, Document,
+    ErrorKind, Executor, Facts, Files, Format, Loaded, Map, Named, Result, Skip, Stage,
+    TestOptions,
 };
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -281,6 +282,50 @@ fn a_profiled_convert_converts_as_convert_does_and_profiles_each_query_once_per_
         .find(|query| query.iri == format!("{ADAPTER}{MAPPING}"))
         .expect("the item mapping is profiled");
     assert!(item.rows > 0, "{item:?}");
+}
+
+#[test]
+fn an_adapter_loaded_to_skip_converts_the_same_graph_with_fewer_findings_and_names_what_it_left_out(
+) {
+    let (adapter, vocabulary) = (tiny_to_load(), vocabulary());
+    let two = fixture("fixtures/in/two.xml");
+    let whole = convert(&load(&adapter, &vocabulary), &two);
+    let skipping = load_skipping(
+        named(&adapter, ADAPTER),
+        Some(named(&vocabulary, VOCABULARY)),
+        &[Skip::Findings],
+    )
+    .unwrap_or_else(|error| panic!("the adapter does not load: {error}"));
+    let skipped = convert(&skipping, &two);
+    assert_eq!(whole.skipped, []);
+    assert_eq!(skipped.skipped, [Skip::Findings]);
+    assert!(skipped.finding_count < whole.finding_count);
+    assert_eq!(
+        canonical(&written(skipped.graph(Format::Turtle))),
+        canonical(&written(whole.graph(Format::Turtle)))
+    );
+}
+
+#[test]
+fn stages_come_with_a_profiled_convert_only_and_serialising_is_timed_when_the_graph_is_written() {
+    let loaded = load(&tiny_to_load(), &vocabulary());
+    let two = fixture("fixtures/in/two.xml");
+    assert!(convert(&loaded, &two).stages().is_none());
+    assert!(!loaded.load_stages().is_empty());
+    let (profiled, _) = loaded
+        .convert_profiled(&document(&two))
+        .unwrap_or_else(|error| panic!("the document does not convert: {error}"));
+    let serialising = |conversion: &Conversion| {
+        let stages = conversion.stages().expect("a profiled convert");
+        assert_eq!(
+            stages.last().map(|time| time.stage),
+            Some(Stage::Serialising)
+        );
+        stages.last().expect("a stage").elapsed
+    };
+    assert_eq!(serialising(&profiled), Duration::ZERO);
+    written(profiled.graph(Format::Turtle));
+    assert!(serialising(&profiled) > Duration::ZERO);
 }
 
 #[test]

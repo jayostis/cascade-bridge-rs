@@ -2,6 +2,7 @@ use crate::annotation::Minted;
 use crate::budget::{Budgets, Watch};
 use crate::compiled::{self, Compiled, Dataset, Executor, Fail};
 use crate::error::{Error, ErrorKind, Result};
+use crate::measure::{Stage, StageTime, Stopwatch};
 use crate::resolver::Resolver;
 use oxigraph::model::{GraphName, Quad};
 use oxigraph::sparql::{QueryEvaluationError, QueryResults, SparqlEvaluator};
@@ -22,6 +23,8 @@ pub struct QueryProfile {
     pub fallback: Option<String>,
     /// Executions a compiled plan gave up on, which the general evaluator then answered.
     pub give_ups: usize,
+    /// The stage the query ran in, where a stage was running.
+    pub stage: Option<Stage>,
 }
 
 /// How a run executes its queries, what it may spend, and what it keeps of them, in
@@ -32,6 +35,7 @@ pub(crate) struct Profile {
     kept: bool,
     pub(crate) watch: Watch,
     queries: RefCell<Vec<QueryProfile>>,
+    stopwatch: Stopwatch,
 }
 
 impl Profile {
@@ -41,7 +45,16 @@ impl Profile {
             kept,
             watch: Watch::new(budgets),
             queries: RefCell::default(),
+            stopwatch: Stopwatch::new(kept),
         }
+    }
+
+    pub(crate) fn during<T>(&self, stage: Stage, work: impl FnOnce() -> T) -> T {
+        self.stopwatch.during(stage, work)
+    }
+
+    pub(crate) fn stages(&self) -> Vec<StageTime> {
+        self.stopwatch.times()
     }
 
     fn add(&self, query: &Query, rows: usize, elapsed: Duration, gave_up: bool) {
@@ -63,6 +76,7 @@ impl Profile {
                     Executor::Compiled | Executor::Both => query.compiled.as_ref().err().cloned(),
                 },
                 give_ups: usize::from(gave_up),
+                stage: self.stopwatch.current(),
             }),
         }
     }
@@ -204,7 +218,8 @@ impl Query {
             (Ok(plan), Executor::Compiled | Executor::Both) => plan,
             _ => return Ok((self.evaluated(data.store, watch)?, false)),
         };
-        match (plan.construct(data.tree(watch)?), executor) {
+        let tree = profile.during(Stage::Index, || data.tree(watch))?;
+        match (plan.construct(tree), executor) {
             (Ok(quads), Executor::Both) => {
                 let evaluated = self.evaluated(data.store, watch)?;
                 compiled::agree(&self.iri, &quads, &evaluated)?;

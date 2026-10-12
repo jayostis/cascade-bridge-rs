@@ -1,16 +1,18 @@
 use crate::folder::{Folder, Inputs};
 use crate::iri::file_iri;
 use cascade_bridge::{
-    describe, load, test, Budgets, ConvertOptions, Description, Document, Executor, Facts, Format,
-    Outcome, TestOptions, NAME, VERSION,
+    describe, load_skipping, test, Budgets, ConvertOptions, Description, Document, Executor, Facts,
+    Format, Outcome, Skip, Stage, StageTime, TestOptions, NAME, VERSION,
 };
 use std::fmt::Write as _;
 use std::io::Write as _;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const USAGE: &str = "usage: cascade-bridge test <adapter-dir> [--vocabularies <directory>] [--earl <out.ttl>] [--datasets] [--executor compiled|spareval|both] [--memory-budget-mib <1-3072>] [--time-budget-seconds <n>]
-       cascade-bridge convert <adapter-dir> <document> [--envelope <iri>] [--facts <file>] [--vocabularies <directory>] [--out <file>] [--findings <file>] [--format turtle|ntriples] [--executor compiled|spareval|both] [--memory-budget-mib <1-3072>] [--time-budget-seconds <n>] [--profile]
-       cascade-bridge library <calls file> <results directory>";
+       cascade-bridge convert <adapter-dir> <document> [--envelope <iri>] [--facts <file>] [--vocabularies <directory>] [--out <file>] [--findings <file>] [--format turtle|ntriples] [--executor compiled|spareval|both] [--memory-budget-mib <1-3072>] [--time-budget-seconds <n>] [--profile] [--skip schema|shapes|findings]
+       cascade-bridge library <calls file> <results directory>
+
+--skip is for measuring only: the run leaves out the source schema check, the output shapes check or the findings queries, and its conversion is not a validated one.";
 
 fn memory_budget(mebibytes: &str) -> Option<usize> {
     Budgets::memory_mib(mebibytes.parse().ok()?)
@@ -47,6 +49,7 @@ struct Convert {
     executor: Executor,
     budgets: Budgets,
     profile: bool,
+    skip: Vec<Skip>,
 }
 
 impl Convert {
@@ -106,6 +109,7 @@ fn parse(argv: impl IntoIterator<Item = String>) -> Option<Command> {
                 executor: Executor::default(),
                 budgets: Budgets::default(),
                 profile: false,
+                skip: Vec::new(),
             };
             while let Some(flag) = argv.next() {
                 match flag.as_str() {
@@ -123,6 +127,7 @@ fn parse(argv: impl IntoIterator<Item = String>) -> Option<Command> {
                         arguments.budgets.time = time_budget(&argv.next()?)?;
                     }
                     "--profile" => arguments.profile = true,
+                    "--skip" => arguments.skip.push(Skip::named(&argv.next()?)?),
                     _ => return None,
                 }
             }
@@ -271,10 +276,61 @@ fn crate_named(adapter: &str, named: &str) -> Result<String, String> {
         .into_inner())
 }
 
+fn skipped(skip: &[Skip]) -> String {
+    let mut names: Vec<&str> = skip.iter().map(|skip| skip.as_str()).collect();
+    names.sort_unstable();
+    names.dedup();
+    names.join(", ")
+}
+
+fn serialising(stages: &[StageTime]) -> Duration {
+    stages
+        .iter()
+        .filter(|time| time.stage == Stage::Serialising)
+        .map(|time| time.elapsed)
+        .sum()
+}
+
+/// Each stage's time, and what the clock on the wall counted that no stage did.
+fn stage_report(what: &str, wall: Duration, stages: &[StageTime]) -> String {
+    let counted: Duration = stages.iter().map(|time| time.elapsed).sum();
+    let mut said = format!("{what:<8} {:.3} s\n", wall.as_secs_f64());
+    for time in stages {
+        let _ = writeln!(
+            said,
+            "  {:<17} {:.3} s",
+            time.stage.as_str(),
+            time.elapsed.as_secs_f64()
+        );
+    }
+    let _ = writeln!(
+        said,
+        "  {:<17} {:.3} s",
+        "other",
+        wall.saturating_sub(counted).as_secs_f64()
+    );
+    said
+}
+
 fn convert(arguments: &Convert) -> Result<u8, String> {
+    if arguments.findings.is_some() && !arguments.skip.is_empty() {
+        return Err(format!(
+            "--findings is not written by a run that skips {}: its findings are missing, and would pass for those of a validated conversion",
+            skipped(&arguments.skip)
+        ));
+    }
+    if !arguments.skip.is_empty() {
+        eprintln!(
+            "cascade-bridge: MEASUREMENT ONLY: this run skips {}; its conversion is not a validated one",
+            skipped(&arguments.skip)
+        );
+    }
     let (mut inputs, _) = opened(&arguments.directory, arguments.vocabularies.as_deref())?;
     inputs.adapter = inputs.adapter.with_every_file()?;
-    let loaded = inputs.complete(load)?;
+    let loading = Instant::now();
+    let loaded = inputs
+        .complete(|adapter, vocabulary| load_skipping(adapter, vocabulary, &arguments.skip))?;
+    let loaded_in = loading.elapsed();
     let bytes = read(&arguments.document)?;
     let iri = iri_of(&arguments.document)?;
     let envelope = arguments
@@ -292,18 +348,20 @@ fn convert(arguments: &Convert) -> Result<u8, String> {
         envelope: envelope.as_deref(),
         facts: facts.as_ref().map(|(iri, bytes)| Facts { iri, bytes }),
     };
+    let converting = Instant::now();
     let conversion = if arguments.profile {
         let (conversion, queries) = loaded
             .convert_profiled_with(&document, arguments.options())
             .map_err(|e| e.to_string())?;
         for query in &queries {
             eprintln!(
-                "Query    {}  {} run(s), {} row(s), {:.3} s, {} give-up(s), {}",
+                "Query    {}  {} run(s), {} row(s), {:.3} s, {} give-up(s), {}, {}",
                 query.iri,
                 query.executions,
                 query.rows,
                 query.elapsed.as_secs_f64(),
                 query.give_ups,
+                query.stage.map_or("in no stage", Stage::as_str),
                 match (arguments.executor, query.fallback.as_deref()) {
                     (Executor::Spareval, _) => "evaluated".to_owned(),
                     (_, Some(why)) => format!("evaluated: {why}"),
@@ -317,6 +375,7 @@ fn convert(arguments: &Convert) -> Result<u8, String> {
             .convert_with(&document, arguments.options())
             .map_err(|e| e.to_string())?
     };
+    let converted_in = converting.elapsed();
     if let (Some(_), Some(unvalidated)) = (&arguments.findings, &conversion.unvalidated) {
         return Err(unvalidated.clone());
     }
@@ -338,6 +397,12 @@ fn convert(arguments: &Convert) -> Result<u8, String> {
             None => "the adapter names no bridge:detectQuery",
         }
     );
+    if !conversion.skipped.is_empty() {
+        eprintln!(
+            "Skipped  {}: a measurement, not a validated conversion",
+            skipped(&conversion.skipped)
+        );
+    }
 
     // Before the graph, so a findings file that cannot be written leaves standard output empty.
     if let Some(path) = &arguments.findings {
@@ -355,6 +420,14 @@ fn convert(arguments: &Convert) -> Result<u8, String> {
             .map_err(|e| e.to_string())?;
         written(path, &findings)?;
         eprintln!("Findings {path}");
+    }
+
+    if let Some(stages) = conversion.stages() {
+        eprint!(
+            "{}{}",
+            stage_report("Load", loaded_in, loaded.load_stages()),
+            stage_report("Convert", converted_in + serialising(&stages), &stages)
+        );
     }
 
     match &arguments.out {

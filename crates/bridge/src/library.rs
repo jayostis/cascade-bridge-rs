@@ -3,11 +3,12 @@ use crate::earl::{earl_report, ReportSubject};
 use crate::error::{Error, Result};
 use crate::harness::{run_manifest, RunOptions, OFFERED_PROFILES};
 use crate::load::{self, adapter_of, instances, load_adapter, CRATE};
+use crate::measure::{Skip, Stage, StageTime};
 use crate::query::Profile;
 use crate::rdf::{serialise, serialise_at};
 use crate::records::Supplied;
 use crate::resolver::{key, Maps};
-use crate::run::{self, prepare, Prepared, Source};
+use crate::run::{self, prepare_skipping, Prepared, Source};
 use crate::terms::{
     BRIDGE_ADAPTER, BRIDGE_CASCADE_VOCABULARY_REPOSITORY, BRIDGE_CRATE_FILE, BRIDGE_ENVELOPE,
     BRIDGE_LOAD_FILE, BRIDGE_SOURCE_MEDIA_TYPE, BRIDGE_TEST_MANIFEST, BRIDGE_VOCABULARY_FILE,
@@ -15,8 +16,11 @@ use crate::terms::{
 };
 use crate::vocabulary::{require_vocabularies, unvalidated_output};
 use oxrdf::{GraphName, Literal, NamedNode, NamedOrBlankNode, Quad, Term, TermRef};
+use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
+// std's clock panics on wasm32-unknown-unknown, where this one asks the host.
+use web_time::Instant;
 
 pub use crate::compiled::Executor;
 pub use crate::harness::Outcome;
@@ -182,6 +186,16 @@ pub struct Loaded {
 }
 
 pub fn load(adapter: Named<'_>, vocabulary: Option<Named<'_>>) -> Result<Loaded> {
+    load_skipping(adapter, vocabulary, &[])
+}
+
+/// For measuring only: an adapter that leaves out what it is told to skip, for its
+/// whole life. What it converts says so, and is not a validated conversion.
+pub fn load_skipping(
+    adapter: Named<'_>,
+    vocabulary: Option<Named<'_>>,
+    skipping: &[Skip],
+) -> Result<Loaded> {
     let maps = Maps {
         adapter,
         vocabulary,
@@ -199,7 +213,7 @@ pub fn load(adapter: Named<'_>, vocabulary: Option<Named<'_>>) -> Result<Loaded>
             unoffered.join(", ")
         )));
     }
-    let prepared = prepare(&loaded, &maps)?;
+    let prepared = prepare_skipping(&loaded, &maps, skipping)?;
     Ok(Loaded {
         unvalidated: unvalidated_output(&loaded, &maps),
         adapter: loaded,
@@ -215,6 +229,11 @@ impl Loaded {
 
     pub fn identifier(&self) -> Option<&str> {
         self.adapter.identifier.as_deref()
+    }
+
+    /// What loading this adapter spent in each stage it went through.
+    pub fn load_stages(&self) -> &[StageTime] {
+        &self.prepared.loading
     }
 
     pub fn accepts(&self, document: &Document<'_>) -> Result<bool> {
@@ -252,7 +271,9 @@ impl Loaded {
     ) -> Result<(Conversion, Vec<QueryProfile>)> {
         let profile = Profile::new(options.executor, true, options.budgets);
         let run = run::convert_with(&self.prepared, source(document), &profile)?;
-        Ok((self.conversion(run)?, profile.queries()))
+        let mut conversion = profile.during(Stage::Summary, || self.conversion(run))?;
+        conversion.stages = Some(profile.stages());
+        Ok((conversion, profile.queries()))
     }
 
     fn conversion(&self, mut run: run::Conversion) -> Result<Conversion> {
@@ -265,10 +286,13 @@ impl Loaded {
             finding_count: run.annotations(),
             detected: run.detected,
             unvalidated: self.unvalidated.clone(),
+            skipped: self.prepared.skipped.clone(),
             prefixes: self.prepared.prefixes.clone(),
             findings_prefixes: self.prepared.findings_prefixes.clone(),
             quads: run.quads,
             findings: run.findings,
+            stages: None,
+            serialising: Cell::default(),
         })
     }
 }
@@ -293,23 +317,52 @@ pub struct Conversion {
     pub detected: Option<bool>,
     /// Why the graph was not validated against the vocabulary's files, where it was not.
     pub unvalidated: Option<String>,
+    /// What the adapter it was converted by was loaded to leave out: a measurement, not a
+    /// validated conversion, wherever this is not empty.
+    pub skipped: Vec<Skip>,
     prefixes: Vec<(String, String)>,
     findings_prefixes: Vec<(String, String)>,
     quads: Vec<Quad>,
     findings: Vec<Quad>,
+    stages: Option<Vec<StageTime>>,
+    serialising: Cell<Duration>,
 }
 
 impl Conversion {
     pub fn graph(&self, format: Format) -> Result<Vec<u8>> {
-        Ok(serialise(&self.quads, format, &self.prefixes)?.into_bytes())
+        self.serialised(|| Ok(serialise(&self.quads, format, &self.prefixes)?.into_bytes()))
     }
 
     /// Every IRI the file standing at `relative_to` can name relative to itself is named that way.
     pub fn findings(&self, format: Format, relative_to: Option<&str>) -> Result<Vec<u8>> {
-        Ok(
-            serialise_at(&self.findings, format, &self.findings_prefixes, relative_to)?
-                .into_bytes(),
-        )
+        self.serialised(|| {
+            Ok(
+                serialise_at(&self.findings, format, &self.findings_prefixes, relative_to)?
+                    .into_bytes(),
+            )
+        })
+    }
+
+    /// Where the convert was profiled: the time in each stage, serialising as far as
+    /// the graph and the findings have been written.
+    pub fn stages(&self) -> Option<Vec<StageTime>> {
+        let mut stages = self.stages.clone()?;
+        stages.push(StageTime {
+            stage: Stage::Serialising,
+            elapsed: self.serialising.get(),
+        });
+        Some(stages)
+    }
+
+    fn serialised<T>(&self, work: impl FnOnce() -> T) -> T {
+        if self.stages.is_none() {
+            return work();
+        }
+        let started = Instant::now();
+        let done = work();
+        self.serialising
+            .set(self.serialising.get() + started.elapsed());
+        done
     }
 }
 
