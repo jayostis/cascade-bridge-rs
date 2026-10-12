@@ -1,5 +1,6 @@
 use crate::accounting::{gap_scheme, Accounting};
 use crate::annotation::{self, Record};
+use crate::compiled::Dataset;
 use crate::error::{Error, ErrorKind, Explained, Result};
 use crate::lift::{admitting, Admission, Lift, Paths, Reading, Unit};
 use crate::load::{subject, value, Adapter};
@@ -286,25 +287,18 @@ pub(crate) fn accepts(prepared: &Prepared, source: Source<'_>) -> Result<bool> {
         .explained_by(ErrorKind::Document)?
         .is_some()
     {}
-    detected(detect, lift, None)
+    detected(detect, lift, &Profile::default())
 }
 
+#[cfg(test)]
 pub(crate) fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
-    converted(prepared, source, None)
+    convert_with(prepared, source, &Profile::default())
 }
 
-pub(crate) fn convert_profiled(
+pub(crate) fn convert_with(
     prepared: &Prepared,
     source: Source<'_>,
     profile: &Profile,
-) -> Result<Conversion> {
-    converted(prepared, source, Some(profile))
-}
-
-fn converted(
-    prepared: &Prepared,
-    source: Source<'_>,
-    profile: Option<&Profile>,
 ) -> Result<Conversion> {
     let named = source
         .envelope
@@ -384,7 +378,7 @@ fn unit_converted(
     unit: &Unit,
     followed: &dyn Addresses,
     arrived_in: &Document,
-    profile: Option<&Profile>,
+    profile: &Profile,
 ) -> Result<(Vec<Quad>, Vec<Quad>)> {
     let selector = unit.selector();
     let selector_type = prepared.syntax.selector_type();
@@ -398,7 +392,9 @@ fn unit_converted(
         findings.extend(accounting.findings(&record, unit)?);
     }
     unit.store.extend(arrived_in.dataset(&selector))?;
-    let versioned = records::versioned(mapped(prepared, unit, profile)?)?;
+    unit.store.extend(prepared.tables.iter().cloned())?;
+    let data = Dataset::new(&unit.store);
+    let versioned = records::versioned(mapped(prepared, &data, profile)?)?;
     for dropped in &versioned.dropped {
         findings.extend(annotation::not_kept(
             &record,
@@ -410,7 +406,7 @@ fn unit_converted(
     if let Some(vocabulary) = &prepared.vocabulary {
         findings.extend(vocabulary.findings(&record, &produced)?);
     }
-    let queried = queried(prepared, &record, unit, profile)?;
+    let queried = queried(prepared, &record, &data, profile)?;
     let document = Record {
         source: iri,
         selector: document,
@@ -437,11 +433,10 @@ fn validated(schema: Option<&dyn Schema>, record: &Record<'_>, text: &str) -> Re
     Ok(findings)
 }
 
-fn mapped(prepared: &Prepared, unit: &Unit, profile: Option<&Profile>) -> Result<Vec<Quad>> {
-    unit.store.extend(prepared.tables.iter().cloned())?;
+fn mapped(prepared: &Prepared, data: &Dataset<'_>, profile: &Profile) -> Result<Vec<Quad>> {
     let mut produced = Vec::new();
     for mapping in &prepared.mappings {
-        produced.extend(mapping.graph(&unit.store, profile)?);
+        produced.extend(mapping.graph(data, profile)?);
     }
     Ok(produced)
 }
@@ -451,7 +446,7 @@ fn document_table(
     text: &str,
     reading: &Reading<'_>,
     arrived_in: &Document,
-    profile: Option<&Profile>,
+    profile: &Profile,
 ) -> Result<Vec<Quad>> {
     let mut table = Vec::new();
     if prepared.document_table_queries.is_empty() {
@@ -461,8 +456,9 @@ fn document_table(
     while let Some(unit) = lift.next_unit()? {
         unit.store.extend(prepared.tables.iter().cloned())?;
         unit.store.extend(arrived_in.dataset(&unit.selector()))?;
+        let data = Dataset::new(&unit.store);
         for query in &prepared.document_table_queries {
-            table.extend(query.graph(&unit.store, profile)?);
+            table.extend(query.graph(&data, profile)?);
         }
     }
     Ok(table)
@@ -471,12 +467,12 @@ fn document_table(
 fn queried(
     prepared: &Prepared,
     record: &Record<'_>,
-    unit: &Unit,
-    profile: Option<&Profile>,
+    data: &Dataset<'_>,
+    profile: &Profile,
 ) -> Result<Vec<Quad>> {
     let mut findings = Vec::new();
     for findings_query in &prepared.findings_queries {
-        let constructed = findings_query.graph(&unit.store, profile)?;
+        let constructed = findings_query.graph(data, profile)?;
         findings.extend(annotation::about(
             record,
             &findings_query.iri,
@@ -509,7 +505,7 @@ fn document_findings(
     validated(Some(schema), &record, text)
 }
 
-fn detected(detect: &Query, lift: Box<dyn Lift + '_>, profile: Option<&Profile>) -> Result<bool> {
+fn detected(detect: &Query, lift: Box<dyn Lift + '_>, profile: &Profile) -> Result<bool> {
     let skeleton = lift.into_skeleton().explained_by(ErrorKind::Document)?;
     detect.ask(&skeleton, "detect query", profile)
 }

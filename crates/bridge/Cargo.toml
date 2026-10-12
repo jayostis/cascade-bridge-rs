@@ -15,6 +15,7 @@ oxrdf = { version = "=0.3.4", features = ["rdfc-10"] }
 oxrdfio = "=0.2.6"
 oxsdatatypes = "=0.2.3"
 quick-xml = "=0.37.5"
+regex = "=1.13.1"
 regress = "=0.12.0"
 sha2 = "=0.11.0"
 # The graph and the shapes the SHACL engine's own signatures are written in,
@@ -23,6 +24,7 @@ sha2 = "=0.11.0"
 # for oxigraph's HTTP client and a full tokio.
 rudof_rdf = { git = "https://github.com/jayostis/rudof", rev = "1b6af3ba209ee731e1c4f5996557b84e2aaf7d29", default-features = false }
 shacl = { git = "https://github.com/jayostis/rudof", rev = "1b6af3ba209ee731e1c4f5996557b84e2aaf7d29", default-features = false }
+spareval = "=0.2.7"
 spargebra = { version = "=0.4.7", features = ["sep-0002", "sep-0006"] }
 web-time = "=1.1.0"
 xpath-eval = "=0.2.2"

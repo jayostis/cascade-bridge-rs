@@ -1,12 +1,14 @@
 use crate::annotation;
+use crate::compiled::Executor;
 use crate::error::{Error, ErrorKind, Explained, Result};
 use crate::load::{
     as_subject, list, objects, one, parse_into, subject, term_value, values, Adapter,
 };
+use crate::query::Profile;
 use crate::rdf::{canonical_lines, canonical_parts};
 use crate::records::Supplied;
 use crate::resolver::Resolver;
-use crate::run::{convert, prepare, Conversion, Prepared, Source};
+use crate::run::{convert_with, prepare, Conversion, Prepared, Source};
 use crate::terms::{
     BRIDGE_ARRIVED_AS, BRIDGE_CONVERSION, BRIDGE_DATASET, BRIDGE_ENVELOPE,
     BRIDGE_EXPECTED_FINDINGS, BRIDGE_EXPECTED_GRAPH, BRIDGE_FACTS, BRIDGE_IDENTITY_RELATION_TEST,
@@ -55,6 +57,7 @@ pub(crate) struct EntryResult {
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct RunOptions {
     pub(crate) datasets: bool,
+    pub(crate) executor: Executor,
 }
 
 /// The widths a description cuts a graph's line and a finding at.
@@ -127,6 +130,7 @@ struct Entry<'a> {
     graph: &'a Graph,
     resolver: &'a dyn Resolver,
     setup: &'a Prepared,
+    executor: Executor,
     node: NamedOrBlankNode,
 }
 
@@ -147,7 +151,7 @@ impl Entry<'_> {
             .map(|iri| Ok::<_, Error>((self.resolver.read(&iri)?, iri)))
             .transpose()?;
         let bytes = self.resolver.read(&input)?;
-        let run = convert(
+        let run = convert_with(
             self.setup,
             Source {
                 iri: &input,
@@ -155,6 +159,7 @@ impl Entry<'_> {
                 bytes: &bytes,
                 facts: facts.as_ref().map(|(turtle, iri)| Supplied { iri, turtle }),
             },
+            &Profile::new(self.executor, false),
         )?;
         Ok((run, bytes))
     }
@@ -466,6 +471,7 @@ pub(crate) fn run_manifest(
                     graph,
                     resolver,
                     setup,
+                    executor: options.executor,
                     node: node.clone(),
                 };
                 match entry.judge(&type_iri) {
