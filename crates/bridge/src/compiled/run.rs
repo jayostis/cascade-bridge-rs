@@ -1,15 +1,16 @@
 use super::expr::{holds, order};
 use super::tree::{Id, Tree};
-use super::{Aggregate, Fail, Group, Kind, Pattern, Place, Plan, Row, Step};
+use super::{Aggregate, Fail, Group, Kind, Pattern, Place, Plan, Reach, Row, Step};
 use oxigraph::model::{
     BlankNode, GraphName, Literal, NamedNode, NamedOrBlankNode, Quad, Term, Triple,
 };
+use oxsdatatypes::Integer;
 use spareval::ExpressionTerm;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-type Sink<'a> = &'a mut dyn FnMut(Row) -> Result<(), Fail>;
+type Sink<'a> = &'a mut dyn FnMut(&mut Row) -> Result<(), Fail>;
 
 /// A CONSTRUCT query lowered to a plan that starts from what is bound and looks
 /// up what follows.
@@ -24,10 +25,10 @@ impl Compiled {
     pub(crate) fn construct(&self, tree: &Tree) -> Result<Vec<Quad>, Fail> {
         let mut emitted: HashSet<Triple> = HashSet::new();
         let mut quads = Vec::new();
-        run(&self.plan, vec![None; self.width], tree, &mut |row| {
+        run(&self.plan, &mut vec![None; self.width], tree, &mut |row| {
             let mut blanks = vec![None; self.blanks];
             for template in &self.template {
-                let Some(triple) = instance(template, &row, &mut blanks) else {
+                let Some(triple) = instance(template, row, &mut blanks) else {
                     continue;
                 };
                 let blank = triple.subject.is_blank_node() || triple.object.is_blank_node();
@@ -62,61 +63,65 @@ fn instance(template: &Pattern, row: &Row, blanks: &mut [Option<BlankNode>]) -> 
 }
 
 pub(super) fn exists(plan: &Plan, tree: &Tree, row: &Row) -> Result<bool, Fail> {
-    match run(plan, row.clone(), tree, &mut |_| Err(Fail::Done)) {
+    match run(plan, &mut row.clone(), tree, &mut |_| Err(Fail::Done)) {
         Ok(()) => Ok(false),
         Err(Fail::Done) => Ok(true),
         Err(other) => Err(other),
     }
 }
 
-fn run(steps: &[Step], row: Row, tree: &Tree, sink: Sink<'_>) -> Result<(), Fail> {
+/// Walks the steps depth first over one row: a step binds what it matches, hands the
+/// row on, and unbinds it again on the way back.
+fn run(steps: &[Step], row: &mut Row, tree: &Tree, sink: Sink<'_>) -> Result<(), Fail> {
     let Some((step, rest)) = steps.split_first() else {
         return sink(row);
     };
     match step {
-        Step::Triple(pattern) => scan(pattern, &row, tree, &mut |next| run(rest, next, tree, sink)),
+        Step::Triple(pattern) => scan(pattern, row, tree, &mut |row| run(rest, row, tree, sink)),
         Step::Filter(expr) => {
-            if holds(expr, tree, &row)? {
+            if holds(expr, tree, row)? {
                 run(rest, row, tree, sink)
             } else {
                 Ok(())
             }
         }
         Step::Bind(slot, expr) => {
-            let mut row = row;
-            row[*slot] = match expr(tree, &row) {
+            row[*slot] = match expr(tree, row) {
                 Ok(term) => Some(Rc::new(Term::from(term))),
                 Err(Fail::Error) => None,
                 Err(other) => return Err(other),
             };
-            run(rest, row, tree, sink)
+            let done = run(rest, row, tree, sink);
+            row[*slot] = None;
+            done
         }
         Step::Values(slots, table) => {
             for values in table {
-                if let Some(next) = joined(&row, slots, values) {
-                    run(rest, next, tree, sink)?;
-                }
+                let Some(set) = joined(row, slots, values) else {
+                    continue;
+                };
+                let done = run(rest, row, tree, sink);
+                unbind(row, &set);
+                done?;
             }
             Ok(())
         }
         Step::Union(branches) => {
             for branch in branches {
-                run(branch, row.clone(), tree, &mut |next| {
-                    run(rest, next, tree, sink)
-                })?;
+                run(branch, row, tree, &mut |row| run(rest, row, tree, sink))?;
             }
             Ok(())
         }
         Step::Optional(branch, condition) => {
             let mut matched = false;
-            run(branch, row.clone(), tree, &mut |next| {
+            run(branch, row, tree, &mut |row| {
                 if let Some(condition) = condition {
-                    if !holds(condition, tree, &next)? {
+                    if !holds(condition, tree, row)? {
                         return Ok(());
                     }
                 }
                 matched = true;
-                run(rest, next, tree, sink)
+                run(rest, row, tree, sink)
             })?;
             if matched {
                 Ok(())
@@ -124,28 +129,91 @@ fn run(steps: &[Step], row: Row, tree: &Tree, sink: Sink<'_>) -> Result<(), Fail
                 run(rest, row, tree, sink)
             }
         }
-        Step::Group(group) => group.run(row, tree, &mut |next| run(rest, next, tree, sink)),
+        Step::Group(group) => group.run(row, tree, &mut |row| run(rest, row, tree, sink)),
+        Step::Reach(walk) => reach(walk, row, tree, &mut |row| run(rest, row, tree, sink)),
     }
 }
 
-fn joined(row: &Row, slots: &[usize], values: &[Option<Term>]) -> Option<Row> {
-    let mut next = row.clone();
-    for (&slot, value) in slots.iter().zip(values) {
-        let Some(value) = value else { continue };
-        match &next[slot] {
-            Some(bound) if **bound != *value => return None,
-            Some(_) => {}
-            None => next[slot] = Some(Rc::new(value.clone())),
+fn reach(walk: &Reach, row: &mut Row, tree: &Tree, next: Sink<'_>) -> Result<(), Fail> {
+    let place = |place: &Place, row: &Row| match place {
+        Place::Const(term) => Some(term.clone()),
+        Place::Var(slot) => row[*slot].as_deref().cloned(),
+        Place::Blank(_) => unreachable!("only a template holds a blank node"),
+    };
+    let Some(start) = place(&walk.from, row) else {
+        return Ok(());
+    };
+    let skipped: Vec<Id> = walk
+        .skipped
+        .iter()
+        .filter_map(|edge| tree.id(edge))
+        .collect();
+    let start_id = tree.id(&start);
+    let mut seen: HashSet<Id> = HashSet::new();
+    let mut reached = Vec::new();
+    if walk.from_itself {
+        reached.push(Rc::new(start));
+        seen.extend(start_id);
+    }
+    let mut pending: Vec<Id> = start_id.into_iter().collect();
+    while let Some(node) = pending.pop() {
+        tree.scan(Some(node), None, None, &mut |_, edge, to| {
+            if !skipped.contains(&edge) && seen.insert(to) {
+                reached.push(Rc::clone(tree.term(to)));
+                pending.push(to);
+            }
+            Ok::<(), Fail>(())
+        })?;
+    }
+    for term in reached {
+        match &walk.to {
+            Place::Var(slot) if row[*slot].is_none() => {
+                row[*slot] = Some(term);
+                let done = next(row);
+                row[*slot] = None;
+                done?;
+            }
+            to => {
+                if place(to, row).is_some_and(|bound| bound == *term) {
+                    next(row)?;
+                }
+            }
         }
     }
-    Some(next)
+    Ok(())
+}
+
+fn unbind(row: &mut Row, slots: &[usize]) {
+    for &slot in slots {
+        row[slot] = None;
+    }
+}
+
+/// Binds the row to a row of VALUES; the slots it bound, or none where they disagree.
+fn joined(row: &mut Row, slots: &[usize], values: &[Option<Term>]) -> Option<Vec<usize>> {
+    let mut set = Vec::new();
+    for (&slot, value) in slots.iter().zip(values) {
+        let Some(value) = value else { continue };
+        match &row[slot] {
+            Some(bound) if **bound != *value => {
+                unbind(row, &set);
+                return None;
+            }
+            Some(_) => {}
+            None => {
+                row[slot] = Some(Rc::new(value.clone()));
+                set.push(slot);
+            }
+        }
+    }
+    Some(set)
 }
 
 fn scan(
     pattern: &Pattern,
-    row: &Row,
+    row: &mut Row,
     tree: &Tree,
-    next: &mut dyn FnMut(Row) -> Result<(), Fail>,
+    next: &mut dyn FnMut(&mut Row) -> Result<(), Fail>,
 ) -> Result<(), Fail> {
     let fixed = |place: &Place| -> Option<Option<Id>> {
         match place {
@@ -165,21 +233,35 @@ fn scan(
         return Ok(());
     };
     tree.scan(subject, predicate, object, &mut |s, p, o| {
-        let mut bound = row.clone();
-        for (place, id) in [
+        let mut set = [None; 3];
+        let mut agrees = true;
+        for (at, (place, id)) in [
             (&pattern.subject, s),
             (&pattern.predicate, p),
             (&pattern.object, o),
-        ] {
+        ]
+        .into_iter()
+        .enumerate()
+        {
             let Place::Var(slot) = place else { continue };
             let term = tree.term(id);
-            match &bound[*slot] {
-                Some(existing) if **existing != **term => return Ok(()),
+            match &row[*slot] {
+                Some(existing) if **existing != **term => {
+                    agrees = false;
+                    break;
+                }
                 Some(_) => {}
-                None => bound[*slot] = Some(Rc::clone(term)),
+                None => {
+                    row[*slot] = Some(Rc::clone(term));
+                    set[at] = Some(*slot);
+                }
             }
         }
-        next(bound)
+        let done = if agrees { next(row) } else { Ok(()) };
+        for slot in set.into_iter().flatten() {
+            row[slot] = None;
+        }
+        done
     })
 }
 
@@ -199,6 +281,9 @@ impl Accumulator {
                 counted: 0,
                 seen: HashSet::new(),
             },
+            Kind::Sum(_) => {
+                Self::Chosen(Some(Ok(ExpressionTerm::IntegerLiteral(Integer::default()))))
+            }
             _ => Self::Chosen(None),
         }
     }
@@ -222,6 +307,22 @@ impl Accumulator {
                     }
                 }
             }
+            (Self::Chosen(chosen), Kind::Sum(expr)) => match (expr(tree, row), &*chosen) {
+                (Err(Fail::Error), _) => *chosen = Some(Err(())),
+                (Err(other), _) => return Err(other),
+                (Ok(_), Some(Err(()))) => {}
+                (
+                    Ok(ExpressionTerm::IntegerLiteral(term)),
+                    Some(Ok(ExpressionTerm::IntegerLiteral(sum))),
+                ) => {
+                    *chosen = Some(
+                        sum.checked_add(term)
+                            .map(ExpressionTerm::IntegerLiteral)
+                            .ok_or(()),
+                    );
+                }
+                _ => return Err(Fail::GiveUp),
+            },
             (Self::Chosen(chosen), Kind::Min(expr) | Kind::Max(expr)) => {
                 let wanted = if matches!(kind, Kind::Min(_)) {
                     Ordering::Less
@@ -257,7 +358,7 @@ impl Accumulator {
 }
 
 impl Group {
-    fn run(&self, row: Row, tree: &Tree, next: Sink<'_>) -> Result<(), Fail> {
+    fn run(&self, row: &mut Row, tree: &Tree, next: Sink<'_>) -> Result<(), Fail> {
         let fresh = || -> Vec<Accumulator> {
             self.aggregates
                 .iter()
@@ -265,13 +366,13 @@ impl Group {
                 .collect()
         };
         let mut groups: HashMap<Vec<Option<Rc<Term>>>, Vec<Accumulator>> = HashMap::new();
-        run(&self.inner, row.clone(), tree, &mut |inner| {
+        run(&self.inner, row, tree, &mut |inner| {
             let key = self.keys.iter().map(|&slot| inner[slot].clone()).collect();
             let accumulators = groups.entry(key).or_insert_with(fresh);
             for (accumulator, Aggregate { kind, .. }) in
                 accumulators.iter_mut().zip(&self.aggregates)
             {
-                accumulator.add(kind, tree, &inner)?;
+                accumulator.add(kind, tree, inner)?;
             }
             Ok(())
         })?;
@@ -279,14 +380,20 @@ impl Group {
             groups.insert(Vec::new(), fresh());
         }
         for (key, accumulators) in groups {
-            let mut grouped = row.clone();
+            let mut set = Vec::new();
             for (&slot, value) in self.keys.iter().zip(key) {
-                grouped[slot] = value;
+                if row[slot].is_none() && value.is_some() {
+                    row[slot] = value;
+                    set.push(slot);
+                }
             }
             for (aggregate, accumulator) in self.aggregates.iter().zip(accumulators) {
-                grouped[aggregate.slot] = accumulator.finish();
+                row[aggregate.slot] = accumulator.finish();
+                set.push(aggregate.slot);
             }
-            next(grouped)?;
+            let done = next(row);
+            unbind(row, &set);
+            done?;
         }
         Ok(())
     }

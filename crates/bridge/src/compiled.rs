@@ -93,6 +93,15 @@ enum Step {
     Union(Vec<Plan>),
     Optional(Plan, Option<Expr>),
     Group(Group),
+    Reach(Reach),
+}
+
+/// A walk from a bound node over every edge but a few, to each node it reaches once.
+struct Reach {
+    from: Place,
+    to: Place,
+    skipped: Vec<Term>,
+    from_itself: bool,
 }
 
 struct Group {
@@ -108,6 +117,7 @@ struct Aggregate {
 
 enum Kind {
     Count { of: Option<usize>, distinct: bool },
+    Sum(Expr),
     Min(Expr),
     Max(Expr),
     Sample(Expr),

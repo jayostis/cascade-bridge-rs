@@ -1,7 +1,7 @@
 use crate::error::Result;
 use oxigraph::model::{GraphName, Term};
 use oxigraph::store::Store;
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use std::rc::Rc;
 
 pub(super) type Id = u32;
@@ -10,17 +10,17 @@ pub(super) type Id = u32;
 /// node makes.
 pub(crate) struct Tree {
     terms: Vec<Rc<Term>>,
-    ids: HashMap<Rc<Term>, Id>,
+    ids: FxHashMap<Rc<Term>, Id>,
     outgoing: Vec<Vec<(Id, Id)>>,
     incoming: Vec<Vec<(Id, Id)>>,
     by_predicate: Vec<Vec<(Id, Id)>>,
-    by_predicate_object: HashMap<(Id, Id), Vec<Id>>,
+    by_predicate_object: FxHashMap<(Id, Id), Vec<Id>>,
 }
 
 impl Tree {
     pub(crate) fn of(store: &Store) -> Result<Self> {
         let mut terms: Vec<Rc<Term>> = Vec::new();
-        let mut ids: HashMap<Rc<Term>, Id> = HashMap::new();
+        let mut ids: FxHashMap<Rc<Term>, Id> = FxHashMap::default();
         let mut intern = |term: Term| -> Id {
             if let Some(&id) = ids.get(&term) {
                 return id;
@@ -44,7 +44,7 @@ impl Tree {
             outgoing: vec![Vec::new(); terms.len()],
             incoming: vec![Vec::new(); terms.len()],
             by_predicate: vec![Vec::new(); terms.len()],
-            by_predicate_object: HashMap::new(),
+            by_predicate_object: FxHashMap::default(),
             terms,
             ids,
         };

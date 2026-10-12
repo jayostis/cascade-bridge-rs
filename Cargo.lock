@@ -169,6 +169,7 @@ dependencies = [
  "regex",
  "regress",
  "rudof_rdf",
+ "rustc-hash",
  "sha2",
  "shacl",
  "spareval",

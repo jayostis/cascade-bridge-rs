@@ -1,8 +1,10 @@
 use super::run::Compiled;
-use super::{Aggregate, Group, Kind, Pattern, Place, Plan, Step};
+use super::{Aggregate, Group, Kind, Pattern, Place, Plan, Reach, Step};
 use oxigraph::model::{BlankNode, Term, Variable};
 use oxiri::Iri;
-use spargebra::algebra::{AggregateExpression, AggregateFunction, Expression, GraphPattern};
+use spargebra::algebra::{
+    AggregateExpression, AggregateFunction, Expression, GraphPattern, PropertyPathExpression,
+};
 use spargebra::term::{GroundTerm, NamedNodePattern, TermPattern, TriplePattern};
 use spargebra::Query;
 use std::collections::{BTreeSet, HashMap};
@@ -286,7 +288,39 @@ impl Lowering {
                 );
                 Ok(())
             }
-            GraphPattern::Path { .. } => Err("a property path".to_owned()),
+            GraphPattern::Path {
+                subject,
+                path,
+                object,
+            } => {
+                let (PropertyPathExpression::ZeroOrMore(edges)
+                | PropertyPathExpression::OneOrMore(edges)) = path
+                else {
+                    return Err("a property path that is not a walk".to_owned());
+                };
+                let PropertyPathExpression::NegatedPropertySet(skipped) = &**edges else {
+                    return Err(
+                        "a property path that is not a walk over all but some edges".to_owned()
+                    );
+                };
+                let (from, to) = (self.place(subject)?, self.place(object)?);
+                if !matches!(&from, Place::Const(_))
+                    && !matches!(&from, Place::Var(s) if frame.certain.contains(s))
+                {
+                    return Err("a property path from a node not yet bound".to_owned());
+                }
+                if let Place::Var(slot) = to {
+                    frame.binds(slot, true);
+                }
+                let step = Step::Reach(Reach {
+                    from,
+                    to,
+                    skipped: skipped.iter().map(|n| Term::from(n.clone())).collect(),
+                    from_itself: matches!(path, PropertyPathExpression::ZeroOrMore(_)),
+                });
+                out.push(step, &frame.certain);
+                Ok(())
+            }
             GraphPattern::Minus { .. } => Err("MINUS".to_owned()),
             GraphPattern::Reduced { .. } => Err("REDUCED".to_owned()),
             GraphPattern::Slice { .. } => Err("LIMIT or OFFSET".to_owned()),
@@ -498,10 +532,11 @@ impl Lowering {
         group.reads(&read)?;
         let operand = self.expression(expr, &group.certain)?;
         match name {
+            AggregateFunction::Sum => Ok(Kind::Sum(operand)),
             AggregateFunction::Min => Ok(Kind::Min(operand)),
             AggregateFunction::Max => Ok(Kind::Max(operand)),
             AggregateFunction::Sample => Ok(Kind::Sample(operand)),
-            _ => Err("an aggregate other than COUNT, MIN, MAX or SAMPLE".to_owned()),
+            _ => Err("an aggregate other than COUNT, SUM, MIN, MAX or SAMPLE".to_owned()),
         }
     }
 
