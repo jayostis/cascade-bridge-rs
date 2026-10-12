@@ -75,6 +75,16 @@ test("a restored adapter converts a second document, and an adapter loaded after
   assert.deepEqual(meaning(restored.convert(order, NTRIPLES)), meaning(source.convert(order, NTRIPLES)));
 });
 
+test("an instance whose memory is already larger than the image restores it, and loads another adapter after", async () => {
+  const { Adapter, restore, initSync } = await instance();
+  initSync().memory.grow(Math.ceil(snapshot.byteLength / 65536));
+  const { adapter, vocabulary } = given();
+  const restored = restore(snapshot, adapter, vocabulary);
+  assert.deepEqual(meaning(restored.convert(order, NTRIPLES)), meaning(source.convert(order, NTRIPLES)));
+  const second = Adapter.load({ iri: JSON_ADAPTER, files: jsonFiles });
+  assert.deepEqual(meaning(second.convert(item, NTRIPLES)), meaning(alone.convert(item, NTRIPLES)));
+});
+
 function altered(at) {
   const bytes = snapshot.slice();
   bytes[at] ^= 1;

@@ -62,10 +62,13 @@ if (given.mode === "save") {
   writeFileSync(given.snapshot, snapshot);
 }
 
+let turtle;
 const convert = () => {
   const converting = performance.now();
   const conversion = adapter.convert(document);
-  return { milliseconds: milliseconds(converting), triples: conversion.triples };
+  const took = milliseconds(converting);
+  turtle ??= { graph: hash(lines(conversion.graph, false)), findings: hash(lines(conversion.findings, false)) };
+  return { milliseconds: took, triples: conversion.triples };
 };
 const first = convert();
 const second = convert();
@@ -85,7 +88,8 @@ process.stdout.write(
     rss: process.resourceUsage().maxRSS * 1024,
     snapshot: snapshotBytes,
     findings: output.findingCount,
-    graph: hash(lines(output.graph, false)),
+    turtle,
+    graphUpToBlankNames: hash(lines(output.graph, true)),
     findingsUpToBlankNames: hash(lines(output.findings, true)),
   })}\n`,
 );
