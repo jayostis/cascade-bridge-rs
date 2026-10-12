@@ -1,0 +1,137 @@
+name: oxigraph
+
+# Not started on an edit, like test.yml.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: oxigraph-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  OXIGRAPH_FORK: https://github.com/jayostis/oxigraph
+  OXIGRAPH_FORK_BRANCH: fix/sparopt-estimates-v0.5.11
+
+jobs:
+  # No variant is a required status check. Required checks are named on main, and a
+  # variant joins them once it has settled.
+  oxigraph:
+    name: ${{ matrix.variant }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # What ships: the compiler, with spareval where it gives up.
+          - variant: executor compiled
+            executor: compiled
+            cache: native
+          # Stock Oxigraph alone. Its peak wasm memory is reported and never checked: it is the
+          # regression the fork removes.
+          - variant: executor spareval
+            executor: spareval
+            cache: wasm
+            memory: report
+          # The compiler and stock spareval on every query; any difference fails.
+          - variant: executor both
+            executor: both
+            cache: native
+          # Oxigraph from jayostis/oxigraph, patched in this job only. The limit is in MiB.
+          - variant: oxigraph fork
+            executor: spareval
+            cache: fork
+            fork: true
+            memory: 128
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: ${{ github.event.repository.name }}
+          persist-credentials: false
+      # The runner images preinstall different toolchains, and rust-cache hashes every one it finds into its key.
+      - run: |
+          rustup toolchain install --profile minimal
+          channel=$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)
+          rustup default "$channel"
+          rustup toolchain list | cut -d' ' -f1 | grep -v "^$channel-" | xargs -r -n1 rustup toolchain uninstall
+        working-directory: ${{ github.event.repository.name }}
+      # Before rust-cache, which hashes Cargo.lock. Patching sparopt alone leaves two copies of
+      # spargebra and oxrdf, which spareval does not compile against; the update takes the
+      # patched crates' own dependencies at the versions the registry's copies use.
+      - if: matrix.fork
+        run: |
+          set -euo pipefail
+          {
+            echo
+            echo '[patch.crates-io]'
+            for crate in oxrdf oxsdatatypes spargebra sparopt; do
+              echo "$crate = { git = \"$OXIGRAPH_FORK\", branch = \"$OXIGRAPH_FORK_BRANCH\" }"
+            done
+          } >> Cargo.toml
+          cargo metadata --format-version 1 > /dev/null
+          cargo update -p oxrdf -p oxsdatatypes -p spargebra -p sparopt
+          grep -A2 '^name = "sparopt"' Cargo.lock
+        working-directory: ${{ github.event.repository.name }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ github.event.repository.name }}
+          shared-key: oxigraph-${{ matrix.cache }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: cargo build --release --locked -p cascade-bridge-cli
+        working-directory: ${{ github.event.repository.name }}
+      # Checks the adapters and the repository each reads its vocabulary from out beside this one, and stops there.
+      - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
+        with:
+          checkout-only: 'true'
+      - name: every fixture of every adapter
+        run: |
+          failed=0
+          for adapter in ccda fhir-r4 clinvar; do
+            directory="../cascade-bridge-adapter-$adapter"
+            vocabulary=$(jq -r '."@graph"[] | ."bridge:cascadeVocabularyRepository"."@id" // empty' "$directory/ro-crate-metadata.json")
+            echo "::group::$adapter, vocabulary ${vocabulary##*/}, --executor $EXECUTOR"
+            target/release/cascade-bridge test "$directory" --vocabularies "../${vocabulary##*/}" --executor "$EXECUTOR" || failed=1
+            echo "::endgroup::"
+          done
+          exit "$failed"
+        env:
+          EXECUTOR: ${{ matrix.executor }}
+        working-directory: ${{ github.event.repository.name }}
+      - if: matrix.memory
+        uses: actions/cache@v6
+        with:
+          path: |
+            ${{ github.event.repository.name }}/target/wasm-bindgen-*
+            ${{ github.event.repository.name }}/target/binaryen-*
+          key: package-tools-${{ hashFiles(format('{0}/Cargo.lock', github.event.repository.name), format('{0}/package/build.sh', github.event.repository.name)) }}
+      - if: matrix.memory
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      # The shipped profile, as a release carries it.
+      - if: matrix.memory
+        run: sh package/build.sh
+        working-directory: ${{ github.event.repository.name }}
+      - name: peak wasm memory of the x10 C-CDA, findings on
+        if: matrix.memory
+        run: |
+          set -euo pipefail
+          node hosts/node/bench.mjs --inputs ../cascade-bridge-adapter-ccda/bench/manifest.json --only ccda-entries-x10 \
+            --vocabularies ../cascade-vocabulary --executor "$EXECUTOR" --samples 1 --out "$RUNNER_TEMP/memory.json"
+          peak=$(jq '.results[] | select(.name == "ccda-entries-x10/wasm-memory/first") | .value' "$RUNNER_TEMP/memory.json")
+          mib=$((peak / 1048576))
+          echo "$VARIANT: peak wasm memory $mib MiB under --executor $EXECUTOR" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ "$LIMIT" != report ] && [ "$mib" -gt "$LIMIT" ]; then
+            echo "::error::$mib MiB is over the $LIMIT MiB the x10 C-CDA may take"
+            exit 1
+          fi
+        env:
+          EXECUTOR: ${{ matrix.executor }}
+          VARIANT: ${{ matrix.variant }}
+          LIMIT: ${{ matrix.memory }}
+        working-directory: ${{ github.event.repository.name }}
