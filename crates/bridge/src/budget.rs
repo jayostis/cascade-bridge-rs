@@ -12,12 +12,31 @@ const MEBIBYTE: usize = 1 << 20;
 /// How often, in allocations and in steps of the compiled executor, the clock is read.
 const PERIOD: u32 = 1 << 13;
 
-/// What a convert may spend before it is stopped.
+/// What a convert may spend before it is stopped. Both budgets are enforced only where
+/// [`Counted`] is the global allocator: it counts the heap and reads the clock for the
+/// general evaluator, whose own check of a stopped convert never does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Budgets {
-    /// Bytes the heap may hold. Counted only where [`Counted`] is the global allocator.
+    /// Bytes the heap may hold: everything live in the process, the adapters loaded in
+    /// it and any earlier conversion not yet freed included. Converts running at once
+    /// on native threads share one heap, so one's growth stops the others.
     pub memory_bytes: usize,
     pub time: Duration,
+}
+
+impl Budgets {
+    /// The most a memory budget may be, in MiB: the 4 GiB of a wasm32 heap leaves no
+    /// room above it for a heap that passes its budget before it traps.
+    pub const MAX_MEMORY_MIB: u64 = 3072;
+
+    /// The bytes of a whole number of MiB from 1 to [`Self::MAX_MEMORY_MIB`].
+    pub fn memory_mib(mebibytes: u64) -> Option<usize> {
+        if (1..=Self::MAX_MEMORY_MIB).contains(&mebibytes) {
+            Some(mebibytes as usize * MEBIBYTE)
+        } else {
+            None
+        }
+    }
 }
 
 impl Default for Budgets {
@@ -62,6 +81,12 @@ impl Shared {
         }
     }
 
+    fn check_memory(&self) {
+        if LIVE.load(Relaxed) > self.budgets.memory_bytes {
+            self.trip(Spent::Memory);
+        }
+    }
+
     fn check_time(&self) {
         if self
             .deadline
@@ -102,18 +127,19 @@ impl Watch {
         self.0.token.clone()
     }
 
-    /// True once a budget is spent. Reads the clock once in each period.
+    /// True once a budget is spent. Compares the heap each time and reads the clock
+    /// once in each period.
     pub(crate) fn pulse(&self) -> bool {
         let beat = self.0.beat.load(Relaxed);
         self.0.beat.store(beat.wrapping_add(1), Relaxed);
+        self.0.check_memory();
         if beat.is_multiple_of(PERIOD) {
             self.0.check_time();
         }
         self.0.spent.load(Relaxed) != 0
     }
 
-    /// The error that ends the query `query` ran in, where a budget is spent.
-    pub(crate) fn outgrown(&self, query: &str) -> Option<Error> {
+    fn outgrew(&self) -> Option<String> {
         let budgets = self.0.budgets;
         let said = match self.0.spent()? {
             Spent::Memory if budgets.memory_bytes.is_multiple_of(MEBIBYTE) => {
@@ -122,9 +148,22 @@ impl Watch {
             Spent::Memory => format!("memory budget of {} bytes", budgets.memory_bytes),
             Spent::Time => format!("time budget of {:?}", budgets.time),
         };
+        Some(format!("the convert outgrew its {said}"))
+    }
+
+    /// The error that ends the query `query` ran in, where a budget is spent.
+    pub(crate) fn outgrown(&self, query: &str) -> Option<Error> {
         Some(Error::outgrown(format!(
-            "{query} was stopped: the convert outgrew its {said}"
+            "{query} was stopped: {}",
+            self.outgrew()?
         )))
+    }
+
+    /// The error that ends a convert whose last query has run, where a budget is spent.
+    pub(crate) fn outgrown_by_its_end(&self) -> Option<Error> {
+        self.0.check_memory();
+        self.0.check_time();
+        Some(Error::outgrown(self.outgrew()?))
     }
 }
 

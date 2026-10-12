@@ -1,25 +1,19 @@
 use crate::folder::{Folder, Inputs};
 use crate::iri::file_iri;
 use cascade_bridge::{
-    describe, load, test, Budgets, Description, Document, Executor, Facts, Format, Outcome,
-    TestOptions, NAME, VERSION,
+    describe, load, test, Budgets, ConvertOptions, Description, Document, Executor, Facts, Format,
+    Outcome, TestOptions, NAME, VERSION,
 };
 use std::fmt::Write as _;
 use std::io::Write as _;
 use std::time::Duration;
 
-const USAGE: &str = "usage: cascade-bridge test <adapter-dir> [--vocabularies <directory>] [--earl <out.ttl>] [--datasets] [--executor compiled|spareval|both] [--memory-budget-mib <n>] [--time-budget-seconds <n>]
-       cascade-bridge convert <adapter-dir> <document> [--envelope <iri>] [--facts <file>] [--vocabularies <directory>] [--out <file>] [--findings <file>] [--format turtle|ntriples] [--executor compiled|spareval|both] [--memory-budget-mib <n>] [--time-budget-seconds <n>] [--profile]
+const USAGE: &str = "usage: cascade-bridge test <adapter-dir> [--vocabularies <directory>] [--earl <out.ttl>] [--datasets] [--executor compiled|spareval|both] [--memory-budget-mib <1-3072>] [--time-budget-seconds <n>]
+       cascade-bridge convert <adapter-dir> <document> [--envelope <iri>] [--facts <file>] [--vocabularies <directory>] [--out <file>] [--findings <file>] [--format turtle|ntriples] [--executor compiled|spareval|both] [--memory-budget-mib <1-3072>] [--time-budget-seconds <n>] [--profile]
        cascade-bridge library <calls file> <results directory>";
 
-const MEBIBYTE: usize = 1 << 20;
-
 fn memory_budget(mebibytes: &str) -> Option<usize> {
-    mebibytes
-        .parse::<usize>()
-        .ok()
-        .filter(|&mebibytes| mebibytes > 0)?
-        .checked_mul(MEBIBYTE)
+    Budgets::memory_mib(mebibytes.parse().ok()?)
 }
 
 fn time_budget(seconds: &str) -> Option<Duration> {
@@ -53,6 +47,15 @@ struct Convert {
     executor: Executor,
     budgets: Budgets,
     profile: bool,
+}
+
+impl Convert {
+    fn options(&self) -> ConvertOptions {
+        ConvertOptions {
+            executor: self.executor,
+            budgets: self.budgets,
+        }
+    }
 }
 
 enum Command {
@@ -291,7 +294,7 @@ fn convert(arguments: &Convert) -> Result<u8, String> {
     };
     let conversion = if arguments.profile {
         let (conversion, queries) = loaded
-            .convert_profiled_with(&document, arguments.executor, arguments.budgets)
+            .convert_profiled_with(&document, arguments.options())
             .map_err(|e| e.to_string())?;
         for query in &queries {
             eprintln!(
@@ -311,7 +314,7 @@ fn convert(arguments: &Convert) -> Result<u8, String> {
         conversion
     } else {
         loaded
-            .convert_with(&document, arguments.executor, arguments.budgets)
+            .convert_with(&document, arguments.options())
             .map_err(|e| e.to_string())?
     };
     if let (Some(_), Some(unvalidated)) = (&arguments.findings, &conversion.unvalidated) {

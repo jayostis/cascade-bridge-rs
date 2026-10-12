@@ -2,8 +2,8 @@ use cascade_bridge::oxrdf::dataset::{CanonicalizationAlgorithm, Canonicalization
 use cascade_bridge::oxrdf::{Dataset, Quad, Term};
 use cascade_bridge::oxrdfio::{RdfFormat, RdfParser};
 use cascade_bridge::{
-    describe, load as load_named, Budgets, Conversion, Document, ErrorKind, Executor, Facts, Files,
-    Format, Loaded, Map, Named, Result, TestOptions,
+    describe, load as load_named, Budgets, Conversion, ConvertOptions, Document, ErrorKind,
+    Executor, Facts, Files, Format, Loaded, Map, Named, Result, TestOptions,
 };
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -302,7 +302,13 @@ fn a_convert_past_its_budget_is_a_failure_in_the_bridge_and_the_adapter_loaded_a
         ..Budgets::default()
     };
     let stopped = loaded
-        .convert_with(&document(&two), Executor::Compiled, spent)
+        .convert_with(
+            &document(&two),
+            ConvertOptions {
+                executor: Executor::Compiled,
+                budgets: spent,
+            },
+        )
         .err()
         .expect("a convert past its time budget stops");
     assert_eq!(stopped.kind(), &ErrorKind::Bridge);

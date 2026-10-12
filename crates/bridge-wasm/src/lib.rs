@@ -2,7 +2,7 @@
 mod allocator;
 
 use cascade_bridge::{
-    Budgets, ErrorKind, Executor, Files, Format, Loaded, Map, Named, QueryProfile,
+    Budgets, ConvertOptions, ErrorKind, Executor, Files, Format, Loaded, Map, Named, QueryProfile,
 };
 use js_sys::{Array, Object, Reflect, Uint8Array};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -65,9 +65,9 @@ export interface ConvertOptions {
   profile?: boolean;
   /** The engine that answers a query: the plan it compiles to, with the general evaluator behind it (the default), the general evaluator alone, or both, failing where they differ. */
   executor?: "compiled" | "spareval" | "both";
-  /** The heap, in MiB, the module may hold while converting. A convert that passes it stops with a `BridgeError` of kind `"bridge"`, and the adapter must be loaded again. The default is 1024. */
+  /** The heap, in whole MiB from 1 to 3072, the module may hold while converting: everything live in it, every adapter loaded and any earlier result not yet freed included. A convert that passes it stops with a `BridgeError` of kind `"bridge"`, and the adapter must be loaded again. Any other value throws a `TypeError`. The default is 1024. */
   memoryBudgetMiB?: number;
-  /** The seconds a convert may run. A convert that passes it stops as one past its memory budget does. The default is 120. */
+  /** The seconds a convert may run, a positive number. A convert that passes it stops as one past its memory budget does. The default is 120. */
   timeBudgetSeconds?: number;
 }
 
@@ -370,8 +370,25 @@ fn positive(options: &JsValue, key: &str) -> Result<Option<f64>, JsValue> {
         .ok_or_else(|| mistaken(format!("options.{key} is not a positive number")))
 }
 
+fn memory_budget(options: &JsValue) -> Result<Option<usize>, JsValue> {
+    let value = get(options, "memoryBudgetMiB")?;
+    if absent(&value) {
+        return Ok(None);
+    }
+    value
+        .as_f64()
+        .filter(|number| number.fract() == 0.0)
+        .and_then(|mebibytes| Budgets::memory_mib(mebibytes as u64))
+        .map(Some)
+        .ok_or_else(|| {
+            mistaken(format!(
+                "options.memoryBudgetMiB is not a whole number of MiB from 1 to {}",
+                Budgets::MAX_MEMORY_MIB
+            ))
+        })
+}
+
 fn budgets(options: &JsValue) -> Result<Budgets, JsValue> {
-    const MEBIBYTE: f64 = 1_048_576.0;
     let defaults = Budgets::default();
     let time = positive(options, "timeBudgetSeconds")?
         .map(|seconds| {
@@ -380,10 +397,7 @@ fn budgets(options: &JsValue) -> Result<Budgets, JsValue> {
         })
         .transpose()?;
     Ok(Budgets {
-        memory_bytes: positive(options, "memoryBudgetMiB")?
-            .map_or(defaults.memory_bytes, |mebibytes| {
-                (mebibytes * MEBIBYTE) as usize
-            }),
+        memory_bytes: memory_budget(options)?.unwrap_or(defaults.memory_bytes),
         time: time.unwrap_or(defaults.time),
     })
 }
@@ -464,33 +478,29 @@ impl Adapter {
     ) -> Result<ConversionValue, JsValue> {
         guarded()?;
         let read = DocumentRead::of(document)?;
-        let (format, relative_to, profiled, executor, budgets) =
+        let (format, relative_to, profiled, convert_options) =
             match options.filter(|options| !absent(options)) {
                 Some(options) => (
                     self::format(Some(&get(&options, "format")?))?,
                     optional_text(&options, "findingsRelativeTo", "options")?,
                     get(&options, "profile")?.is_truthy(),
-                    self::executor(&options)?,
-                    self::budgets(&options)?,
+                    ConvertOptions {
+                        executor: self::executor(&options)?,
+                        budgets: self::budgets(&options)?,
+                    },
                 ),
-                None => (
-                    Format::Turtle,
-                    None,
-                    false,
-                    Executor::default(),
-                    Budgets::default(),
-                ),
+                None => (Format::Turtle, None, false, ConvertOptions::default()),
             };
         let (conversion, queries) = if profiled {
             let (conversion, queries) = self
                 .loaded
-                .convert_profiled_with(&read.document(), executor, budgets)
+                .convert_profiled_with(&read.document(), convert_options)
                 .map_err(thrown)?;
             (conversion, Some(queries))
         } else {
             (
                 self.loaded
-                    .convert_with(&read.document(), executor, budgets)
+                    .convert_with(&read.document(), convert_options)
                     .map_err(thrown)?,
                 None,
             )

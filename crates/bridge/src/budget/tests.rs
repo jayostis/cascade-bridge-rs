@@ -63,6 +63,21 @@ fn a_convert_whose_memory_budget_the_heap_passes_is_stopped_and_names_it() {
 }
 
 #[test]
+fn a_memory_budget_is_a_whole_number_of_mebibytes_from_one_to_the_ceiling() {
+    for (mebibytes, bytes) in [
+        (0, None),
+        (1, Some(MEBIBYTE)),
+        (1024, Some(1024 * MEBIBYTE)),
+        (Budgets::MAX_MEMORY_MIB, Some(3072 * MEBIBYTE)),
+        (Budgets::MAX_MEMORY_MIB + 1, None),
+        (4096, None),
+        (u64::MAX, None),
+    ] {
+        assert_eq!(Budgets::memory_mib(mebibytes), bytes, "{mebibytes} MiB");
+    }
+}
+
+#[test]
 fn a_convert_past_its_time_budget_is_stopped_at_its_next_reading_of_the_clock() {
     let watch = Watch::new(Budgets {
         time: Duration::ZERO,

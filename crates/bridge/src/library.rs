@@ -222,19 +222,18 @@ impl Loaded {
     }
 
     pub fn convert(&self, document: &Document<'_>) -> Result<Conversion> {
-        self.convert_with(document, Executor::default(), Budgets::default())
+        self.convert_with(document, ConvertOptions::default())
     }
 
     pub fn convert_with(
         &self,
         document: &Document<'_>,
-        executor: Executor,
-        budgets: Budgets,
+        options: ConvertOptions,
     ) -> Result<Conversion> {
         let run = run::convert_with(
             &self.prepared,
             source(document),
-            &Profile::new(executor, false, budgets),
+            &Profile::new(options.executor, false, options.budgets),
         )?;
         self.conversion(run)
     }
@@ -243,16 +242,15 @@ impl Loaded {
         &self,
         document: &Document<'_>,
     ) -> Result<(Conversion, Vec<QueryProfile>)> {
-        self.convert_profiled_with(document, Executor::default(), Budgets::default())
+        self.convert_profiled_with(document, ConvertOptions::default())
     }
 
     pub fn convert_profiled_with(
         &self,
         document: &Document<'_>,
-        executor: Executor,
-        budgets: Budgets,
+        options: ConvertOptions,
     ) -> Result<(Conversion, Vec<QueryProfile>)> {
-        let profile = Profile::new(executor, true, budgets);
+        let profile = Profile::new(options.executor, true, options.budgets);
         let run = run::convert_with(&self.prepared, source(document), &profile)?;
         Ok((self.conversion(run)?, profile.queries()))
     }
@@ -313,6 +311,12 @@ impl Conversion {
                 .into_bytes(),
         )
     }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ConvertOptions {
+    pub executor: Executor,
+    pub budgets: Budgets,
 }
 
 #[derive(Debug, Clone, Copy, Default)]

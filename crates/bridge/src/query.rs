@@ -213,7 +213,7 @@ impl Query {
             (Ok(quads), _) => Ok((quads, false)),
             (Err(Fail::Stopped), _) => Err(watch
                 .outgrown(&self.iri)
-                .unwrap_or_else(|| Error::bridge(format!("{} was stopped", self.iri)))),
+                .unwrap_or_else(|| Error::outgrown(format!("{} was stopped", self.iri)))),
             (Err(_), _) => Ok((self.evaluated(data.store, watch)?, true)),
         }
     }

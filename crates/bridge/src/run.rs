@@ -366,7 +366,14 @@ pub(crate) fn convert_with(
         .as_ref()
         .map(|detect| detected(detect, lift, profile))
         .transpose()?;
-    Ok(conversion)
+    within_budgets(conversion, profile)
+}
+
+fn within_budgets(conversion: Conversion, profile: &Profile) -> Result<Conversion> {
+    match profile.watch.outgrown_by_its_end() {
+        Some(outgrown) => Err(outgrown),
+        None => Ok(conversion),
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -536,14 +543,19 @@ mod source_accounting;
 mod validation;
 #[cfg(test)]
 mod tests {
-    use super::prepare;
+    use super::{prepare, within_budgets};
+    use crate::budget::Budgets;
+    use crate::compiled::Executor;
+    use crate::error::ErrorKind;
     use crate::fixtures::tiny;
     use crate::fixtures::Fixture;
     use crate::load::load_adapter;
+    use crate::query::Profile;
     use crate::resolver::Resolver;
     use crate::Result;
     use std::cell::RefCell;
     use std::collections::BTreeMap;
+    use std::time::Duration;
 
     struct Counting {
         directory: Fixture,
@@ -574,6 +586,38 @@ mod tests {
             self.count(iri);
             self.directory.read_vocabulary(iri)
         }
+    }
+
+    fn nothing_converted() -> super::Conversion {
+        super::Conversion {
+            quads: Vec::new(),
+            findings: Vec::new(),
+            units: 0,
+            detected: None,
+        }
+    }
+
+    #[test]
+    fn a_convert_past_a_budget_with_no_query_left_to_notice_stops_as_a_bridge_failure() {
+        let spent = Profile::new(
+            Executor::Compiled,
+            false,
+            Budgets {
+                time: Duration::ZERO,
+                ..Budgets::default()
+            },
+        );
+        let stopped = within_budgets(nothing_converted(), &spent).err();
+        assert_eq!(
+            stopped
+                .as_ref()
+                .map(|error| (error.kind(), error.message())),
+            Some((
+                &ErrorKind::Bridge,
+                "the convert outgrew its time budget of 0ns"
+            ))
+        );
+        assert!(within_budgets(nothing_converted(), &Profile::default()).is_ok());
     }
 
     #[test]
