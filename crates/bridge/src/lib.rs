@@ -5,6 +5,7 @@
 
 mod accounting;
 mod annotation;
+mod budget;
 mod compiled;
 mod decode;
 mod earl;
@@ -28,6 +29,7 @@ mod validate;
 mod vocabulary;
 mod xpath;
 
+pub use budget::{Budgets, Counted};
 pub use error::{Error, ErrorKind, Map, Result};
 pub use library::{
     describe, load, test, Conversion, Description, Document, Executor, Facts, Files, Format,

@@ -1,3 +1,4 @@
+use crate::budget::Budgets;
 use crate::earl::{earl_report, ReportSubject};
 use crate::error::{Error, Result};
 use crate::harness::{run_manifest, RunOptions, OFFERED_PROFILES};
@@ -221,14 +222,19 @@ impl Loaded {
     }
 
     pub fn convert(&self, document: &Document<'_>) -> Result<Conversion> {
-        self.convert_with(document, Executor::default())
+        self.convert_with(document, Executor::default(), Budgets::default())
     }
 
-    pub fn convert_with(&self, document: &Document<'_>, executor: Executor) -> Result<Conversion> {
+    pub fn convert_with(
+        &self,
+        document: &Document<'_>,
+        executor: Executor,
+        budgets: Budgets,
+    ) -> Result<Conversion> {
         let run = run::convert_with(
             &self.prepared,
             source(document),
-            &Profile::new(executor, false),
+            &Profile::new(executor, false, budgets),
         )?;
         self.conversion(run)
     }
@@ -237,15 +243,16 @@ impl Loaded {
         &self,
         document: &Document<'_>,
     ) -> Result<(Conversion, Vec<QueryProfile>)> {
-        self.convert_profiled_with(document, Executor::default())
+        self.convert_profiled_with(document, Executor::default(), Budgets::default())
     }
 
     pub fn convert_profiled_with(
         &self,
         document: &Document<'_>,
         executor: Executor,
+        budgets: Budgets,
     ) -> Result<(Conversion, Vec<QueryProfile>)> {
-        let profile = Profile::new(executor, true);
+        let profile = Profile::new(executor, true, budgets);
         let run = run::convert_with(&self.prepared, source(document), &profile)?;
         Ok((self.conversion(run)?, profile.queries()))
     }
@@ -312,6 +319,7 @@ impl Conversion {
 pub struct TestOptions {
     pub datasets: bool,
     pub executor: Executor,
+    pub budgets: Budgets,
 }
 
 #[derive(Debug, Clone)]
@@ -346,6 +354,7 @@ pub fn test(
         RunOptions {
             datasets: options.datasets,
             executor: options.executor,
+            budgets: options.budgets,
         },
     )?;
     let subject = ReportSubject {

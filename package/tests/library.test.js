@@ -67,6 +67,44 @@ test("a plain object in place of a Map throws a TypeError", async () => {
   assert.throws(() => Adapter.load({ iri: ADAPTER, files: plain }, vocabulary), TypeError);
 });
 
+for (const [option, value, spent] of [
+  ["memoryBudgetMiB", 0.01, "memory budget of 10485 bytes"],
+  ["timeBudgetSeconds", 0.000001, "time budget of 1µs"],
+]) {
+  test(`a convert past its ${option} throws a BridgeError of kind bridge, and the adapter converts the next document as before`, async () => {
+    const { Adapter } = await bridge();
+    const adapter = Adapter.load({ iri: ADAPTER, files: toLoad() }, vocabulary);
+    const before = adapter.convert(document(two));
+    assert.throws(
+      () => adapter.convert(document(two), { [option]: value }),
+      (error) => {
+        assert.equal(error.name, "BridgeError");
+        assert.equal(error.kind, "bridge");
+        assert.match(error.message, /\.rq was stopped: the convert outgrew its /);
+        assert.ok(error.message.includes(spent), error.message);
+        return true;
+      },
+    );
+    const after = adapter.convert(document(two));
+    assert.equal(after.triples, before.triples);
+    assert.equal(after.findingCount, before.findingCount);
+    assert.match(new TextDecoder().decode(after.graph), /urn:example:item:1/);
+  });
+}
+
+test("a budget that is not a positive number throws a TypeError", async () => {
+  const { Adapter } = await bridge();
+  const adapter = Adapter.load({ iri: ADAPTER, files: toLoad() }, vocabulary);
+  for (const options of [
+    { memoryBudgetMiB: 0 },
+    { memoryBudgetMiB: "1" },
+    { timeBudgetSeconds: -1 },
+    { timeBudgetSeconds: Infinity },
+  ]) {
+    assert.throws(() => adapter.convert(document(two), options), TypeError, JSON.stringify(options));
+  }
+});
+
 test("a freed adapter throws on convert", async () => {
   const { Adapter } = await bridge();
   const adapter = Adapter.load({ iri: ADAPTER, files: toLoad() }, vocabulary);

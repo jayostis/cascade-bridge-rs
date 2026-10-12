@@ -2,11 +2,12 @@ use cascade_bridge::oxrdf::dataset::{CanonicalizationAlgorithm, Canonicalization
 use cascade_bridge::oxrdf::{Dataset, Quad, Term};
 use cascade_bridge::oxrdfio::{RdfFormat, RdfParser};
 use cascade_bridge::{
-    describe, load as load_named, Conversion, Document, ErrorKind, Facts, Files, Format, Loaded,
-    Map, Named, Result, TestOptions,
+    describe, load as load_named, Budgets, Conversion, Document, ErrorKind, Executor, Facts, Files,
+    Format, Loaded, Map, Named, Result, TestOptions,
 };
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 const ADAPTER: &str = "https://example.org/adapters/catalog/";
 const VOCABULARY: &str = "https://example.org/vocabularies/";
@@ -289,6 +290,34 @@ fn accepts_a_catalog_and_not_a_document_the_detect_query_does_not_claim() {
     let shelf = b"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<shelf><item id=\"1\"/></shelf>\n";
     assert!(matches!(loaded.accepts(&document(&two)), Ok(true)));
     assert!(matches!(loaded.accepts(&document(shelf)), Ok(false)));
+}
+
+#[test]
+fn a_convert_past_its_budget_is_a_failure_in_the_bridge_and_the_adapter_loaded_again_converts_alike(
+) {
+    let loaded = load(&tiny_to_load(), &vocabulary());
+    let two = fixture("fixtures/in/two.xml");
+    let spent = Budgets {
+        time: Duration::ZERO,
+        ..Budgets::default()
+    };
+    let stopped = loaded
+        .convert_with(&document(&two), Executor::Compiled, spent)
+        .err()
+        .expect("a convert past its time budget stops");
+    assert_eq!(stopped.kind(), &ErrorKind::Bridge);
+    assert!(
+        stopped.message().starts_with(ADAPTER)
+            && stopped
+                .message()
+                .ends_with("outgrew its time budget of 0ns"),
+        "{stopped}"
+    );
+    let graph =
+        |adapter: &Loaded| canonical(&written(convert(adapter, &two).graph(Format::Turtle)));
+    let reloaded = load(&tiny_to_load(), &vocabulary());
+    assert_eq!(graph(&loaded), graph(&reloaded));
+    assert!(names_an_item(&graph(&reloaded)));
 }
 
 #[test]

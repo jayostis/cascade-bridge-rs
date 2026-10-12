@@ -1,15 +1,34 @@
 use crate::folder::{Folder, Inputs};
 use crate::iri::file_iri;
 use cascade_bridge::{
-    describe, load, test, Description, Document, Executor, Facts, Format, Outcome, TestOptions,
-    NAME, VERSION,
+    describe, load, test, Budgets, Description, Document, Executor, Facts, Format, Outcome,
+    TestOptions, NAME, VERSION,
 };
 use std::fmt::Write as _;
 use std::io::Write as _;
+use std::time::Duration;
 
-const USAGE: &str = "usage: cascade-bridge test <adapter-dir> [--vocabularies <directory>] [--earl <out.ttl>] [--datasets] [--executor compiled|spareval|both]
-       cascade-bridge convert <adapter-dir> <document> [--envelope <iri>] [--facts <file>] [--vocabularies <directory>] [--out <file>] [--findings <file>] [--format turtle|ntriples] [--executor compiled|spareval|both] [--profile]
+const USAGE: &str = "usage: cascade-bridge test <adapter-dir> [--vocabularies <directory>] [--earl <out.ttl>] [--datasets] [--executor compiled|spareval|both] [--memory-budget-mib <n>] [--time-budget-seconds <n>]
+       cascade-bridge convert <adapter-dir> <document> [--envelope <iri>] [--facts <file>] [--vocabularies <directory>] [--out <file>] [--findings <file>] [--format turtle|ntriples] [--executor compiled|spareval|both] [--memory-budget-mib <n>] [--time-budget-seconds <n>] [--profile]
        cascade-bridge library <calls file> <results directory>";
+
+const MEBIBYTE: usize = 1 << 20;
+
+fn memory_budget(mebibytes: &str) -> Option<usize> {
+    mebibytes
+        .parse::<usize>()
+        .ok()
+        .filter(|&mebibytes| mebibytes > 0)?
+        .checked_mul(MEBIBYTE)
+}
+
+fn time_budget(seconds: &str) -> Option<Duration> {
+    let seconds = seconds
+        .parse::<f64>()
+        .ok()
+        .filter(|&seconds| seconds > 0.0)?;
+    Duration::try_from_secs_f64(seconds).ok()
+}
 
 const METADATA: &str = "ro-crate-metadata.json";
 
@@ -19,6 +38,7 @@ struct Test {
     earl: Option<String>,
     datasets: bool,
     executor: Executor,
+    budgets: Budgets,
 }
 
 struct Convert {
@@ -31,6 +51,7 @@ struct Convert {
     findings: Option<String>,
     format: Format,
     executor: Executor,
+    budgets: Budgets,
     profile: bool,
 }
 
@@ -50,6 +71,7 @@ fn parse(argv: impl IntoIterator<Item = String>) -> Option<Command> {
                 earl: None,
                 datasets: false,
                 executor: Executor::default(),
+                budgets: Budgets::default(),
             };
             while let Some(flag) = argv.next() {
                 match flag.as_str() {
@@ -57,6 +79,12 @@ fn parse(argv: impl IntoIterator<Item = String>) -> Option<Command> {
                     "--earl" => arguments.earl = Some(argv.next()?),
                     "--datasets" => arguments.datasets = true,
                     "--executor" => arguments.executor = Executor::named(&argv.next()?)?,
+                    "--memory-budget-mib" => {
+                        arguments.budgets.memory_bytes = memory_budget(&argv.next()?)?;
+                    }
+                    "--time-budget-seconds" => {
+                        arguments.budgets.time = time_budget(&argv.next()?)?;
+                    }
                     _ => return None,
                 }
             }
@@ -73,6 +101,7 @@ fn parse(argv: impl IntoIterator<Item = String>) -> Option<Command> {
                 findings: None,
                 format: Format::Turtle,
                 executor: Executor::default(),
+                budgets: Budgets::default(),
                 profile: false,
             };
             while let Some(flag) = argv.next() {
@@ -84,6 +113,12 @@ fn parse(argv: impl IntoIterator<Item = String>) -> Option<Command> {
                     "--findings" => arguments.findings = Some(argv.next()?),
                     "--format" => arguments.format = Format::named(&argv.next()?)?,
                     "--executor" => arguments.executor = Executor::named(&argv.next()?)?,
+                    "--memory-budget-mib" => {
+                        arguments.budgets.memory_bytes = memory_budget(&argv.next()?)?;
+                    }
+                    "--time-budget-seconds" => {
+                        arguments.budgets.time = time_budget(&argv.next()?)?;
+                    }
                     "--profile" => arguments.profile = true,
                     _ => return None,
                 }
@@ -184,6 +219,7 @@ fn run_test(arguments: &Test) -> Result<u8, String> {
     let options = TestOptions {
         datasets: arguments.datasets,
         executor: arguments.executor,
+        budgets: arguments.budgets,
     };
     let report = inputs.complete(|adapter, vocabulary| test(adapter, vocabulary, options))?;
     let mut said = format!(
@@ -255,7 +291,7 @@ fn convert(arguments: &Convert) -> Result<u8, String> {
     };
     let conversion = if arguments.profile {
         let (conversion, queries) = loaded
-            .convert_profiled_with(&document, arguments.executor)
+            .convert_profiled_with(&document, arguments.executor, arguments.budgets)
             .map_err(|e| e.to_string())?;
         for query in &queries {
             eprintln!(
@@ -275,7 +311,7 @@ fn convert(arguments: &Convert) -> Result<u8, String> {
         conversion
     } else {
         loaded
-            .convert_with(&document, arguments.executor)
+            .convert_with(&document, arguments.executor, arguments.budgets)
             .map_err(|e| e.to_string())?
     };
     if let (Some(_), Some(unvalidated)) = (&arguments.findings, &conversion.unvalidated) {

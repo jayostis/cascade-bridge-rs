@@ -745,6 +745,28 @@ fn refuses_what_it_cannot_parse_with_the_usage_and_status_two() {
         &["test"],
         &["test", &adapter, "--earl"],
         &["convert", &adapter, "document.xml", "--format", "rdfxml"],
+        &[
+            "convert",
+            &adapter,
+            "document.xml",
+            "--memory-budget-mib",
+            "0",
+        ],
+        &[
+            "convert",
+            &adapter,
+            "document.xml",
+            "--memory-budget-mib",
+            "x",
+        ],
+        &[
+            "convert",
+            &adapter,
+            "document.xml",
+            "--time-budget-seconds",
+            "-1",
+        ],
+        &["test", &adapter, "--time-budget-seconds", "never"],
     ] {
         let run = cascade_bridge(argv);
         let stderr = String::from_utf8_lossy(&run.stderr);
@@ -755,6 +777,27 @@ fn refuses_what_it_cannot_parse_with_the_usage_and_status_two() {
         );
         assert!(run.stdout.is_empty(), "{argv:?}");
     }
+}
+
+#[test]
+fn stops_a_convert_that_outgrows_its_time_budget_with_status_two_and_names_the_query_and_the_budget(
+) {
+    let document = tiny().join("fixtures/in/two.xml");
+    let run = cascade_bridge(&[
+        "convert",
+        &tiny().to_string_lossy(),
+        &document.to_string_lossy(),
+        "--time-budget-seconds",
+        "0.000001",
+    ]);
+    let said = String::from_utf8_lossy(&run.stderr);
+    assert_eq!(run.status.code(), Some(2), "{said}");
+    assert!(run.stdout.is_empty());
+    assert!(
+        said.starts_with("cascade-bridge: ")
+            && said.contains(".rq was stopped: the convert outgrew its time budget of 1µs"),
+        "{said}"
+    );
 }
 
 #[test]

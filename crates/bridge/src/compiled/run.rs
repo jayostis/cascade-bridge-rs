@@ -78,6 +78,9 @@ pub(super) fn exists(plan: &Plan, tree: &Tree, row: &Row) -> Result<bool, Fail> 
 }
 
 fn run(steps: &[Step], row: &mut Row, tree: &Tree, sink: Sink<'_>) -> Result<(), Fail> {
+    if tree.stopped() {
+        return Err(Fail::Stopped);
+    }
     let Some((step, rest)) = steps.split_first() else {
         return sink(row);
     };

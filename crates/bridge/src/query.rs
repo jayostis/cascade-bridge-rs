@@ -1,9 +1,10 @@
 use crate::annotation::Minted;
-use crate::compiled::{self, Compiled, Dataset, Executor};
+use crate::budget::{Budgets, Watch};
+use crate::compiled::{self, Compiled, Dataset, Executor, Fail};
 use crate::error::{Error, ErrorKind, Result};
 use crate::resolver::Resolver;
 use oxigraph::model::{GraphName, Quad};
-use oxigraph::sparql::{PreparedSparqlQuery, QueryResults, SparqlEvaluator};
+use oxigraph::sparql::{QueryEvaluationError, QueryResults, SparqlEvaluator};
 use oxigraph::store::Store;
 use spargebra::algebra::{AggregateExpression, Expression, GraphPattern, OrderExpression};
 use std::cell::RefCell;
@@ -23,20 +24,22 @@ pub struct QueryProfile {
     pub give_ups: usize,
 }
 
-/// How a run executes its queries, and what it keeps of them, in the order each
-/// query first ran.
+/// How a run executes its queries, what it may spend, and what it keeps of them, in
+/// the order each query first ran.
 #[derive(Default)]
 pub(crate) struct Profile {
     executor: Executor,
     kept: bool,
+    pub(crate) watch: Watch,
     queries: RefCell<Vec<QueryProfile>>,
 }
 
 impl Profile {
-    pub(crate) fn new(executor: Executor, kept: bool) -> Self {
+    pub(crate) fn new(executor: Executor, kept: bool, budgets: Budgets) -> Self {
         Self {
             executor,
             kept,
+            watch: Watch::new(budgets),
             queries: RefCell::default(),
         }
     }
@@ -119,7 +122,7 @@ impl Form {
 pub(crate) struct Query {
     pub(crate) iri: String,
     pub(crate) prefixes: Vec<(String, String)>,
-    prepared: PreparedSparqlQuery,
+    parsed: spargebra::Query,
     compiled: std::result::Result<Compiled, String>,
 }
 
@@ -154,21 +157,28 @@ impl Query {
             iri: iri.to_owned(),
             prefixes: prologue_prefixes(&text),
             compiled: compiled::compile(&parsed),
-            prepared: SparqlEvaluator::new().for_query(parsed),
+            parsed,
         })
     }
 
-    fn on(&self, store: &Store) -> Result<QueryResults<'static>> {
-        // Copies the algebra already parsed; the text is not parsed again.
-        self.prepared
-            .clone()
-            .on_store(store)
-            .execute()
-            .map_err(|e| Error::from(e).explained_by(ErrorKind::Adapter))
+    fn failed(&self, error: QueryEvaluationError, watch: &Watch) -> Error {
+        watch
+            .outgrown(&self.iri)
+            .unwrap_or_else(|| Error::from(error).explained_by(ErrorKind::Adapter))
     }
 
-    fn evaluated(&self, store: &Store) -> Result<Vec<Quad>> {
-        let QueryResults::Graph(triples) = self.on(store)? else {
+    // Copies the algebra already parsed; the text is not parsed again.
+    fn on(&self, store: &Store, watch: &Watch) -> Result<QueryResults<'static>> {
+        SparqlEvaluator::new()
+            .with_cancellation_token(watch.token())
+            .for_query(self.parsed.clone())
+            .on_store(store)
+            .execute()
+            .map_err(|e| self.failed(e, watch))
+    }
+
+    fn evaluated(&self, store: &Store, watch: &Watch) -> Result<Vec<Quad>> {
+        let QueryResults::Graph(triples) = self.on(store, watch)? else {
             return Err(Error::adapter(format!(
                 "{} is not a {}",
                 self.iri,
@@ -177,7 +187,7 @@ impl Query {
         };
         let mut quads = Vec::new();
         for triple in triples {
-            let triple = triple.map_err(|e| Error::from(e).explained_by(ErrorKind::Adapter))?;
+            let triple = triple.map_err(|e| self.failed(e, watch))?;
             quads.push(Quad::new(
                 triple.subject,
                 triple.predicate,
@@ -188,32 +198,36 @@ impl Query {
         Ok(quads)
     }
 
-    fn constructed(&self, data: &Dataset<'_>, executor: Executor) -> Result<(Vec<Quad>, bool)> {
+    fn constructed(&self, data: &Dataset<'_>, profile: &Profile) -> Result<(Vec<Quad>, bool)> {
+        let (executor, watch) = (profile.executor, &profile.watch);
         let plan = match (&self.compiled, executor) {
             (Ok(plan), Executor::Compiled | Executor::Both) => plan,
-            _ => return Ok((self.evaluated(data.store)?, false)),
+            _ => return Ok((self.evaluated(data.store, watch)?, false)),
         };
-        match (plan.construct(data.tree()?), executor) {
+        match (plan.construct(data.tree(watch)?), executor) {
             (Ok(quads), Executor::Both) => {
-                let evaluated = self.evaluated(data.store)?;
+                let evaluated = self.evaluated(data.store, watch)?;
                 compiled::agree(&self.iri, &quads, &evaluated)?;
                 Ok((evaluated, false))
             }
             (Ok(quads), _) => Ok((quads, false)),
-            (Err(_), _) => Ok((self.evaluated(data.store)?, true)),
+            (Err(Fail::Stopped), _) => Err(watch
+                .outgrown(&self.iri)
+                .unwrap_or_else(|| Error::bridge(format!("{} was stopped", self.iri)))),
+            (Err(_), _) => Ok((self.evaluated(data.store, watch)?, true)),
         }
     }
 
     pub(crate) fn graph(&self, data: &Dataset<'_>, profile: &Profile) -> Result<Vec<Quad>> {
         let timing = Timing::start(profile);
-        let (quads, gave_up) = self.constructed(data, profile.executor)?;
+        let (quads, gave_up) = self.constructed(data, profile)?;
         timing.stop(self, quads.len(), gave_up);
         Ok(Minted::default().apart(quads))
     }
 
     pub(crate) fn ask(&self, store: &Store, what: &str, profile: &Profile) -> Result<bool> {
         let timing = Timing::start(profile);
-        let QueryResults::Boolean(answer) = self.on(store)? else {
+        let QueryResults::Boolean(answer) = self.on(store, &profile.watch)? else {
             return Err(Error::adapter(format!(
                 "{what} {} is not an {}",
                 self.iri,
