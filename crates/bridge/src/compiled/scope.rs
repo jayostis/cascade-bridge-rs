@@ -1,114 +1,14 @@
 use oxigraph::model::Variable;
-use std::collections::{BTreeSet, HashMap};
-use std::fmt;
-use std::marker::PhantomData;
+use std::collections::HashMap;
 
 pub(super) mod analysis;
 mod reads;
+mod slots;
 #[cfg(test)]
 mod tests;
 
 pub(super) use analysis::{analyze, Scoped};
-
-pub(super) mod roles {
-    pub(crate) enum Certain {}
-    pub(crate) enum Maybe {}
-    pub(crate) enum Own {}
-    pub(crate) enum Outer {}
-    pub(crate) enum Touched {}
-    pub(crate) enum Row {}
-    pub(crate) enum Hidden {}
-    pub(crate) enum Reads {}
-}
-
-/// Slots tagged with the role they play, so that a set of one role cannot stand for another.
-pub(super) struct Slots<Role>(BTreeSet<usize>, PhantomData<Role>);
-
-/// Bound in every row.
-pub(super) type Certain = Slots<roles::Certain>;
-/// Bound in some row, which includes what is bound in every row.
-pub(super) type Maybe = Slots<roles::Maybe>;
-/// Bound in every row by a group's own patterns, as it would bind them alone.
-pub(super) type Own = Slots<roles::Own>;
-/// Bound, perhaps, by the groups around a group, which it does not see.
-pub(super) type Outer = Slots<roles::Outer>;
-/// Bound, in some row or every row, by a group's own patterns.
-pub(super) type Touched = Slots<roles::Touched>;
-/// Bound, perhaps, in the row an EXISTS body runs on.
-pub(super) type Row = Slots<roles::Row>;
-/// Read as unbound by a group although a group around it binds it.
-pub(super) type Hidden = Slots<roles::Hidden>;
-/// Mentioned by a pattern or read by an expression.
-pub(super) type Reads = Slots<roles::Reads>;
-
-impl<Role> Slots<Role> {
-    pub(super) fn new() -> Self {
-        Self(BTreeSet::new(), PhantomData)
-    }
-
-    pub(super) fn contains(&self, slot: usize) -> bool {
-        self.0.contains(&slot)
-    }
-
-    pub(super) fn insert(&mut self, slot: usize) {
-        self.0.insert(slot);
-    }
-
-    pub(super) fn iter(&self) -> impl Iterator<Item = usize> + '_ {
-        self.0.iter().copied()
-    }
-
-    pub(super) fn intersection(&self, other: &Self) -> Self {
-        self.0.intersection(&other.0).copied().collect()
-    }
-
-    pub(super) fn is_subset_of<Other>(&self, other: &Slots<Other>) -> bool {
-        self.0.is_subset(&other.0)
-    }
-
-    pub(super) fn is_disjoint_from<Other>(&self, other: &Slots<Other>) -> bool {
-        self.0.is_disjoint(&other.0)
-    }
-}
-
-impl<Role> Default for Slots<Role> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<Role> Clone for Slots<Role> {
-    fn clone(&self) -> Self {
-        Self(self.0.clone(), PhantomData)
-    }
-}
-
-impl<Role> fmt::Debug for Slots<Role> {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(&self.0, formatter)
-    }
-}
-
-impl<Role> FromIterator<usize> for Slots<Role> {
-    fn from_iter<T: IntoIterator<Item = usize>>(slots: T) -> Self {
-        Self(slots.into_iter().collect(), PhantomData)
-    }
-}
-
-impl<Role> Extend<usize> for Slots<Role> {
-    fn extend<T: IntoIterator<Item = usize>>(&mut self, slots: T) {
-        self.0.extend(slots);
-    }
-}
-
-impl<Role> IntoIterator for Slots<Role> {
-    type Item = usize;
-    type IntoIter = std::collections::btree_set::IntoIter<usize>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
-    }
-}
+pub(super) use slots::{Certain, Hidden, Maybe, Outer, Own, Reads, Row, Slots, Touched};
 
 /// The slot a variable has, in the scope it is named in.
 pub(super) struct Names {
