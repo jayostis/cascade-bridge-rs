@@ -24,7 +24,7 @@ use web_time::Instant;
 
 pub use crate::compiled::Executor;
 pub use crate::harness::Outcome;
-pub use crate::query::{Fallback, QueryProfile};
+pub use crate::query::{Fallback, Planned, QueryProfile};
 pub use crate::rdf::GraphFormat as Format;
 
 pub const NAME: &str = "Cascade Bridge for Rust";
@@ -244,6 +244,11 @@ impl Loaded {
 
     pub fn load_stages(&self) -> &[StageTime] {
         &self.prepared.loading
+    }
+
+    /// For debugging and measuring: each query of the adapter as the compiler plans it.
+    pub fn explain(&self) -> Vec<Planned> {
+        self.prepared.explanations()
     }
 
     pub fn accepts(&self, document: &Document<'_>) -> Result<bool> {

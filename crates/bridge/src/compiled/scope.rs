@@ -14,6 +14,7 @@ pub(super) use slots::{Certain, Hidden, Maybe, Reads, Slots};
 pub(super) struct Names {
     next: usize,
     scopes: Vec<HashMap<String, usize>>,
+    labels: Option<Vec<String>>,
 }
 
 impl Default for Names {
@@ -21,11 +22,31 @@ impl Default for Names {
         Self {
             next: 0,
             scopes: vec![HashMap::new()],
+            labels: None,
         }
     }
 }
 
 impl Names {
+    pub(super) fn explaining() -> Self {
+        Self {
+            labels: Some(Vec::new()),
+            ..Self::default()
+        }
+    }
+
+    pub(super) fn is_explaining(&self) -> bool {
+        self.labels.is_some()
+    }
+
+    pub(super) fn labels(&self) -> &[String] {
+        self.labels.as_deref().unwrap_or_default()
+    }
+
+    pub(super) fn into_labels(self) -> Vec<String> {
+        self.labels.unwrap_or_default()
+    }
+
     pub(super) fn slot(&mut self, variable: &Variable) -> usize {
         let name = variable.as_str();
         if let Some(&slot) = self.scopes.last().and_then(|scope| scope.get(name)) {
@@ -33,6 +54,13 @@ impl Names {
         }
         let slot = self.next;
         self.next += 1;
+        if let Some(labels) = &mut self.labels {
+            labels.push(if labels.iter().any(|label| label == name) {
+                format!("{name}~{slot}")
+            } else {
+                name.to_owned()
+            });
+        }
         if let Some(scope) = self.scopes.last_mut() {
             scope.insert(name.to_owned(), slot);
         }

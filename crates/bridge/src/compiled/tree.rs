@@ -77,6 +77,10 @@ impl Tree {
         &self.terms[id as usize]
     }
 
+    pub(super) fn forget_answers(&self) {
+        self.answers.take();
+    }
+
     /// An answer that depends on the tree alone, computed the first time it is asked.
     pub(super) fn remembered(
         &self,

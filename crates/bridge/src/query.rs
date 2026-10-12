@@ -33,6 +33,13 @@ pub struct Fallback {
     pub reason: String,
 }
 
+/// A query of an adapter and the plan the compiler makes of it, printed, or why it makes none.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Planned {
+    pub query: String,
+    pub plan: std::result::Result<String, String>,
+}
+
 /// How a run executes its queries, what it may spend, and what it keeps of them, in
 /// the order each query first ran.
 #[derive(Default)]
@@ -196,6 +203,13 @@ impl Query {
             query: self.iri.clone(),
             reason: self.compiled.as_ref().err()?.clone(),
         })
+    }
+
+    pub(crate) fn explained(&self) -> Planned {
+        Planned {
+            query: self.iri.clone(),
+            plan: compiled::compile_explained(&self.parsed).map(|plan| plan.to_string()),
+        }
     }
 
     fn failed(&self, error: QueryEvaluationError, watch: &Watch) -> Error {

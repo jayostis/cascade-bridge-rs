@@ -1,5 +1,5 @@
 use super::builtin::BUILTINS;
-use super::{agree, compile, Dataset, Executor, Fail, Tree};
+use super::{agree, compile, compile_explained, Dataset, Executor, Fail, Tree};
 use crate::budget::{Budgets, Watch};
 use crate::error::Result;
 use crate::fixtures::{conversion_under, profiled_under, tiny, tiny_json, Variant};
@@ -486,6 +486,12 @@ fn compiled(query: &str, store: &Store) -> std::result::Result<Vec<String>, Fail
     Ok(canonical_parts(quads).expect("canonical"))
 }
 
+fn explained(query: &str) -> String {
+    compile_explained(&parse(query))
+        .expect("a query the compiler reads")
+        .to_string()
+}
+
 /// Whether the query answered anything.
 fn answers_alike(query: &str) -> bool {
     let store = graph();
@@ -630,6 +636,7 @@ fn answers_an_exists_that_shares_no_variable_afresh_for_each_tree() {
     let query =
         "CONSTRUCT { ?i :seen :yes } WHERE { ?i a :Item . FILTER EXISTS { ?z :key \"1\" } }";
     let plan = compile(&parse(query)).expect("compiled");
+    assert!(explained(query).contains("exists, remembered as memo 0:"));
     let keyed = graph();
     let unkeyed = graph_of(&DATA.replace(":one :key \"1\" ; :label \"one\" .", ""));
     for store in [&keyed, &unkeyed, &keyed] {
@@ -642,6 +649,54 @@ fn answers_an_exists_that_shares_no_variable_afresh_for_each_tree() {
         );
     }
     assert_ne!(evaluated(query, &keyed), evaluated(query, &unkeyed));
+}
+
+#[test]
+fn prints_a_plan_by_its_steps_with_variables_by_name_and_the_exists_it_remembers() {
+    let query = "CONSTRUCT { ?i :seen ?n } WHERE { ?r a :Root ; ?slot ?i . ?i :name ?n . FILTER EXISTS { ?i rdf:_1 ?child } FILTER EXISTS { ?z :key \"1\" } }";
+    let other =
+        "CONSTRUCT { ?i :seen :yes } WHERE { ?i a :Item . FILTER EXISTS { ?z :key \"1\" } }";
+    let first = explained(query);
+    explained(other);
+    assert_eq!(explained(query), first);
+    assert_eq!(
+        first,
+        concat!(
+            "filter EXISTS { ?z <urn:t#key> \"1\" . }\n",
+            "  exists, remembered as memo 0:\n",
+            "    scan ?z <urn:t#key> \"1\"\n",
+            "scan ?r <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <urn:t#Root>\n",
+            "scan ?r ?slot ?i\n",
+            "filter EXISTS { ?i <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> ?child . }\n",
+            "  exists, run for each row:\n",
+            "    scan ?i <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> ?child\n",
+            "scan ?i <urn:t#name> ?n\n",
+            "construct\n",
+            "  ?i <urn:t#seen> ?n\n",
+        )
+    );
+}
+
+#[test]
+fn answers_two_plans_that_each_remember_an_exists_alike_on_one_tree() {
+    let store = graph();
+    let tree = Tree::of(&store, Watch::default()).expect("a tree");
+    let found =
+        "CONSTRUCT { ?i :seen :yes } WHERE { ?i a :Item . FILTER EXISTS { ?z :key \"1\" } }";
+    let missing =
+        "CONSTRUCT { ?i :seen :yes } WHERE { ?i a :Item . FILTER EXISTS { ?z :key \"9\" } }";
+    assert_ne!(evaluated(found, &store), evaluated(missing, &store));
+    for query in [found, missing, found] {
+        let answered = compile(&parse(query))
+            .expect("compiled")
+            .construct(&tree)
+            .expect("constructed");
+        assert_eq!(
+            canonical_parts(answered).expect("canonical"),
+            evaluated(query, &store),
+            "{query}"
+        );
+    }
 }
 
 struct Text(String);
