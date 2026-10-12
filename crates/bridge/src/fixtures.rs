@@ -3,7 +3,7 @@
 use crate::compiled::Executor;
 use crate::library::{Files, Named};
 use crate::load::load_adapter;
-use crate::query::Profile;
+use crate::query::{Profile, QueryProfile};
 use crate::records::Supplied;
 use crate::resolver::{Maps, Resolver};
 use crate::run::{convert, convert_with, prepare, Conversion, Source};
@@ -162,11 +162,20 @@ pub fn conversion_under(
     input: &str,
     executor: Executor,
 ) -> Result<Conversion> {
+    Ok(profiled_under(resolver, input, executor)?.0)
+}
+
+pub fn profiled_under(
+    resolver: &dyn Resolver,
+    input: &str,
+    executor: Executor,
+) -> Result<(Conversion, Vec<QueryProfile>)> {
     let adapter = load_adapter(resolver)?;
     let prepared = prepare(&adapter, resolver)?;
     let iri = format!("{}fixtures/in/{input}", resolver.root());
     let xml = resolver.read(&iri)?;
-    convert_with(
+    let profile = Profile::new(executor, true);
+    let conversion = convert_with(
         &prepared,
         Source {
             iri: &iri,
@@ -174,8 +183,9 @@ pub fn conversion_under(
             bytes: &xml,
             facts: None,
         },
-        &Profile::new(executor, false),
-    )
+        &profile,
+    )?;
+    Ok((conversion, profile.queries()))
 }
 
 pub fn converted(resolver: &dyn Resolver, input: &str) -> Conversion {

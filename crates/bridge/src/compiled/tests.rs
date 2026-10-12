@@ -1,13 +1,15 @@
+use super::builtin::BUILTINS;
 use super::{agree, compile, Dataset, Executor, Fail, Tree};
 use crate::error::Result;
-use crate::fixtures::{conversion_under, tiny};
-use crate::query::{Form, Profile, Query};
+use crate::fixtures::{conversion_under, profiled_under, tiny, tiny_json, Variant};
+use crate::query::{Form, Profile, Query, QueryProfile};
 use crate::rdf::canonical_parts;
 use crate::resolver::Resolver;
 use oxigraph::model::{GraphName, Quad};
 use oxigraph::sparql::{QueryResults, SparqlEvaluator};
 use oxigraph::store::Store;
 use oxrdfio::{RdfFormat, RdfParser};
+use std::collections::HashSet;
 
 const PREFIXES: &str =
     "PREFIX : <urn:t#> PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> \
@@ -29,6 +31,215 @@ const DATA: &str = r#"
 :p :next :q ; :other :r .
 :q :next :p ; a :Node .
 "#;
+
+const LOWERED: &[(&str, &str)] = &[
+    (
+        "a seeded EXISTS",
+        "CONSTRUCT { ?i :seen ?n } WHERE { ?r a :Root ; ?slot ?i . ?i a :Item ; :name ?n . FILTER EXISTS { ?i rdf:_1 ?child } }",
+    ),
+    (
+        "a seeded NOT EXISTS",
+        "CONSTRUCT { ?i :seen ?n } WHERE { ?r a :Root ; ?slot ?i . ?i :name ?n . FILTER NOT EXISTS { ?i rdf:_1 ?child } }",
+    ),
+    (
+        "an OPTIONAL with a condition of its own",
+        "CONSTRUCT { ?i :first ?t } WHERE { ?i a :Item . OPTIONAL { ?i rdf:_1 ?n . ?n rdf:_1 ?t . FILTER(STRSTARTS(?t, \"f\")) } }",
+    ),
+    (
+        "a UNION of three branches",
+        "CONSTRUCT { ?i :named ?n } WHERE { { ?i :name ?n } UNION { ?i :id ?n } UNION { ?i :name ?n } }",
+    ),
+    (
+        "GROUP BY with COUNT, MIN and SAMPLE",
+        "CONSTRUCT { ?i :count ?c ; :least ?m ; :any ?s } WHERE { SELECT ?i (COUNT(?x) AS ?c) (MIN(?x) AS ?m) (SAMPLE(?x) AS ?s) WHERE { ?i rdf:_1 ?x } GROUP BY ?i }",
+    ),
+    (
+        "GROUP BY with MAX and COUNT(*)",
+        "CONSTRUCT { ?i :last ?m ; :rows ?c } WHERE { SELECT ?i (MAX(?x) AS ?m) (COUNT(*) AS ?c) WHERE { ?i ?s ?x . ?i a :Note } GROUP BY ?i }",
+    ),
+    (
+        "an aggregate with no key",
+        "CONSTRUCT { :root :count ?c } WHERE { SELECT (COUNT(?x) AS ?c) WHERE { :a rdf:_1 ?x } }",
+    ),
+    (
+        "COUNT(DISTINCT) with HAVING",
+        "CONSTRUCT { ?i :count ?c } WHERE { SELECT ?i (COUNT(DISTINCT ?x) AS ?c) WHERE { ?i ?s ?x . ?i a :Note } GROUP BY ?i HAVING (COUNT(?x) > 1) }",
+    ),
+    (
+        "SUM over a filtered group",
+        "CONSTRUCT { ?x :total ?t } WHERE { SELECT ?x (SUM(?s) AS ?t) WHERE { ?x a :Item ; :size ?s . FILTER(isLiteral(?s) && ?s > 0) } GROUP BY ?x }",
+    ),
+    (
+        "a VALUES table joined on a variable",
+        "CONSTRUCT { ?i :kind ?k } WHERE { ?i :id ?id . VALUES (?id ?k) { (\"1\" :first) (\"2\" :second) (\"3\" :third) } }",
+    ),
+    (
+        "a BIND of a constant",
+        "CONSTRUCT { ?i :is ?f } WHERE { ?i a :Item . BIND(:flag AS ?f) }",
+    ),
+    (
+        "a BIND of a cast and a division",
+        "CONSTRUCT { ?i :ratio ?r } WHERE { ?i :id ?id . BIND(xsd:integer(?id) AS ?n) BIND(10 / ?n AS ?r) }",
+    ),
+    (
+        "a filter equating two patterns' values",
+        "CONSTRUCT { ?i :label ?l } WHERE { ?i a :Item ; :id ?id . ?row :key ?key ; :label ?l . FILTER(?key = ?id) }",
+    ),
+    (
+        "a filter equating the result of builtins",
+        "CONSTRUCT { ?i :label ?l } WHERE { ?i a :Item ; :id ?id . ?row :key ?k ; :label ?l . FILTER(CONCAT(\"\", ?k) = STR(?id)) }",
+    ),
+    (
+        "a filter on the predicate and the kind of the object",
+        "CONSTRUCT { ?o :text ?t } WHERE { ?o a :Note ; ?s ?t . FILTER(isLiteral(?t) && STRSTARTS(STR(?s), STR(rdf:_))) }",
+    ),
+    (
+        "a filter comparing two integers",
+        "CONSTRUCT { ?i :bigger ?j } WHERE { ?i :size ?a . ?j :size ?b . FILTER(?a < ?b && ?i != ?j) }",
+    ),
+    (
+        "a SELECT DISTINCT subquery",
+        "CONSTRUCT { ?i :pair ?j } WHERE { { SELECT DISTINCT ?i ?j WHERE { ?i ?s ?x . ?j ?t ?x . ?i a :Note . ?j a :Note } } }",
+    ),
+    (
+        "a blank node in the template",
+        "CONSTRUCT { [] :holds ?i ; :named ?n } WHERE { ?i a :Item ; :name ?n }",
+    ),
+    (
+        "a walk over all but one edge, from the start",
+        "CONSTRUCT { ?n :reaches ?m } WHERE { :p (!rdf:type)* ?m . BIND(:p AS ?n) }",
+    ),
+    (
+        "a walk over all but one edge, not from the start",
+        "CONSTRUCT { ?n :reaches ?m } WHERE { :p (!rdf:type)+ ?m . BIND(:p AS ?n) }",
+    ),
+    (
+        "a pattern with a constant object",
+        "CONSTRUCT { ?i :seen :yes } WHERE { ?i a :Item ; :name \"alpha\" }",
+    ),
+    (
+        "a language-tagged literal in a pattern",
+        "CONSTRUCT { ?i :seen :yes } WHERE { ?i :v \"naïve café\"@fr }",
+    ),
+];
+
+const DECLINED: &[(&str, &str, &str)] = &[
+    (
+        "a SELECT",
+        "SELECT ?s WHERE { ?s a :Item }",
+        "it is not a CONSTRUCT",
+    ),
+    (
+        "an ASK",
+        "ASK { ?s a :Item }",
+        "it is not a CONSTRUCT",
+    ),
+    (
+        "a pattern with nothing bound to start from",
+        "CONSTRUCT { ?s :p ?o } WHERE { ?s ?p ?o }",
+        "a triple pattern with nothing bound to start from",
+    ),
+    (
+        "ORDER BY",
+        "CONSTRUCT { ?s a :Item } WHERE { ?s a :Item } ORDER BY ?s",
+        "ORDER BY",
+    ),
+    (
+        "LIMIT",
+        "CONSTRUCT { ?s a :Item } WHERE { ?s a :Item } LIMIT 1",
+        "LIMIT or OFFSET",
+    ),
+    (
+        "MINUS",
+        "CONSTRUCT { ?s a :Item } WHERE { ?s a :Item MINUS { ?s :id \"1\" } }",
+        "MINUS",
+    ),
+    (
+        "GRAPH",
+        "CONSTRUCT { ?s :p ?o } WHERE { GRAPH ?g { ?s :id ?o } }",
+        "GRAPH",
+    ),
+    (
+        "REDUCED",
+        "CONSTRUCT { ?s :p ?o } WHERE { { SELECT REDUCED ?s ?o WHERE { ?s :id ?o } } }",
+        "REDUCED",
+    ),
+    (
+        "a property path that is an alternative",
+        "CONSTRUCT { ?s :p ?o } WHERE { ?s rdf:_1|rdf:_2 ?o }",
+        "a property path that is not a walk",
+    ),
+    (
+        "a property path that walks one edge",
+        "CONSTRUCT { ?s :p ?o } WHERE { :p :next+ ?o . BIND(:p AS ?s) }",
+        "a property path that is not a walk over all but some edges",
+    ),
+    (
+        "a property path from a node not yet bound",
+        "CONSTRUCT { ?s :p ?m } WHERE { ?s (!rdf:type)* ?m }",
+        "a property path from a node not yet bound",
+    ),
+    (
+        "BNODE()",
+        "CONSTRUCT { ?s :p ?o } WHERE { ?s a :Item . BIND(BNODE() AS ?o) }",
+        "the function BNODE",
+    ),
+    (
+        "a function the compiler has no builtin for",
+        "CONSTRUCT { ?s :p ?o } WHERE { ?s a :Item ; :id ?i . BIND(xsd:double(?i) AS ?o) }",
+        "the function <http://www.w3.org/2001/XMLSchema#double>",
+    ),
+    (
+        "a regular expression that is not written out",
+        "CONSTRUCT { ?s :p ?o } WHERE { ?s a :Item ; :id ?i . BIND(REGEX(?i, ?s) AS ?o) }",
+        "a regular expression that is not written out",
+    ),
+    (
+        "a regular expression the engine refuses",
+        "CONSTRUCT { ?s :p ?o } WHERE { ?s a :Item ; :id ?o . FILTER(REGEX(?o, \"(\")) }",
+        "a regular expression the engine refuses",
+    ),
+    (
+        "an aggregate the compiler has no accumulator for",
+        "CONSTRUCT { ?s :p ?o } WHERE { SELECT ?s (GROUP_CONCAT(?i) AS ?o) WHERE { ?s :id ?i } GROUP BY ?s }",
+        "an aggregate other than COUNT, SUM, MIN, MAX or SAMPLE",
+    ),
+    (
+        "COUNT(DISTINCT *)",
+        "CONSTRUCT { ?s :p ?c } WHERE { SELECT ?s (COUNT(DISTINCT *) AS ?c) WHERE { ?s :id ?i } GROUP BY ?s }",
+        "COUNT(DISTINCT *)",
+    ),
+    (
+        "DISTINCT in SUM",
+        "CONSTRUCT { ?s :p ?c } WHERE { SELECT ?s (SUM(DISTINCT ?z) AS ?c) WHERE { ?s :size ?z } GROUP BY ?s }",
+        "DISTINCT in an aggregate",
+    ),
+    (
+        "an aggregate named for a variable the group around it binds",
+        "CONSTRUCT { ?i :count ?c } WHERE { ?i :size ?c . { SELECT ?i (COUNT(?x) AS ?c) WHERE { ?i rdf:_1 ?x } GROUP BY ?i } }",
+        "a BIND of ?c where a group around it binds it",
+    ),
+    (
+        "an OPTIONAL over a variable another OPTIONAL may leave unbound",
+        "CONSTRUCT { ?i :named ?n } WHERE { ?i a :Item . OPTIONAL { ?i :size ?n } { ?i :id ?id OPTIONAL { ?i :name ?n } } }",
+        "a group reads a variable only the groups around it bind",
+    ),
+    (
+        "a BIND over a variable the group around it binds",
+        "CONSTRUCT { ?i :named ?n } WHERE { ?i :name ?n . { ?i :id ?id BIND(?id AS ?n) } }",
+        "a BIND of ?n where a group around it binds it",
+    ),
+    (
+        "a typed literal in a pattern",
+        "CONSTRUCT { ?s :p ?o } WHERE { ?s :id ?o . ?s :size 07 }",
+        "a typed literal in a pattern, which a store matches by value",
+    ),
+    (
+        "a typed literal in VALUES",
+        "CONSTRUCT { ?s :p ?o } WHERE { ?s :id ?o . VALUES ?o { 07 } }",
+        "a typed literal in VALUES, which a join matches by value",
+    ),
+];
 
 fn graph() -> Store {
     let store = Store::new().expect("a store");
@@ -82,28 +293,16 @@ fn answers_alike(query: &str) -> bool {
 }
 
 #[test]
-fn answers_each_shape_of_the_mapping_queries_as_the_general_evaluator_does() {
-    for query in [
-        "CONSTRUCT { ?i :seen ?n } WHERE { ?r a :Root ; ?slot ?i . ?i a :Item ; :name ?n . FILTER EXISTS { ?i rdf:_1 ?child } }",
-        "CONSTRUCT { ?i :seen ?n } WHERE { ?r a :Root ; ?slot ?i . ?i :name ?n . FILTER NOT EXISTS { ?i rdf:_1 ?child } }",
-        "CONSTRUCT { ?i :first ?t } WHERE { ?i a :Item . OPTIONAL { ?i rdf:_1 ?n . ?n rdf:_1 ?t . FILTER(STRSTARTS(?t, \"f\")) } }",
-        "CONSTRUCT { ?i :named ?n } WHERE { { ?i :name ?n } UNION { ?i :id ?n } UNION { ?i :name ?n } }",
-        "CONSTRUCT { ?i :count ?c ; :least ?m ; :any ?s } WHERE { SELECT ?i (COUNT(?x) AS ?c) (MIN(?x) AS ?m) (SAMPLE(?x) AS ?s) WHERE { ?i rdf:_1 ?x } GROUP BY ?i }",
-        "CONSTRUCT { ?i :count ?c } WHERE { SELECT ?i (COUNT(DISTINCT ?x) AS ?c) WHERE { ?i ?s ?x . ?i a :Note } GROUP BY ?i HAVING (COUNT(?x) > 1) }",
-        "CONSTRUCT { ?i :kind ?k } WHERE { ?i :id ?id . VALUES (?id ?k) { (\"1\" :first) (\"2\" :second) (\"3\" :third) } }",
-        "CONSTRUCT { ?i :ratio ?r } WHERE { ?i :id ?id . BIND(xsd:integer(?id) AS ?n) BIND(10 / ?n AS ?r) }",
-        "CONSTRUCT { ?i :label ?l } WHERE { ?i a :Item ; :id ?id . ?row :key ?key ; :label ?l . FILTER(?key = ?id) }",
-        "CONSTRUCT { ?i :label ?l } WHERE { ?i a :Item ; :id ?id . ?row :key ?k ; :label ?l . FILTER(CONCAT(\"\", ?k) = STR(?id)) }",
-        "CONSTRUCT { ?o :text ?t } WHERE { ?o a :Note ; ?s ?t . FILTER(isLiteral(?t) && STRSTARTS(STR(?s), STR(rdf:_))) }",
-        "CONSTRUCT { ?i :pair ?j } WHERE { { SELECT DISTINCT ?i ?j WHERE { ?i ?s ?x . ?j ?t ?x . ?i a :Note . ?j a :Note } } }",
-        "CONSTRUCT { [] :holds ?i ; :named ?n } WHERE { ?i a :Item ; :name ?n }",
-        "CONSTRUCT { ?n :reaches ?m } WHERE { :p (!rdf:type)* ?m . BIND(:p AS ?n) }",
-        "CONSTRUCT { ?n :reaches ?m } WHERE { :p (!rdf:type)+ ?m . BIND(:p AS ?n) }",
-        "CONSTRUCT { ?x :total ?t } WHERE { SELECT ?x (SUM(?s) AS ?t) WHERE { ?x a :Item ; :size ?s . FILTER(isLiteral(?s) && ?s > 0) } GROUP BY ?x }",
-        "CONSTRUCT { ?i :bigger ?j } WHERE { ?i :size ?a . ?j :size ?b . FILTER(?a < ?b && ?i != ?j) }",
-    ] {
-        assert!(answers_alike(query), "{query} answers nothing, so it shows nothing");
-    }
+fn lowers_each_construct_a_mapping_query_uses_and_answers_as_the_general_evaluator_does() {
+    let silent: Vec<_> = LOWERED
+        .iter()
+        .filter(|(_, query)| !answers_alike(query))
+        .map(|(construct, _)| *construct)
+        .collect();
+    assert!(
+        silent.is_empty(),
+        "{silent:?} answer nothing, so show nothing"
+    );
 }
 
 #[test]
@@ -156,27 +355,26 @@ fn evaluates_each_builtin_to_the_value_the_general_evaluator_gives() {
 }
 
 #[test]
+fn names_each_builtin_once() {
+    let mut names = HashSet::new();
+    let repeated: Vec<_> = BUILTINS
+        .iter()
+        .map(|builtin| builtin.name)
+        .filter(|name| !names.insert(*name))
+        .collect();
+    assert!(repeated.is_empty(), "{repeated:?}");
+}
+
+#[test]
 fn declines_each_construct_it_does_not_read_and_says_which() {
-    for (query, reason) in [
-        ("SELECT ?s WHERE { ?s a :Item }", "CONSTRUCT"),
-        ("CONSTRUCT { ?s :p ?o } WHERE { ?s ?p ?o }", "nothing bound"),
-        ("CONSTRUCT { ?s a :Item } WHERE { ?s a :Item } ORDER BY ?s", "ORDER BY"),
-        ("CONSTRUCT { ?s a :Item } WHERE { ?s a :Item } LIMIT 1", "LIMIT"),
-        ("CONSTRUCT { ?s a :Item } WHERE { ?s a :Item MINUS { ?s :id \"1\" } }", "MINUS"),
-        ("CONSTRUCT { ?s :p ?o } WHERE { ?s rdf:_1|rdf:_2 ?o }", "property path"),
-        ("CONSTRUCT { ?s :p ?o } WHERE { :p :next+ ?o . BIND(:p AS ?s) }", "property path"),
-        ("CONSTRUCT { ?s :p ?o } WHERE { ?s a :Item ; :id ?i . BIND(NOW() AS ?o) }", "NOW"),
-        ("CONSTRUCT { ?s :p ?o } WHERE { ?s a :Item ; :id ?i . BIND(REGEX(?i, ?s) AS ?o) }", "regular expression"),
-        ("CONSTRUCT { ?s :p ?o } WHERE { ?s a :Item ; :id ?i . BIND(xsd:double(?i) AS ?o) }", "function"),
-        ("CONSTRUCT { ?s :p ?o } WHERE { SELECT ?s (GROUP_CONCAT(?i) AS ?o) WHERE { ?s :id ?i } GROUP BY ?s }", "aggregate"),
-        ("CONSTRUCT { ?s :p ?o } WHERE { ?s :id ?i . { ?s :name ?o FILTER(?i = \"1\") } }", "reads a variable"),
-        ("CONSTRUCT { ?s :p ?o } WHERE { ?s :id ?o . ?s :size 07 }", "typed literal"),
-        ("CONSTRUCT { ?s :p ?o } WHERE { ?s :id ?o . VALUES ?o { 07 } }", "typed literal"),
-        ("CONSTRUCT { ?s :p ?o } WHERE { GRAPH ?g { ?s :id ?o } }", "GRAPH"),
-    ] {
-        let declined = compile(&parse(query)).err().unwrap_or_default();
-        assert!(declined.contains(reason), "{query}: {declined}");
-    }
+    let wrong: Vec<_> = DECLINED
+        .iter()
+        .filter_map(|(construct, query, reason)| {
+            let declined = compile(&parse(query)).err();
+            (declined.as_deref() != Some(*reason)).then_some((*construct, declined))
+        })
+        .collect();
+    assert!(wrong.is_empty(), "{wrong:#?}");
 }
 
 #[test]
@@ -213,30 +411,64 @@ fn read(query: &str) -> Query {
     .expect("a query")
 }
 
-fn answered(query: &Query, executor: Executor) -> (Vec<String>, usize) {
+fn answered(query: &Query, executor: Executor) -> (Vec<String>, Vec<QueryProfile>) {
     let store = graph();
     let profile = Profile::new(executor, true);
     let quads = query
         .graph(&Dataset::new(&store), &profile)
         .expect("constructed");
-    let give_ups = profile.queries().iter().map(|q| q.give_ups).sum();
-    (canonical_parts(quads).expect("canonical"), give_ups)
+    (
+        canonical_parts(quads).expect("canonical"),
+        profile.queries(),
+    )
+}
+
+#[test]
+fn answers_each_declined_construct_as_the_general_evaluator_and_says_why() {
+    for &(construct, query, reason) in DECLINED {
+        if !query.starts_with("CONSTRUCT") {
+            continue;
+        }
+        let query = read(query);
+        let (answer, profiled) = answered(&query, Executor::Compiled);
+        assert_eq!(
+            answer,
+            answered(&query, Executor::Spareval).0,
+            "{construct}"
+        );
+        assert_eq!(
+            profiled
+                .iter()
+                .map(|q| (q.fallback.as_deref(), q.give_ups))
+                .collect::<Vec<_>>(),
+            [(Some(reason), 0)],
+            "{construct}"
+        );
+    }
 }
 
 #[test]
 fn answers_a_given_up_query_as_the_general_evaluator_and_counts_it() {
     let query =
         read("CONSTRUCT { :v2 :joined ?o } WHERE { :v2 :v ?v . BIND(CONCAT(?v, \"!\") AS ?o) }");
-    let (answer, give_ups) = answered(&query, Executor::Compiled);
-    assert_eq!((answer.len(), give_ups), (1, 1));
+    let (answer, profiled) = answered(&query, Executor::Compiled);
+    assert_eq!(answer.len(), 1);
+    assert_eq!(
+        profiled
+            .iter()
+            .map(|q| (q.fallback.as_deref(), q.give_ups))
+            .collect::<Vec<_>>(),
+        [(None, 1)]
+    );
     assert_eq!(answer, answered(&query, Executor::Spareval).0);
 }
 
 #[test]
 fn runs_a_query_both_ways_and_answers_where_they_agree() {
     let query = read("CONSTRUCT { ?i :named ?n } WHERE { ?i a :Item ; :name ?n }");
-    let (answer, give_ups) = answered(&query, Executor::Both);
-    assert_eq!((answer.len(), give_ups), (2, 0));
+    let (answer, profiled) = answered(&query, Executor::Both);
+    assert_eq!(answer.len(), 2);
+    assert_eq!(profiled.iter().map(|q| q.give_ups).sum::<usize>(), 0);
 }
 
 #[test]
@@ -257,17 +489,58 @@ fn names_the_query_and_the_triple_where_the_two_executors_differ() {
     );
 }
 
+fn converted_under(
+    adapter: &dyn Resolver,
+    input: &str,
+    executor: Executor,
+) -> (Vec<String>, Vec<String>) {
+    let conversion = conversion_under(adapter, input, executor).expect("conversion");
+    (
+        canonical_parts(conversion.quads).expect("canonical"),
+        canonical_parts(conversion.findings).expect("canonical"),
+    )
+}
+
 #[test]
-fn converts_the_tiny_adapter_alike_under_every_executor() {
-    let of = |executor| {
-        let conversion = conversion_under(&tiny(), "two.xml", executor).expect("conversion");
-        (
-            canonical_parts(conversion.quads).expect("canonical"),
-            canonical_parts(conversion.findings).expect("canonical"),
-        )
-    };
-    let general = of(Executor::Spareval);
-    assert!(!general.0.is_empty() && !general.1.is_empty());
-    assert_eq!(of(Executor::Compiled), general);
-    assert_eq!(of(Executor::Both), general);
+fn converts_each_tiny_adapter_alike_under_every_executor() {
+    for (adapter, input) in [
+        (&tiny() as &dyn Resolver, "two.xml"),
+        (&tiny_json(), "item.json"),
+    ] {
+        let general = converted_under(adapter, input, Executor::Spareval);
+        assert!(!general.0.is_empty(), "{input}");
+        assert_eq!(
+            converted_under(adapter, input, Executor::Compiled),
+            general,
+            "{input}"
+        );
+        assert_eq!(
+            converted_under(adapter, input, Executor::Both),
+            general,
+            "{input}"
+        );
+    }
+}
+
+#[test]
+fn converts_the_tiny_adapter_with_a_mapping_the_compiler_declines_as_the_general_evaluator_does() {
+    let ordered = Variant::of(tiny()).replacing_exactly(
+        "mapping/item.rq",
+        "?title . }\n}",
+        "?title . }\n} ORDER BY ?id",
+        1,
+    );
+    let (compiled, profiled) =
+        profiled_under(&ordered, "two.xml", Executor::Compiled).expect("conversion");
+    let general = conversion_under(&ordered, "two.xml", Executor::Spareval).expect("conversion");
+    assert_eq!(
+        canonical_parts(compiled.quads).expect("canonical"),
+        canonical_parts(general.quads).expect("canonical")
+    );
+    let item = profiled
+        .iter()
+        .find(|q| q.iri.ends_with("/mapping/item.rq"))
+        .expect("the item mapping is profiled");
+    assert_eq!(item.fallback.as_deref(), Some("ORDER BY"));
+    assert_eq!(item.give_ups, 0);
 }
