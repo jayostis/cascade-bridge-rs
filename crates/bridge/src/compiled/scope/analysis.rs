@@ -1,14 +1,13 @@
-use super::{Bound, Certain, Frame, Hidden, Maybe, Names, Own, Reads, Scope, Slots, Touched};
+use super::{Bound, Certain, Frame, Hidden, Maybe, Names, Reads, Scope, Slots};
 use oxigraph::model::Variable;
 use spargebra::algebra::{AggregateExpression, Expression, GraphPattern, PropertyPathExpression};
-use spargebra::term::{GroundTerm, TermPattern, TriplePattern};
+use spargebra::term::{GroundTerm, NamedNodePattern, TermPattern, TriplePattern};
 use std::collections::HashMap;
 
 pub(crate) type Declined = &'static str;
 
-/// A pattern of the algebra with what is bound around and after each part of it. A check
-/// that fails is kept where the part stands, so that whatever else declines the query
-/// before that part is reached is the reason given.
+/// A pattern of the algebra with what is bound around and after each part of it, and the
+/// checks that fail where the part stands.
 pub(crate) enum Scoped<'q> {
     Declined(Declined),
     Triples(Triples<'q>),
@@ -49,14 +48,12 @@ pub(crate) struct Binding<'q> {
     pub(crate) slot: usize,
     pub(crate) expression: &'q Expression,
     pub(crate) operands: Reads,
-    /// A group around it binds the variable, so the BIND is a join on it.
+    /// A group around it binds the variable.
     pub(crate) joins: bool,
     /// It binds the variable in every row.
     pub(crate) certainly: bool,
     pub(crate) reads: Result<(), Declined>,
-    /// What the expression stands among, where the BIND follows a pattern that is not a
-    /// group of triples. Among a group of triples it is placed as soon as its operands are
-    /// bound, which only the scheduler knows.
+    /// What the expression stands among, where the BIND does not follow a group of triples.
     pub(crate) scope: Scope,
     pub(crate) certain_after: Certain,
 }
@@ -126,8 +123,6 @@ pub(crate) struct Path<'q> {
     pub(crate) certain_after: Certain,
 }
 
-/// Works out what is bound where in `pattern`, entering with `frame` and leaving with
-/// what `frame` is after it.
 pub(crate) fn analyze<'q>(
     names: &mut Names,
     pattern: &'q GraphPattern,
@@ -198,10 +193,24 @@ impl Analysis<'_> {
 
     fn triples<'q>(&mut self, patterns: &'q [TriplePattern], frame: &mut Frame) -> Scoped<'q> {
         let entry = frame.bound.clone();
-        let mut bound = Reads::new();
-        self.names.triple_variables(patterns, &mut bound);
-        for slot in bound {
-            frame.binds(slot, true);
+        let variable = |term: &'q TermPattern| match term {
+            TermPattern::Variable(variable) => Some(variable),
+            _ => None,
+        };
+        for triple in patterns {
+            let predicate = match &triple.predicate {
+                NamedNodePattern::Variable(variable) => Some(variable),
+                NamedNodePattern::NamedNode(_) => None,
+            };
+            let terms = [
+                variable(&triple.subject),
+                predicate,
+                variable(&triple.object),
+            ];
+            for variable in terms.into_iter().flatten() {
+                let slot = self.names.slot(variable);
+                frame.binds(slot, true);
+            }
         }
         Scoped::Triples(Triples { patterns, entry })
     }
@@ -247,9 +256,14 @@ impl Analysis<'_> {
         frame: &mut Frame,
     ) -> Scoped<'q> {
         let inner = self.pattern(inner, frame);
-        let slot = self.names.slot(variable);
+        let (slot, operands) = if matches!(inner, Scoped::Triples(_)) {
+            let operands = self.names.read_by(expression);
+            (self.names.slot(variable), operands)
+        } else {
+            let slot = self.names.slot(variable);
+            (slot, self.names.read_by(expression))
+        };
         let joins = frame.bound.maybe.contains(slot);
-        let operands = self.names.read_by(expression);
         let reads = frame.reads(&operands);
         let scope = frame.scope(Hidden::new());
         let constant = matches!(
@@ -276,22 +290,22 @@ impl Analysis<'_> {
         union_branches(pattern, &mut written);
         let mut branches = Vec::new();
         let mut certain: Option<Certain> = None;
-        let mut own: Option<Own> = None;
+        let mut own: Option<Certain> = None;
         let mut maybe = Maybe::new();
-        let mut touched = Touched::new();
+        let mut touched = Maybe::new();
         for pattern in written {
             let mut child = frame.child();
             let scoped = self.pattern(pattern, &mut child);
             branches.push(Branch { pattern, scoped });
-            maybe.extend(child.bound.maybe);
-            touched.extend(child.touched);
+            maybe.extend(child.bound.maybe.iter());
+            touched.extend(child.touched.iter());
             certain = Some(intersect(certain, child.bound.certain));
             own = Some(intersect(own, child.bound.own));
         }
-        frame.bound.maybe.extend(maybe);
-        frame.touched.extend(touched);
+        frame.bound.maybe.extend(maybe.iter());
+        frame.touched.extend(touched.iter());
         frame.bound.certain = certain.unwrap_or_default();
-        frame.bound.own.extend(own.unwrap_or_default());
+        frame.bound.own.extend(own.unwrap_or_default().iter());
         Scoped::Union(Union {
             branches,
             certain_after: frame.bound.certain.clone(),
@@ -308,15 +322,15 @@ impl Analysis<'_> {
         let left = self.pattern(left, frame);
         let mut read = self.names.variables_of(right);
         if let Some(condition) = condition {
-            read.extend(self.names.read_by(condition));
+            read.extend(self.names.read_by(condition).iter());
         }
         let reads = frame.reads(&read);
         let certain_after = frame.bound.certain.clone();
         let mut child = frame.child();
         let right = self.pattern(right, &mut child);
         let condition = condition.map(|e| (e, child.scope(Hidden::new())));
-        frame.bound.maybe.extend(child.bound.maybe);
-        frame.touched.extend(child.touched);
+        frame.bound.maybe.extend(child.bound.maybe.iter());
+        frame.touched.extend(child.touched.iter());
         Scoped::Optional(Box::new(Optional {
             left,
             reads,
@@ -343,8 +357,6 @@ impl Analysis<'_> {
         })
     }
 
-    /// A subquery shares only the variables it projects with the group around it. Its
-    /// rows are those of its inner pattern, or, where DISTINCT, one for each projection.
     fn subquery<'q>(
         &mut self,
         inner: &'q GraphPattern,

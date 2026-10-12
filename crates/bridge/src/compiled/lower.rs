@@ -79,8 +79,7 @@ pub(super) struct Lowering {
 }
 
 impl Lowering {
-    /// Runs `lower` with the filters around the pattern set aside: a row of an OPTIONAL's
-    /// right side, a subquery, a group or an EXISTS need not satisfy them.
+    /// Runs `lower` without the filters around the pattern.
     fn apart<T>(&mut self, lower: impl FnOnce(&mut Self) -> T) -> T {
         let hints = self.hints.replace(Vec::new());
         let lowered = lower(self);
@@ -352,7 +351,7 @@ impl Lowering {
                 let reads = self.names.read_by(key);
                 self.hints.record(reads.clone());
                 let expr = self.expression(key, &bound.scope(Hidden::new()))?;
-                let reads = reads.into_iter().collect();
+                let reads = reads.iter().collect();
                 triple.object = Place::Key(*slot, Key { expr, reads });
             }
             for place in [&triple.subject, &triple.predicate, &triple.object] {

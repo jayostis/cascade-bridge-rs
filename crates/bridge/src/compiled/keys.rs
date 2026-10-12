@@ -57,9 +57,6 @@ impl Hints {
         self.reads.push(reads);
     }
 
-    /// What a filter around the group equates the pattern's object with, where the
-    /// pattern is a lookup by predicate, nothing else of it is known, and every
-    /// variable the expression reads is bound.
     pub(super) fn lookup(
         &self,
         names: &mut Names,
@@ -89,8 +86,6 @@ impl Hints {
         None
     }
 
-    /// A key that reads a variable a filter under which it was lowered reads as unbound
-    /// would look up a value the filter does not see.
     pub(super) fn keep_clear(&self, mark: &Mark, unbound: &Hidden) -> Result<(), &'static str> {
         if self.reads[mark.keys..]
             .iter()

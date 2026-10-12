@@ -27,11 +27,11 @@ impl Names {
                 self.variables(left, into);
                 self.variables(right, into);
                 if let Some(expression) = expression {
-                    into.extend(self.read_by(expression));
+                    into.extend(self.read_by(expression).iter());
                 }
             }
             GraphPattern::Filter { expr, inner } => {
-                into.extend(self.read_by(expr));
+                into.extend(self.read_by(expr).iter());
                 self.variables(inner, into);
             }
             GraphPattern::Extend {
@@ -40,7 +40,7 @@ impl Names {
                 expression,
             } => {
                 into.insert(self.slot(variable));
-                into.extend(self.read_by(expression));
+                into.extend(self.read_by(expression).iter());
                 self.variables(inner, into);
             }
             GraphPattern::Values { variables, .. } | GraphPattern::Project { variables, .. } => {
@@ -105,7 +105,7 @@ impl Names {
             }
             Expression::Exists(body) => {
                 let inside = self.variables_of(body);
-                into.extend(inside.into_iter().filter(|&slot| inside_exists(slot)));
+                into.extend(inside.iter().filter(|&slot| inside_exists(slot)));
             }
             Expression::Or(a, b)
             | Expression::And(a, b)

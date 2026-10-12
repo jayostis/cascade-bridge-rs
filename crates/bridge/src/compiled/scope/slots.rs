@@ -4,10 +4,6 @@ use std::marker::PhantomData;
 mod roles {
     pub(crate) enum Certain {}
     pub(crate) enum Maybe {}
-    pub(crate) enum Own {}
-    pub(crate) enum Outer {}
-    pub(crate) enum Touched {}
-    pub(crate) enum Row {}
     pub(crate) enum Hidden {}
     pub(crate) enum Reads {}
 }
@@ -16,14 +12,6 @@ mod roles {
 pub(crate) type Certain = Slots<roles::Certain>;
 /// Bound in some row, which includes what is bound in every row.
 pub(crate) type Maybe = Slots<roles::Maybe>;
-/// Bound in every row by a group's own patterns, as it would bind them alone.
-pub(crate) type Own = Slots<roles::Own>;
-/// Bound, perhaps, by the groups around a group, which it does not see.
-pub(crate) type Outer = Slots<roles::Outer>;
-/// Bound, in some row or every row, by a group's own patterns.
-pub(crate) type Touched = Slots<roles::Touched>;
-/// Bound, perhaps, in the row an EXISTS body runs on.
-pub(crate) type Row = Slots<roles::Row>;
 /// Read as unbound by a group although a group around it binds it.
 pub(crate) type Hidden = Slots<roles::Hidden>;
 /// Mentioned by a pattern or read by an expression.
@@ -32,7 +20,7 @@ pub(crate) type Reads = Slots<roles::Reads>;
 const WORD: usize = u64::BITS as usize;
 
 /// A set of slots tagged with the role it plays, so that a set of one role cannot stand
-/// for another. Slots are small and dense, which a bit for each keeps cheap to copy.
+/// for another.
 pub(crate) struct Slots<Role> {
     words: Vec<u64>,
     role: PhantomData<Role>,
@@ -131,39 +119,5 @@ impl<Role> Extend<usize> for Slots<Role> {
         for slot in slots {
             self.insert(slot);
         }
-    }
-}
-
-impl<Role> IntoIterator for Slots<Role> {
-    type Item = usize;
-    type IntoIter = Taken;
-
-    fn into_iter(self) -> Taken {
-        Taken {
-            words: self.words,
-            at: 0,
-            left: 0,
-        }
-    }
-}
-
-/// The slots of a set that is given up, in ascending order.
-pub(crate) struct Taken {
-    words: Vec<u64>,
-    at: usize,
-    left: u64,
-}
-
-impl Iterator for Taken {
-    type Item = usize;
-
-    fn next(&mut self) -> Option<usize> {
-        while self.left == 0 {
-            self.left = *self.words.get(self.at)?;
-            self.at += 1;
-        }
-        let bit = self.left.trailing_zeros() as usize;
-        self.left &= self.left - 1;
-        Some((self.at - 1) * WORD + bit)
     }
 }
