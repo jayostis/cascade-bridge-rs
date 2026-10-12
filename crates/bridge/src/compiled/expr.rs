@@ -1,5 +1,6 @@
 use super::builtin::{self, Call};
-use super::lower::{next_memo, Lowering, Scope, Slots};
+use super::lower::{next_memo, Lowering};
+use super::scope::Scope;
 use super::{run, Eval, Expr, Fail, Row, Tree};
 use oxigraph::model::{Term, Variable};
 use oxsdatatypes::{Boolean, Decimal, Integer};
@@ -189,8 +190,8 @@ impl Lowering {
     }
 
     fn variable(&mut self, variable: &Variable, scope: &Scope) -> Expr {
-        let slot = self.slot(variable);
-        if scope.hidden.contains(&slot) {
+        let slot = self.names.slot(variable);
+        if scope.hidden.contains(slot) {
             return eval_fn(|_, _| Err(Fail::Error));
         }
         eval_fn(move |_, row| {
@@ -202,16 +203,18 @@ impl Lowering {
     }
 
     fn is_bound(&mut self, variable: &Variable, scope: &Scope) -> Expr {
-        let slot = self.slot(variable);
-        let hidden = scope.hidden.contains(&slot);
+        let slot = self.names.slot(variable);
+        let hidden = scope.hidden.contains(slot);
         eval_fn(move |_, row| boolean(!hidden && row[slot].is_some()))
     }
 
     fn exists_test(&mut self, body: &GraphPattern, scope: &Scope) -> Result<Expr, String> {
-        let mut inside = Slots::new();
-        self.variables(body, &mut inside);
+        let inside = self.names.variables_of(body);
         let plan = self.exists(body, scope)?;
-        let masked: Vec<usize> = inside.intersection(&scope.hidden).copied().collect();
+        let masked: Vec<usize> = inside
+            .iter()
+            .filter(|&slot| scope.hidden.contains(slot))
+            .collect();
         let once = inside
             .iter()
             .all(|slot| scope.hidden.contains(slot) || !scope.maybe.contains(slot))

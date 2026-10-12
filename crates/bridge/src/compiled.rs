@@ -13,6 +13,7 @@ mod expr;
 mod keys;
 mod lower;
 mod run;
+mod scope;
 #[cfg(test)]
 mod tests;
 mod tree;
@@ -86,14 +87,8 @@ enum Place {
     Key(usize, Key),
 }
 
-/// A lookup by the one string a filter equates the variable with, in place of a scan.
-/// It only skips rows that filter rejects, on three conditions:
-/// - the equality is a conjunct of a filter that every row of the pattern must satisfy;
-/// - an expression whose value is a string is equal, by `=`, only to the simple literal
-///   of that text;
-/// - every variable the expression reads is bound in the row, and none is one a filter
-///   reads as unbound, so its value is the one the filter will see. Where one is not
-///   bound, the pattern is scanned and the filter decides.
+/// A lookup by the one string a filter equates the variable with, in place of a scan,
+/// where `Hints` finds one safe.
 struct Key {
     expr: Expr,
     reads: Vec<usize>,
