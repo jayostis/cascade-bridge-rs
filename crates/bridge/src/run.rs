@@ -4,6 +4,7 @@ use crate::compiled::Dataset;
 use crate::error::{Error, ErrorKind, Explained, Result};
 use crate::lift::{admitting, Admission, Lift, Paths, Reading, Unit};
 use crate::load::{subject, value, Adapter};
+use crate::measure::{Skip, Stage, StageTime, Stopwatch};
 use crate::query::{Form, Profile, Query};
 use crate::rdf::FINDINGS_PREFIXES;
 use crate::records::{self, Document, Release, Supplied};
@@ -43,6 +44,8 @@ pub(crate) struct Prepared {
     gap_severities: HashMap<String, String>,
     identifier: Option<String>,
     version: Option<String>,
+    pub(crate) skipped: Vec<Skip>,
+    pub(crate) loading: Vec<StageTime>,
 }
 
 /// Each schema a record may be validated against, compiled once however many name it.
@@ -106,19 +109,36 @@ pub(crate) struct Source<'a> {
 }
 
 pub(crate) fn prepare(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prepared> {
-    prepared(adapter, resolver).explained_by(ErrorKind::Adapter)
+    prepared(adapter, resolver, &[], false).explained_by(ErrorKind::Adapter)
 }
 
-fn prepared(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prepared> {
-    if adapter.mappings.is_empty() {
-        return Err(Error::adapter("the adapter names no bridge:mapping"));
-    }
-    let syntax = Syntax::of(adapter.source_media_type.as_deref())?;
-    let unit = syntax.records(adapter)?;
-    let tables = tables(adapter, resolver)?;
+pub(crate) fn prepare_skipping(
+    adapter: &Adapter,
+    resolver: &dyn Resolver,
+    skipping: &[Skip],
+) -> Result<Prepared> {
+    prepared(adapter, resolver, skipping, true).explained_by(ErrorKind::Adapter)
+}
+
+struct AdapterQueries {
+    mappings: Vec<Query>,
+    findings: Vec<Query>,
+    document_table: Vec<Query>,
+    detect: Option<Query>,
+}
+
+fn adapter_queries(
+    adapter: &Adapter,
+    resolver: &dyn Resolver,
+    skipping_findings: bool,
+) -> Result<AdapterQueries> {
     let mappings = queries(resolver, &adapter.mappings, "mapping")?;
-    let findings_queries = queries(resolver, &adapter.findings_queries, "findings query")?;
-    let document_table_queries = queries(
+    let findings = if skipping_findings {
+        Vec::new()
+    } else {
+        queries(resolver, &adapter.findings_queries, "findings query")?
+    };
+    let document_table = queries(
         resolver,
         &adapter.document_table_queries,
         "document table query",
@@ -128,49 +148,108 @@ fn prepared(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prepared> {
         .as_deref()
         .map(|iri| Query::read(resolver, iri, Form::Ask, "detect query"))
         .transpose()?;
+    Ok(AdapterQueries {
+        mappings,
+        findings,
+        document_table,
+        detect,
+    })
+}
+
+struct Schemas {
+    source_schemas: SourceSchemas,
+    source_schema: Option<usize>,
+    envelopes: Vec<Envelope>,
+}
+
+fn schemas(
+    adapter: &Adapter,
+    syntax: Syntax,
+    resolver: &dyn Resolver,
+    compiling: bool,
+) -> Result<Schemas> {
     let mut source_schemas = SourceSchemas::default();
     let source_schema = adapter
         .source_schema
         .as_deref()
+        .filter(|_| compiling)
         .map(|iri| source_schemas.compiled(iri, syntax, resolver))
         .transpose()?;
-    let envelopes = envelopes(adapter, syntax, resolver, &mut source_schemas)?;
+    let envelopes = envelopes(adapter, syntax, resolver, compiling, &mut source_schemas)?;
+    Ok(Schemas {
+        source_schemas,
+        source_schema,
+        envelopes,
+    })
+}
+
+fn prepared(
+    adapter: &Adapter,
+    resolver: &dyn Resolver,
+    skipping: &[Skip],
+    timed: bool,
+) -> Result<Prepared> {
+    if adapter.mappings.is_empty() {
+        return Err(Error::adapter("the adapter names no bridge:mapping"));
+    }
+    let skips = |skip: Skip| skipping.contains(&skip);
+    let clock = Stopwatch::new(timed);
+    let syntax = Syntax::of(adapter.source_media_type.as_deref())?;
+    let unit = syntax.records(adapter)?;
+    let tables = clock.during(Stage::LoadTables, || tables(adapter, resolver))?;
+    let queries = clock.during(Stage::LoadQueries, || {
+        adapter_queries(adapter, resolver, skips(Skip::Findings))
+    })?;
+    let schemas = clock.during(Stage::LoadSchemas, || {
+        schemas(adapter, syntax, resolver, !skips(Skip::Schema))
+    })?;
     let (scheme, gap_prefixes) = adapter
         .gap_scheme
         .as_deref()
         .map(|iri| gap_scheme(resolver, iri))
         .transpose()?
         .unwrap_or_default();
-    let prefixes = prefixes(&mappings);
+    let prefixes = prefixes(&queries.mappings);
     let findings_prefixes = findings_prefixes(gap_prefixes);
     let gap_severities = scheme
         .iter()
         .filter_map(|(concept, gap)| Some((concept.clone(), gap.severity.clone()?)))
         .collect();
-    let vocabulary = Vocabulary::read(&adapter.vocabulary_files, resolver)?;
+    let vocabulary = if skips(Skip::Shapes) {
+        None
+    } else {
+        clock.during(Stage::LoadVocabulary, || {
+            Vocabulary::read(&adapter.vocabulary_files, resolver)
+        })?
+    };
     let accounting = adapter
         .source_accounting
         .as_deref()
         .map(|iri| Accounting::read(resolver, iri, &scheme))
         .transpose()?;
+    let mut skipped = skipping.to_vec();
+    skipped.sort();
+    skipped.dedup();
     Ok(Prepared {
         syntax,
         unit,
-        mappings,
-        findings_queries,
-        document_table_queries,
-        detect,
+        mappings: queries.mappings,
+        findings_queries: queries.findings,
+        document_table_queries: queries.document_table,
+        detect: queries.detect,
         tables,
         prefixes,
         findings_prefixes,
-        envelopes,
-        source_schemas,
-        source_schema,
+        envelopes: schemas.envelopes,
+        source_schemas: schemas.source_schemas,
+        source_schema: schemas.source_schema,
         vocabulary,
         accounting,
         gap_severities,
         identifier: adapter.identifier.clone(),
         version: adapter.version.clone(),
+        skipped,
+        loading: clock.times(),
     })
 }
 
@@ -206,6 +285,7 @@ fn envelopes(
     adapter: &Adapter,
     syntax: Syntax,
     resolver: &dyn Resolver,
+    compiling: bool,
     source_schemas: &mut SourceSchemas,
 ) -> Result<Vec<Envelope>> {
     let mut envelopes = Vec::new();
@@ -216,11 +296,13 @@ fn envelopes(
             document_schema: envelope
                 .document_schema
                 .as_deref()
+                .filter(|_| compiling)
                 .map(|iri| syntax.schema(iri, resolver))
                 .transpose()?,
             source_schema: envelope
                 .source_schema
                 .as_deref()
+                .filter(|_| compiling)
                 .map(|iri| source_schemas.compiled(iri, syntax, resolver))
                 .transpose()?,
         });
@@ -318,9 +400,8 @@ pub(crate) fn convert_with(
     let table = document_table(prepared, &text, &reading, &arrived_in, profile)
         .explained_by(ErrorKind::Document)?;
     let arrived_in = arrived_in.with_table(table);
-    let mut lift = syntax
-        .lift(&text, &reading, paths)
-        .explained_by(ErrorKind::Document)?;
+    let mut lift =
+        lifting(prepared, &text, &reading, paths, profile).explained_by(ErrorKind::Document)?;
     let followed = syntax.addresses();
     let mut conversion = Conversion {
         quads: Vec::new(),
@@ -328,7 +409,10 @@ pub(crate) fn convert_with(
         units: 0,
         detected: None,
     };
-    while let Some(unit) = lift.next_unit().explained_by(ErrorKind::Document)? {
+    while let Some(unit) = profile
+        .during(Stage::Lift, || lift.next_unit())
+        .explained_by(ErrorKind::Document)?
+    {
         conversion.units += 1;
         // A record was read, so the document root was: no envelope is needed yet.
         let document = lift.document_selector(None);
@@ -358,8 +442,15 @@ pub(crate) fn convert_with(
     ));
     let envelope = admitting(lift.as_ref(), &reading).map(|chosen| &prepared.envelopes[chosen]);
     conversion.findings.extend(
-        document_findings(prepared, envelope, source.iri, lift.as_ref(), &text)
-            .explained_by(ErrorKind::Document)?,
+        document_findings(
+            prepared,
+            envelope,
+            source.iri,
+            lift.as_ref(),
+            &text,
+            profile,
+        )
+        .explained_by(ErrorKind::Document)?,
     );
     conversion.detected = prepared
         .detect
@@ -394,14 +485,15 @@ fn unit_converted(
         selector: &selector,
         selector_type,
     };
-    let mut findings = validated(schema, &record, &unit.text)?;
+    let mut findings = validated(schema, &record, &unit.text, profile)?;
     if let Some(accounting) = &prepared.accounting {
-        findings.extend(accounting.findings(&record, unit)?);
+        findings.extend(profile.during(Stage::Accounting, || accounting.findings(&record, unit))?);
     }
-    unit.store.extend(arrived_in.dataset(&selector))?;
-    unit.store.extend(prepared.tables.iter().cloned())?;
+    fill(unit, &selector, prepared, arrived_in, profile)?;
     let data = Dataset::new(&unit.store);
-    let versioned = records::versioned(mapped(prepared, &data, profile)?)?;
+    let versioned = profile.during(Stage::Records, || {
+        records::versioned(mapped(prepared, &data, profile)?)
+    })?;
     for dropped in &versioned.dropped {
         findings.extend(annotation::not_kept(
             &record,
@@ -409,9 +501,13 @@ fn unit_converted(
             &dropped.kept,
         )?);
     }
-    let produced = arrived_in.arrived(versioned, &selector, &unit.store)?;
+    let produced = profile.during(Stage::Records, || {
+        arrived_in.arrived(versioned, &selector, &unit.store)
+    })?;
     if let Some(vocabulary) = &prepared.vocabulary {
-        findings.extend(vocabulary.findings(&record, &produced)?);
+        findings.extend(profile.during(Stage::OutputValidation, || {
+            vocabulary.findings(&record, &produced)
+        })?);
     }
     let queried = queried(prepared, &record, &data, profile)?;
     let document = Record {
@@ -419,33 +515,58 @@ fn unit_converted(
         selector: document,
         selector_type,
     };
-    let unresolved = followed.unresolved(&document, &unit.text, &queried)?;
+    let unresolved = profile.during(Stage::UnresolvedAddresses, || {
+        followed.unresolved(&document, &unit.text, &queried)
+    })?;
     findings.extend(queried);
     findings.extend(unresolved);
     Ok((produced, findings))
 }
 
-fn validated(schema: Option<&dyn Schema>, record: &Record<'_>, text: &str) -> Result<Vec<Quad>> {
+fn validated(
+    schema: Option<&dyn Schema>,
+    record: &Record<'_>,
+    text: &str,
+    profile: &Profile,
+) -> Result<Vec<Quad>> {
     let mut findings = Vec::new();
     let Some(schema) = schema else {
         return Ok(findings);
     };
-    for broken in schema.errors(text)? {
-        findings.extend(annotation::violation(
-            record,
-            broken.body(),
-            broken.within(),
-        )?);
-    }
-    Ok(findings)
+    profile.during(Stage::SourceValidation, || {
+        for broken in schema.errors(text)? {
+            findings.extend(annotation::violation(
+                record,
+                broken.body(),
+                broken.within(),
+            )?);
+        }
+        Ok(findings)
+    })
+}
+
+fn fill(
+    unit: &Unit,
+    selector: &str,
+    prepared: &Prepared,
+    arrived_in: &Document,
+    profile: &Profile,
+) -> Result<()> {
+    profile.during(Stage::Dataset, || {
+        unit.store.extend(arrived_in.dataset(selector))?;
+        unit.store.extend(prepared.tables.iter().cloned())?;
+        Ok(())
+    })
 }
 
 fn mapped(prepared: &Prepared, data: &Dataset<'_>, profile: &Profile) -> Result<Vec<Quad>> {
-    let mut produced = Vec::new();
-    for mapping in &prepared.mappings {
-        produced.extend(mapping.graph(data, profile)?);
-    }
-    Ok(produced)
+    profile.during(Stage::Mapping, || {
+        let mut produced = Vec::new();
+        for mapping in &prepared.mappings {
+            produced.extend(mapping.graph(data, profile)?);
+        }
+        Ok(produced)
+    })
 }
 
 fn document_table(
@@ -459,16 +580,27 @@ fn document_table(
     if prepared.document_table_queries.is_empty() {
         return Ok(table);
     }
-    let mut lift = prepared.syntax.lift(text, reading, Paths::Dropped)?;
-    while let Some(unit) = lift.next_unit()? {
-        unit.store.extend(prepared.tables.iter().cloned())?;
-        unit.store.extend(arrived_in.dataset(&unit.selector()))?;
-        let data = Dataset::new(&unit.store);
-        for query in &prepared.document_table_queries {
-            table.extend(query.graph(&data, profile)?);
+    profile.during(Stage::DocumentTable, || {
+        let mut lift = lifting(prepared, text, reading, Paths::Dropped, profile)?;
+        while let Some(unit) = profile.during(Stage::Lift, || lift.next_unit())? {
+            fill(&unit, &unit.selector(), prepared, arrived_in, profile)?;
+            let data = Dataset::new(&unit.store);
+            for query in &prepared.document_table_queries {
+                table.extend(query.graph(&data, profile)?);
+            }
         }
-    }
-    Ok(table)
+        Ok(table)
+    })
+}
+
+fn lifting<'a>(
+    prepared: &Prepared,
+    text: &'a str,
+    reading: &Reading<'_>,
+    paths: Paths,
+    profile: &Profile,
+) -> Result<Box<dyn Lift + 'a>> {
+    profile.during(Stage::Lift, || prepared.syntax.lift(text, reading, paths))
 }
 
 fn queried(
@@ -477,17 +609,19 @@ fn queried(
     data: &Dataset<'_>,
     profile: &Profile,
 ) -> Result<Vec<Quad>> {
-    let mut findings = Vec::new();
-    for findings_query in &prepared.findings_queries {
-        let constructed = findings_query.graph(data, profile)?;
-        findings.extend(annotation::about(
-            record,
-            &findings_query.iri,
-            constructed,
-            &prepared.gap_severities,
-        )?);
-    }
-    Ok(findings)
+    profile.during(Stage::Findings, || {
+        let mut findings = Vec::new();
+        for findings_query in &prepared.findings_queries {
+            let constructed = findings_query.graph(data, profile)?;
+            findings.extend(annotation::about(
+                record,
+                &findings_query.iri,
+                constructed,
+                &prepared.gap_severities,
+            )?);
+        }
+        Ok(findings)
+    })
 }
 
 /// This Bridge wrote these addresses, so they are not followed as an adapter's are.
@@ -497,6 +631,7 @@ fn document_findings(
     iri: &str,
     lift: &dyn Lift,
     text: &str,
+    profile: &Profile,
 ) -> Result<Vec<Quad>> {
     let Some((envelope, schema)) =
         envelope.and_then(|envelope| Some((envelope, envelope.document_schema.as_deref()?)))
@@ -509,12 +644,16 @@ fn document_findings(
         selector: &selector,
         selector_type: prepared.syntax.selector_type(),
     };
-    validated(Some(schema), &record, text)
+    validated(Some(schema), &record, text, profile)
 }
 
 fn detected(detect: &Query, lift: Box<dyn Lift + '_>, profile: &Profile) -> Result<bool> {
-    let skeleton = lift.into_skeleton().explained_by(ErrorKind::Document)?;
-    detect.ask(&skeleton, "detect query", profile)
+    let skeleton = profile
+        .during(Stage::Lift, || lift.into_skeleton())
+        .explained_by(ErrorKind::Document)?;
+    profile.during(Stage::Detect, || {
+        detect.ask(&skeleton, "detect query", profile)
+    })
 }
 
 #[cfg(test)]
@@ -537,6 +676,8 @@ mod lookup_misses;
 mod output_validation;
 #[cfg(test)]
 mod selector;
+#[cfg(test)]
+mod skips;
 #[cfg(test)]
 mod source_accounting;
 #[cfg(test)]

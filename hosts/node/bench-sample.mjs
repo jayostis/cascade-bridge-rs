@@ -1,5 +1,11 @@
 // One sample of `bench.mjs`: load the adapter, then convert the document twice. It says
 // each phase as it starts, then what it measured, one JSON object per line.
+//
+// `given.skip` is a measurement's load: it names what the sample leaves out ("schema",
+// "shapes", "findings"), possibly nothing, and times the load by stage. A sample that
+// leaves something out says so on standard error and in its result, and is no validated
+// conversion. Without `given.skip` the adapter is loaded as a caller loads it.
+// `given.profile` says, for each convert, whether it is profiled (default: the first).
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -8,6 +14,10 @@ import { at, complete, Folder, iriOf, KINDS, METADATA, Refusal } from "./host.mj
 
 const given = JSON.parse(process.argv[2]);
 const say = (line) => process.stdout.write(`${JSON.stringify(line)}\n`);
+const skip = given.skip ?? [];
+if (skip.length > 0) {
+  process.stderr.write(`MEASUREMENT ONLY: this sample skips ${skip.join(", ")}; its conversion is not a validated one\n`);
+}
 
 const { Adapter, describe, initSync } = await import(pathToFileURL(join(given.package, "node.js")).href);
 const instance = initSync();
@@ -37,7 +47,9 @@ function loaded() {
   const listed = count();
   let adapter;
   try {
-    adapter = complete(inputs, (named, vocabulary) => Adapter.load(named, vocabulary));
+    adapter = complete(inputs, (named, vocabulary) =>
+      given.skip === undefined ? Adapter.load(named, vocabulary) : Adapter.loadForMeasurement(named, vocabulary, skip),
+    );
   } catch (error) {
     if (error instanceof Refusal) throw Object.assign(error, { kind: "fileMissingFailure" });
     throw error;
@@ -47,6 +59,7 @@ function loaded() {
     seconds: (performance.now() - started) / 1000,
     filesRead: count(),
     missingFiles: count() - listed,
+    stages: adapter.loadStages(),
   };
   return { adapter, document: documentOf(inputs.adapter), load };
 }
@@ -64,6 +77,7 @@ function converted(adapter, document, options) {
     graphBytes: conversion.graph.byteLength,
     findingsBytes: conversion.findings.byteLength,
     queries: conversion.queries,
+    stages: conversion.stages,
   };
 }
 
@@ -71,9 +85,12 @@ try {
   say({ phase: "load" });
   const { adapter, document, load } = loaded();
   say({ phase: "convert" });
-  const first = converted(adapter, document, { profile: true });
-  const second = converted(adapter, document);
-  say({ sample: { load, converts: [first, second], rss: process.resourceUsage().maxRSS * 1024 } });
+  const [profileFirst, profileSecond] = given.profile ?? [true, false];
+  const first = converted(adapter, document, { profile: profileFirst });
+  const second = converted(adapter, document, { profile: profileSecond });
+  say({
+    sample: { load, converts: [first, second], rss: process.resourceUsage().maxRSS * 1024, skipped: skip },
+  });
 } catch (error) {
   const kind =
     error?.name === "BridgeError"

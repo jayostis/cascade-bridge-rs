@@ -3,6 +3,7 @@ mod allocator;
 
 use cascade_bridge::{
     Budgets, ConvertOptions, ErrorKind, Executor, Files, Format, Loaded, Map, Named, QueryProfile,
+    Skip, Stage, StageTime,
 };
 use js_sys::{Array, Object, Reflect, Uint8Array};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -81,7 +82,18 @@ export interface QueryProfile {
   fallback?: string;
   /** Executions a compiled plan gave up on, which the general evaluator answered. */
   giveUps: number;
+  /** For measuring only; stages and names may change. The stage the query ran in, where one was running. Its `seconds` leave out the time of the `index` stage, which building the index it needed took. */
+  stage?: string;
 }
+
+/** For measuring only; stages and names may change. The time one stage took; a stage entered inside another is not counted in it. */
+export interface StageTime {
+  stage: string;
+  seconds: number;
+}
+
+/** What `Adapter.loadForMeasurement` leaves out: the check of each source document against its schema, the check of the graph against the vocabulary's shapes, or the findings queries. */
+export type Skip = "schema" | "shapes" | "findings";
 
 export interface Conversion {
   graph: Uint8Array;
@@ -90,9 +102,14 @@ export interface Conversion {
   triples: number;
   findingCount: number;
   detected?: boolean;
+  /** Why the graph was not checked against the vocabulary's shapes. A conversion with `skippedForMeasurement` was not validated either, and this stays unset for it. */
   unvalidated?: string;
   /** In the order each query first ran, where `ConvertOptions.profile` asked for them. */
   queries?: QueryProfile[];
+  /** For measuring only; stages and names may change. Where `ConvertOptions.profile` asked: the time of each stage, with the writing of `graph` and `findings` last. The seconds the call took that no stage spent are the caller's to take from the call's own time. */
+  stages?: StageTime[];
+  /** Present only on a conversion by an adapter loaded with `Adapter.loadForMeasurement`: what it left out. Such a conversion is a measurement, not a validated one. */
+  skippedForMeasurement?: Skip[];
 }
 
 export interface TestOptions {
@@ -135,6 +152,10 @@ extern "C" {
     pub type TestOptionsValue;
     #[wasm_bindgen(typescript_type = "TestReport")]
     pub type TestReportValue;
+    #[wasm_bindgen(typescript_type = "Skip[]")]
+    pub type SkipsValue;
+    #[wasm_bindgen(typescript_type = "StageTime[]")]
+    pub type StageTimesValue;
 }
 
 static FAULTED: AtomicBool = AtomicBool::new(false);
@@ -341,10 +362,39 @@ fn profiles(queries: &[QueryProfile]) -> JsValue {
             set(&value, "seconds", &query.elapsed.as_secs_f64().into());
             set(&value, "giveUps", &(query.give_ups as f64).into());
             set(&value, "fallback", &optional(query.fallback.as_deref()));
+            set(&value, "stage", &optional(query.stage.map(Stage::as_str)));
             value
         })
         .collect::<Array>()
         .into()
+}
+
+fn stage_times(times: &[StageTime]) -> JsValue {
+    times
+        .iter()
+        .map(|time| {
+            let value = JsValue::from(Object::new());
+            set(&value, "stage", &time.stage.as_str().into());
+            set(&value, "seconds", &time.elapsed.as_secs_f64().into());
+            value
+        })
+        .collect::<Array>()
+        .into()
+}
+
+fn skips(value: &JsValue) -> Result<Vec<Skip>, JsValue> {
+    let names = Array::from(value);
+    (0..names.length())
+        .map(|index| {
+            names
+                .get(index)
+                .as_string()
+                .and_then(|name| Skip::named(&name))
+                .ok_or_else(|| {
+                    mistaken("a skip is \"schema\", \"shapes\" or \"findings\"".to_owned())
+                })
+        })
+        .collect()
 }
 
 fn executor(options: &JsValue) -> Result<Executor, JsValue> {
@@ -454,15 +504,47 @@ pub struct Adapter {
     loaded: Loaded,
 }
 
-#[wasm_bindgen]
 impl Adapter {
-    pub fn load(adapter: &NamedValue, vocabulary: Option<NamedValue>) -> Result<Adapter, JsValue> {
+    fn loaded(
+        adapter: &NamedValue,
+        vocabulary: Option<NamedValue>,
+        skipping: Option<&[Skip]>,
+    ) -> Result<Adapter, JsValue> {
         guarded()?;
         let adapter = named(adapter, "adapter")?;
         let vocabulary = vocabulary_named(vocabulary)?;
-        let loaded = cascade_bridge::load(as_named(&adapter), vocabulary.as_ref().map(as_named))
-            .map_err(thrown)?;
+        let (adapter, vocabulary) = (as_named(&adapter), vocabulary.as_ref().map(as_named));
+        let loaded = match skipping {
+            None => cascade_bridge::load(adapter, vocabulary),
+            Some(skipping) => cascade_bridge::load_skipping(adapter, vocabulary, skipping),
+        }
+        .map_err(thrown)?;
         Ok(Self { loaded })
+    }
+}
+
+#[wasm_bindgen]
+impl Adapter {
+    pub fn load(adapter: &NamedValue, vocabulary: Option<NamedValue>) -> Result<Adapter, JsValue> {
+        Self::loaded(adapter, vocabulary, None)
+    }
+
+    /// For measuring only: an adapter that leaves out what it is told to skip, and whose
+    /// conversions say so in `skippedForMeasurement`. They are not validated conversions.
+    #[wasm_bindgen(js_name = loadForMeasurement)]
+    pub fn load_for_measurement(
+        adapter: &NamedValue,
+        vocabulary: Option<NamedValue>,
+        skipped: &SkipsValue,
+    ) -> Result<Adapter, JsValue> {
+        Self::loaded(adapter, vocabulary, Some(&skips(skipped)?))
+    }
+
+    /// For measuring only; stages and names may change. Empty unless the adapter was loaded
+    /// with `loadForMeasurement`.
+    #[wasm_bindgen(js_name = loadStages)]
+    pub fn load_stages(&self) -> StageTimesValue {
+        stage_times(self.loaded.load_stages()).unchecked_into()
     }
 
     pub fn accepts(&self, document: &DocumentValue) -> Result<bool, JsValue> {
@@ -542,6 +624,17 @@ impl Adapter {
             "unvalidated",
             &optional(conversion.unvalidated.as_deref()),
         );
+        if !conversion.skipped.is_empty() {
+            let skipped: Array = conversion
+                .skipped
+                .iter()
+                .map(|skip| JsValue::from(skip.as_str()))
+                .collect();
+            set(&value, "skippedForMeasurement", &skipped.into());
+        }
+        if let Some(stages) = conversion.stages() {
+            set(&value, "stages", &stage_times(&stages));
+        }
         Ok(value.unchecked_into())
     }
 }

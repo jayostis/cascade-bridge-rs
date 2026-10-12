@@ -1,5 +1,13 @@
 import { Adapter, describe, test } from "../dist/cascade_bridge.js";
-import type { BridgeError, Conversion, Document, Named, TestReport } from "../dist/cascade_bridge.js";
+import type {
+  BridgeError,
+  Conversion,
+  Document,
+  Named,
+  Skip,
+  StageTime,
+  TestReport,
+} from "../dist/cascade_bridge.js";
 
 const files: Map<string, Uint8Array> = new Map();
 const adapter: Named = { iri: "https://example.org/adapters/catalog/", files };
@@ -22,6 +30,14 @@ const graph: Uint8Array = conversion.graph;
 const findings: Uint8Array = conversion.findings;
 loaded.free();
 void [accepted, graph, findings];
+
+const measured: Adapter = Adapter.loadForMeasurement(adapter, vocabulary, ["findings", "shapes"]);
+const loading: StageTime[] = measured.loadStages();
+const profiled: Conversion = measured.convert(document, { profile: true });
+const skippedForMeasurement: Skip[] | undefined = profiled.skippedForMeasurement;
+const stages: StageTime[] | undefined = profiled.stages;
+measured.free();
+void [loading, skippedForMeasurement, stages];
 
 const report: TestReport = test(adapter, vocabulary);
 const earl: Uint8Array = report.earl;

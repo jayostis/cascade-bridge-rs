@@ -214,6 +214,11 @@ fn writes_what_the_shapes_draw_given_the_vocabularies_directory_and_no_findings_
     succeeded(&run);
     let with = read_at_its_own_iri(&against, RdfFormat::Turtle);
     assert!(names(&with, MAX_LENGTH), "{with:?}");
+    let said = String::from_utf8_lossy(&run.stderr);
+    assert!(
+        !said.contains("MEASUREMENT") && !said.contains("Skipped"),
+        "{said}"
+    );
 
     let bare = scratch.path().join("no-vocabulary.ttl");
     let run = cascade_bridge(&[
@@ -233,6 +238,90 @@ fn writes_what_the_shapes_draw_given_the_vocabularies_directory_and_no_findings_
         !bare.exists(),
         "an oracle missing what the shapes draw was written"
     );
+}
+
+#[test]
+fn a_run_that_skips_says_it_is_a_measurement_and_refuses_to_write_findings() {
+    let scratch = scratch();
+    let document = tiny().join("fixtures/in/two.xml");
+    let adapter = tiny().to_string_lossy().into_owned();
+    let document = document.to_string_lossy().into_owned();
+    let vocabularies = vocabularies().to_string_lossy().into_owned();
+
+    let run = cascade_bridge(&[
+        "convert",
+        &adapter,
+        &document,
+        "--vocabularies",
+        &vocabularies,
+        "--skip",
+        "findings",
+        "--skip",
+        "schema",
+    ]);
+    succeeded(&run);
+    let said = String::from_utf8_lossy(&run.stderr);
+    assert!(
+        said.lines().any(|line| line.contains("MEASUREMENT ONLY")
+            && line.contains("findings, schema")
+            && line.contains("not a validated one")),
+        "{said}"
+    );
+    assert!(
+        said.lines()
+            .any(|line| line.starts_with("Skipped  schema, findings")),
+        "{said}"
+    );
+
+    let refused = scratch.path().join("findings.ttl");
+    let run = cascade_bridge(&[
+        "convert",
+        &adapter,
+        &document,
+        "--vocabularies",
+        &vocabularies,
+        "--skip",
+        "shapes",
+        "--findings",
+        &refused.to_string_lossy(),
+    ]);
+    assert_eq!(run.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&run.stderr).contains("--findings is not written"),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    assert!(!refused.exists());
+}
+
+#[test]
+fn profile_reports_the_time_of_each_stage_of_loading_and_of_converting_and_what_none_spent() {
+    let document = tiny().join("fixtures/in/two.xml");
+    let run = cascade_bridge(&[
+        "convert",
+        &tiny().to_string_lossy(),
+        &document.to_string_lossy(),
+        "--vocabularies",
+        &vocabularies().to_string_lossy(),
+        "--profile",
+    ]);
+    succeeded(&run);
+    let said = String::from_utf8_lossy(&run.stderr);
+    let lines: Vec<&str> = said.lines().collect();
+    for heading in ["Load ", "Convert "] {
+        assert!(
+            lines.iter().any(|line| line.starts_with(heading)),
+            "{heading}: {said}"
+        );
+    }
+    for stage in ["loadQueries", "lift", "mapping", "serialising", "other"] {
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.trim_start().starts_with(stage)),
+            "{stage}: {said}"
+        );
+    }
 }
 
 #[test]

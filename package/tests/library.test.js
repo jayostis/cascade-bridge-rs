@@ -120,6 +120,26 @@ test("a budget that is not a whole number of MiB from 1 to 3072, or a positive t
   }
 });
 
+test("an adapter loaded for measurement leaves out what it is told to, and says so; a profiled convert times its stages", async () => {
+  const { Adapter } = await bridge();
+  const whole = Adapter.load({ iri: ADAPTER, files: toLoad() }, vocabulary).convert(document(two));
+  const measured = Adapter.loadForMeasurement({ iri: ADAPTER, files: toLoad() }, vocabulary, ["findings"]);
+  const left = measured.convert(document(two), { profile: true });
+  assert.equal(whole.skippedForMeasurement, undefined);
+  assert.equal(whole.stages, undefined);
+  assert.deepEqual(Adapter.load({ iri: ADAPTER, files: toLoad() }, vocabulary).loadStages(), []);
+  assert.deepEqual(left.skippedForMeasurement, ["findings"]);
+  assert.ok(left.findingCount < whole.findingCount);
+  assert.equal(left.triples, whole.triples);
+  assert.equal(left.stages.at(-1).stage, "serialising");
+  assert.ok(left.stages.some(({ stage }) => stage === "lift"));
+  assert.ok(measured.loadStages().length > 0);
+  assert.throws(
+    () => Adapter.loadForMeasurement({ iri: ADAPTER, files: toLoad() }, vocabulary, ["speed"]),
+    TypeError,
+  );
+});
+
 test("a freed adapter throws on convert", async () => {
   const { Adapter } = await bridge();
   const adapter = Adapter.load({ iri: ADAPTER, files: toLoad() }, vocabulary);
