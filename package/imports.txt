@@ -1,6 +1,7 @@
 __wbg___wbindgen_is_falsy
 __wbg___wbindgen_is_null
 __wbg___wbindgen_is_undefined
+__wbg___wbindgen_number_get
 __wbg___wbindgen_rethrow
 __wbg___wbindgen_string_get
 __wbg___wbindgen_throw

@@ -1,9 +1,12 @@
 #[cfg(target_arch = "wasm32")]
 mod allocator;
 
-use cascade_bridge::{ErrorKind, Executor, Files, Format, Loaded, Map, Named, QueryProfile};
+use cascade_bridge::{
+    Budgets, ConvertOptions, ErrorKind, Executor, Files, Format, Loaded, Map, Named, QueryProfile,
+};
 use js_sys::{Array, Object, Reflect, Uint8Array};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 
@@ -62,6 +65,10 @@ export interface ConvertOptions {
   profile?: boolean;
   /** The engine that answers a query: the plan it compiles to, with the general evaluator behind it (the default), the general evaluator alone, or both, failing where they differ. */
   executor?: "compiled" | "spareval" | "both";
+  /** The heap, in whole MiB from 1 to 3072, the module may hold while converting: everything live in it, every adapter loaded and any earlier result not yet freed included. A convert that passes it stops with a `BridgeError` of kind `"bridge"`, and the adapter must be loaded again. Any other value throws a `TypeError`. The default is 1024. */
+  memoryBudgetMiB?: number;
+  /** The seconds a convert may run, a positive number. A convert that passes it stops as one past its memory budget does. The default is 120. */
+  timeBudgetSeconds?: number;
 }
 
 /** A CONSTRUCT's rows are the triples it constructed; an ASK's, 1 when it answered true. */
@@ -91,6 +98,9 @@ export interface Conversion {
 export interface TestOptions {
   datasets?: boolean;
   executor?: "compiled" | "spareval" | "both";
+  /** As in `ConvertOptions`, for each entry's convert. */
+  memoryBudgetMiB?: number;
+  timeBudgetSeconds?: number;
 }
 
 export interface TestEntry {
@@ -348,6 +358,50 @@ fn executor(options: &JsValue) -> Result<Executor, JsValue> {
     }
 }
 
+fn positive(options: &JsValue, key: &str) -> Result<Option<f64>, JsValue> {
+    let value = get(options, key)?;
+    if absent(&value) {
+        return Ok(None);
+    }
+    value
+        .as_f64()
+        .filter(|number| number.is_finite() && *number > 0.0)
+        .map(Some)
+        .ok_or_else(|| mistaken(format!("options.{key} is not a positive number")))
+}
+
+fn memory_budget(options: &JsValue) -> Result<Option<usize>, JsValue> {
+    let value = get(options, "memoryBudgetMiB")?;
+    if absent(&value) {
+        return Ok(None);
+    }
+    value
+        .as_f64()
+        .filter(|number| number.fract() == 0.0)
+        .and_then(|mebibytes| Budgets::memory_mib(mebibytes as u64))
+        .map(Some)
+        .ok_or_else(|| {
+            mistaken(format!(
+                "options.memoryBudgetMiB is not a whole number of MiB from 1 to {}",
+                Budgets::MAX_MEMORY_MIB
+            ))
+        })
+}
+
+fn budgets(options: &JsValue) -> Result<Budgets, JsValue> {
+    let defaults = Budgets::default();
+    let time = positive(options, "timeBudgetSeconds")?
+        .map(|seconds| {
+            Duration::try_from_secs_f64(seconds)
+                .map_err(|_| mistaken("options.timeBudgetSeconds is too large".to_owned()))
+        })
+        .transpose()?;
+    Ok(Budgets {
+        memory_bytes: memory_budget(options)?.unwrap_or(defaults.memory_bytes),
+        time: time.unwrap_or(defaults.time),
+    })
+}
+
 fn guarded() -> Result<(), JsValue> {
     guard().map_err(thrown)
 }
@@ -424,26 +478,29 @@ impl Adapter {
     ) -> Result<ConversionValue, JsValue> {
         guarded()?;
         let read = DocumentRead::of(document)?;
-        let (format, relative_to, profiled, executor) =
+        let (format, relative_to, profiled, convert_options) =
             match options.filter(|options| !absent(options)) {
                 Some(options) => (
                     self::format(Some(&get(&options, "format")?))?,
                     optional_text(&options, "findingsRelativeTo", "options")?,
                     get(&options, "profile")?.is_truthy(),
-                    self::executor(&options)?,
+                    ConvertOptions {
+                        executor: self::executor(&options)?,
+                        budgets: self::budgets(&options)?,
+                    },
                 ),
-                None => (Format::Turtle, None, false, Executor::default()),
+                None => (Format::Turtle, None, false, ConvertOptions::default()),
             };
         let (conversion, queries) = if profiled {
             let (conversion, queries) = self
                 .loaded
-                .convert_profiled_with(&read.document(), executor)
+                .convert_profiled_with(&read.document(), convert_options)
                 .map_err(thrown)?;
             (conversion, Some(queries))
         } else {
             (
                 self.loaded
-                    .convert_with(&read.document(), executor)
+                    .convert_with(&read.document(), convert_options)
                     .map_err(thrown)?,
                 None,
             )
@@ -498,17 +555,22 @@ pub fn test(
     guarded()?;
     let adapter = named(adapter, "adapter")?;
     let vocabulary = vocabulary_named(vocabulary)?;
-    let (datasets, executor) = match options.filter(|options| !absent(options)) {
+    let (datasets, executor, budgets) = match options.filter(|options| !absent(options)) {
         Some(options) => (
             get(&options, "datasets")?.is_truthy(),
             self::executor(&options)?,
+            self::budgets(&options)?,
         ),
-        None => (false, Executor::default()),
+        None => (false, Executor::default(), Budgets::default()),
     };
     let report = cascade_bridge::test(
         as_named(&adapter),
         vocabulary.as_ref().map(as_named),
-        cascade_bridge::TestOptions { datasets, executor },
+        cascade_bridge::TestOptions {
+            datasets,
+            executor,
+            budgets,
+        },
     )
     .map_err(thrown)?;
     let entries: Array = report

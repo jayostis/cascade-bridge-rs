@@ -1,4 +1,5 @@
 use crate::annotation;
+use crate::budget::Budgets;
 use crate::compiled::Executor;
 use crate::error::{Error, ErrorKind, Explained, Result};
 use crate::load::{
@@ -58,6 +59,7 @@ pub(crate) struct EntryResult {
 pub(crate) struct RunOptions {
     pub(crate) datasets: bool,
     pub(crate) executor: Executor,
+    pub(crate) budgets: Budgets,
 }
 
 /// The widths a description cuts a graph's line and a finding at.
@@ -131,6 +133,7 @@ struct Entry<'a> {
     resolver: &'a dyn Resolver,
     setup: &'a Prepared,
     executor: Executor,
+    budgets: Budgets,
     node: NamedOrBlankNode,
 }
 
@@ -159,7 +162,7 @@ impl Entry<'_> {
                 bytes: &bytes,
                 facts: facts.as_ref().map(|(turtle, iri)| Supplied { iri, turtle }),
             },
-            &Profile::new(self.executor, false),
+            &Profile::new(self.executor, false, self.budgets),
         )?;
         Ok((run, bytes))
     }
@@ -472,6 +475,7 @@ pub(crate) fn run_manifest(
                     resolver,
                     setup,
                     executor: options.executor,
+                    budgets: options.budgets,
                     node: node.clone(),
                 };
                 match entry.judge(&type_iri) {

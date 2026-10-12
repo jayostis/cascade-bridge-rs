@@ -21,6 +21,7 @@ pub enum Map {
 pub struct Error {
     kind: ErrorKind,
     message: String,
+    explained: bool,
 }
 
 impl Error {
@@ -28,6 +29,7 @@ impl Error {
         Self {
             kind,
             message: message.into(),
+            explained: false,
         }
     }
 
@@ -59,6 +61,14 @@ impl Error {
         Self::new(ErrorKind::Bridge, message)
     }
 
+    /// The Bridge's own limit was spent, which no input explains.
+    pub(crate) fn outgrown(message: impl Into<String>) -> Self {
+        Self {
+            explained: true,
+            ..Self::bridge(message)
+        }
+    }
+
     pub(crate) fn missing(map: Map, path: impl Into<String>, message: impl Into<String>) -> Self {
         Self::new(
             ErrorKind::Missing {
@@ -72,7 +82,7 @@ impl Error {
     /// An error no input explained yet is put down to the input `kind` names.
     pub(crate) fn explained_by(self, kind: ErrorKind) -> Self {
         match self.kind {
-            ErrorKind::Bridge => Self { kind, ..self },
+            ErrorKind::Bridge if !self.explained => Self { kind, ..self },
             _ => self,
         }
     }

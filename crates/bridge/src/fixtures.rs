@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+use crate::budget::Budgets;
 use crate::compiled::Executor;
 use crate::library::{Files, Named};
 use crate::load::load_adapter;
@@ -174,7 +175,7 @@ pub fn profiled_under(
     let prepared = prepare(&adapter, resolver)?;
     let iri = format!("{}fixtures/in/{input}", resolver.root());
     let xml = resolver.read(&iri)?;
-    let profile = Profile::new(executor, true);
+    let profile = Profile::new(executor, true, Budgets::default());
     let conversion = convert_with(
         &prepared,
         Source {
