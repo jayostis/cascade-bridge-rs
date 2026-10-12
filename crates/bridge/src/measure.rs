@@ -49,6 +49,7 @@ pub enum Stage {
     Records,
     OutputValidation,
     Findings,
+    UnresolvedAddresses,
     Detect,
     Summary,
     Serialising,
@@ -71,6 +72,7 @@ impl Stage {
             Self::Records => "records",
             Self::OutputValidation => "outputValidation",
             Self::Findings => "findings",
+            Self::UnresolvedAddresses => "unresolvedAddresses",
             Self::Detect => "detect",
             Self::Summary => "summary",
             Self::Serialising => "serialising",
@@ -112,9 +114,16 @@ impl Stopwatch {
         done
     }
 
-    /// Where a query being timed now was run.
     pub(crate) fn current(&self) -> Option<Stage> {
         self.running.borrow().last().map(|&(stage, _)| stage)
+    }
+
+    pub(crate) fn spent_in(&self, stage: Stage) -> Duration {
+        self.totals
+            .borrow()
+            .iter()
+            .find(|time| time.stage == stage)
+            .map_or(Duration::ZERO, |time| time.elapsed)
     }
 
     pub(crate) fn times(&self) -> Vec<StageTime> {

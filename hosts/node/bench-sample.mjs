@@ -1,8 +1,10 @@
 // One sample of `bench.mjs`: load the adapter, then convert the document twice. It says
 // each phase as it starts, then what it measured, one JSON object per line.
 //
-// `given.skip` names what a measurement leaves out ("schema", "shapes", "findings"); such a
-// sample says so on standard error and in its result, and is no validated conversion.
+// `given.skip` is a measurement's load: it names what the sample leaves out ("schema",
+// "shapes", "findings"), possibly nothing, and times the load by stage. A sample that
+// leaves something out says so on standard error and in its result, and is no validated
+// conversion. Without `given.skip` the adapter is loaded as a caller loads it.
 // `given.profile` says, for each convert, whether it is profiled (default: the first).
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -46,7 +48,7 @@ function loaded() {
   let adapter;
   try {
     adapter = complete(inputs, (named, vocabulary) =>
-      skip.length === 0 ? Adapter.load(named, vocabulary) : Adapter.loadForMeasurement(named, vocabulary, skip),
+      given.skip === undefined ? Adapter.load(named, vocabulary) : Adapter.loadForMeasurement(named, vocabulary, skip),
     );
   } catch (error) {
     if (error instanceof Refusal) throw Object.assign(error, { kind: "fileMissingFailure" });
@@ -57,7 +59,7 @@ function loaded() {
     seconds: (performance.now() - started) / 1000,
     filesRead: count(),
     missingFiles: count() - listed,
-    stages: adapter.loadStages?.(),
+    stages: adapter.loadStages(),
   };
   return { adapter, document: documentOf(inputs.adapter), load };
 }

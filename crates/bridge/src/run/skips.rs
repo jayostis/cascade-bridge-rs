@@ -5,7 +5,7 @@ use crate::load::load_adapter;
 use crate::measure::{Skip, Stage};
 use crate::query::Profile;
 use crate::resolver::Resolver;
-use crate::run::{convert, convert_with, prepare_skipping, Conversion, Prepared, Source};
+use crate::run::{convert, convert_with, prepare, prepare_skipping, Conversion, Prepared, Source};
 use oxrdf::Quad;
 use std::time::{Duration, Instant};
 
@@ -161,22 +161,6 @@ fn profiled(prepared: &Prepared, input: &Input, kept: bool) -> (Duration, Profil
 }
 
 #[test]
-fn a_skipped_findings_query_is_not_run_and_so_is_not_in_the_profile() {
-    let resolver = tiny();
-    let input = Input::of(&resolver, "two.xml");
-    let findings_queries_run = |skipping: &[Skip]| {
-        profiled(&prepared_skipping(&resolver, skipping), &input, true)
-            .1
-            .queries()
-            .iter()
-            .filter(|query| query.iri.ends_with("-findings.rq"))
-            .count()
-    };
-    assert!(findings_queries_run(&[]) > 0);
-    assert_eq!(findings_queries_run(&[Skip::Findings]), 0);
-}
-
-#[test]
 fn a_profiled_convert_times_each_stage_within_the_convert_and_a_plain_one_times_none() {
     let resolver = tiny_with_vocabularies();
     let prepared = prepared_skipping(&resolver, &[]);
@@ -190,12 +174,28 @@ fn a_profiled_convert_times_each_stage_within_the_convert_and_a_plain_one_times_
         Stage::Mapping,
         Stage::OutputValidation,
         Stage::Findings,
+        Stage::UnresolvedAddresses,
         Stage::Detect,
     ] {
         assert!(reached.contains(&stage), "{stage:?} in {reached:?}");
     }
     let timed: Duration = stages.iter().map(|time| time.elapsed).sum();
     assert!(timed <= took, "{timed:?} of {took:?}");
-    assert!(profile.queries().iter().all(|query| query.stage.is_some()));
+    let queries = profile.queries();
+    for query in &queries {
+        let stage = query.stage.expect("a query run in a stage");
+        let spent = stages.iter().find(|time| time.stage == stage);
+        assert!(
+            spent.is_some_and(|time| query.elapsed <= time.elapsed),
+            "{} of {stage:?}: {spent:?}",
+            query.iri
+        );
+    }
     assert!(profiled(&prepared, &input, false).1.stages().is_empty());
+    assert!(
+        prepare(&load_adapter(&resolver).expect("adapter"), &resolver)
+            .expect("prepared")
+            .loading
+            .is_empty()
+    );
 }

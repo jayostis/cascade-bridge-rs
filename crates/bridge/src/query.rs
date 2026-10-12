@@ -23,7 +23,6 @@ pub struct QueryProfile {
     pub fallback: Option<String>,
     /// Executions a compiled plan gave up on, which the general evaluator then answered.
     pub give_ups: usize,
-    /// The stage the query ran in, where a stage was running.
     pub stage: Option<Stage>,
 }
 
@@ -51,6 +50,10 @@ impl Profile {
 
     pub(crate) fn during<T>(&self, stage: Stage, work: impl FnOnce() -> T) -> T {
         self.stopwatch.during(stage, work)
+    }
+
+    fn indexing(&self) -> Duration {
+        self.stopwatch.spent_in(Stage::Index)
     }
 
     pub(crate) fn stages(&self) -> Vec<StageTime> {
@@ -86,21 +89,27 @@ impl Profile {
     }
 }
 
-/// Reads no clock unless a profile is kept.
+/// Reads no clock unless a profile is kept. Building the index is the `Index` stage's
+/// time, not the query's.
 struct Timing<'a> {
-    kept: Option<(&'a Profile, Instant)>,
+    kept: Option<(&'a Profile, Instant, Duration)>,
 }
 
 impl<'a> Timing<'a> {
     fn start(profile: &'a Profile) -> Self {
         Self {
-            kept: profile.kept.then(|| (profile, Instant::now())),
+            kept: profile
+                .kept
+                .then(|| (profile, Instant::now(), profile.indexing())),
         }
     }
 
     fn stop(self, query: &Query, rows: usize, gave_up: bool) {
-        if let Some((profile, started)) = self.kept {
-            profile.add(query, rows, started.elapsed(), gave_up);
+        if let Some((profile, started, indexed)) = self.kept {
+            let elapsed = started
+                .elapsed()
+                .saturating_sub(profile.indexing().saturating_sub(indexed));
+            profile.add(query, rows, elapsed, gave_up);
         }
     }
 }

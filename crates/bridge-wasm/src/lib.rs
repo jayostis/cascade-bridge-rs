@@ -82,11 +82,11 @@ export interface QueryProfile {
   fallback?: string;
   /** Executions a compiled plan gave up on, which the general evaluator answered. */
   giveUps: number;
-  /** The stage the query ran in, where one was running. */
+  /** For measuring only; stages and names may change. The stage the query ran in, where one was running. Its `seconds` leave out the time of the `index` stage, which building the index it needed took. */
   stage?: string;
 }
 
-/** The time one stage took. A stage entered inside another is not counted in it. */
+/** For measuring only; stages and names may change. The time one stage took; a stage entered inside another is not counted in it. */
 export interface StageTime {
   stage: string;
   seconds: number;
@@ -102,10 +102,11 @@ export interface Conversion {
   triples: number;
   findingCount: number;
   detected?: boolean;
+  /** Why the graph was not checked against the vocabulary's shapes. A conversion with `skippedForMeasurement` was not validated either, and this stays unset for it. */
   unvalidated?: string;
   /** In the order each query first ran, where `ConvertOptions.profile` asked for them. */
   queries?: QueryProfile[];
-  /** Where `ConvertOptions.profile` asked: the time of each stage, with the writing of `graph` and `findings` last. The seconds the call took that no stage spent are the caller's to take from the call's own time. */
+  /** For measuring only; stages and names may change. Where `ConvertOptions.profile` asked: the time of each stage, with the writing of `graph` and `findings` last. The seconds the call took that no stage spent are the caller's to take from the call's own time. */
   stages?: StageTime[];
   /** Present only on a conversion by an adapter loaded with `Adapter.loadForMeasurement`: what it left out. Such a conversion is a measurement, not a validated one. */
   skippedForMeasurement?: Skip[];
@@ -507,16 +508,16 @@ impl Adapter {
     fn loaded(
         adapter: &NamedValue,
         vocabulary: Option<NamedValue>,
-        skipping: &[Skip],
+        skipping: Option<&[Skip]>,
     ) -> Result<Adapter, JsValue> {
         guarded()?;
         let adapter = named(adapter, "adapter")?;
         let vocabulary = vocabulary_named(vocabulary)?;
-        let loaded = cascade_bridge::load_skipping(
-            as_named(&adapter),
-            vocabulary.as_ref().map(as_named),
-            skipping,
-        )
+        let (adapter, vocabulary) = (as_named(&adapter), vocabulary.as_ref().map(as_named));
+        let loaded = match skipping {
+            None => cascade_bridge::load(adapter, vocabulary),
+            Some(skipping) => cascade_bridge::load_skipping(adapter, vocabulary, skipping),
+        }
         .map_err(thrown)?;
         Ok(Self { loaded })
     }
@@ -525,7 +526,7 @@ impl Adapter {
 #[wasm_bindgen]
 impl Adapter {
     pub fn load(adapter: &NamedValue, vocabulary: Option<NamedValue>) -> Result<Adapter, JsValue> {
-        Self::loaded(adapter, vocabulary, &[])
+        Self::loaded(adapter, vocabulary, None)
     }
 
     /// For measuring only: an adapter that leaves out what it is told to skip, and whose
@@ -536,10 +537,11 @@ impl Adapter {
         vocabulary: Option<NamedValue>,
         skipped: &SkipsValue,
     ) -> Result<Adapter, JsValue> {
-        Self::loaded(adapter, vocabulary, &skips(skipped)?)
+        Self::loaded(adapter, vocabulary, Some(&skips(skipped)?))
     }
 
-    /// The seconds loading this adapter spent in each stage it went through.
+    /// For measuring only; stages and names may change. Empty unless the adapter was loaded
+    /// with `loadForMeasurement`.
     #[wasm_bindgen(js_name = loadStages)]
     pub fn load_stages(&self) -> StageTimesValue {
         stage_times(self.loaded.load_stages()).unchecked_into()

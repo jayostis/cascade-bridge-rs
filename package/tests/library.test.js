@@ -127,6 +127,7 @@ test("an adapter loaded for measurement leaves out what it is told to, and says 
   const left = measured.convert(document(two), { profile: true });
   assert.equal(whole.skippedForMeasurement, undefined);
   assert.equal(whole.stages, undefined);
+  assert.deepEqual(Adapter.load({ iri: ADAPTER, files: toLoad() }, vocabulary).loadStages(), []);
   assert.deepEqual(left.skippedForMeasurement, ["findings"]);
   assert.ok(left.findingCount < whole.findingCount);
   assert.equal(left.triples, whole.triples);

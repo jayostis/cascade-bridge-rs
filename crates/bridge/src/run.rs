@@ -109,16 +109,15 @@ pub(crate) struct Source<'a> {
 }
 
 pub(crate) fn prepare(adapter: &Adapter, resolver: &dyn Resolver) -> Result<Prepared> {
-    prepare_skipping(adapter, resolver, &[])
+    prepared(adapter, resolver, &[], false).explained_by(ErrorKind::Adapter)
 }
 
-/// Leaves out of the prepared adapter whatever it is told to skip.
 pub(crate) fn prepare_skipping(
     adapter: &Adapter,
     resolver: &dyn Resolver,
     skipping: &[Skip],
 ) -> Result<Prepared> {
-    prepared(adapter, resolver, skipping).explained_by(ErrorKind::Adapter)
+    prepared(adapter, resolver, skipping, true).explained_by(ErrorKind::Adapter)
 }
 
 struct AdapterQueries {
@@ -184,12 +183,17 @@ fn schemas(
     })
 }
 
-fn prepared(adapter: &Adapter, resolver: &dyn Resolver, skipping: &[Skip]) -> Result<Prepared> {
+fn prepared(
+    adapter: &Adapter,
+    resolver: &dyn Resolver,
+    skipping: &[Skip],
+    timed: bool,
+) -> Result<Prepared> {
     if adapter.mappings.is_empty() {
         return Err(Error::adapter("the adapter names no bridge:mapping"));
     }
     let skips = |skip: Skip| skipping.contains(&skip);
-    let clock = Stopwatch::new(true);
+    let clock = Stopwatch::new(timed);
     let syntax = Syntax::of(adapter.source_media_type.as_deref())?;
     let unit = syntax.records(adapter)?;
     let tables = clock.during(Stage::LoadTables, || tables(adapter, resolver))?;
@@ -511,7 +515,7 @@ fn unit_converted(
         selector: document,
         selector_type,
     };
-    let unresolved = profile.during(Stage::Findings, || {
+    let unresolved = profile.during(Stage::UnresolvedAddresses, || {
         followed.unresolved(&document, &unit.text, &queried)
     })?;
     findings.extend(queried);

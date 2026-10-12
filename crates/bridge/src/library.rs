@@ -8,7 +8,7 @@ use crate::query::Profile;
 use crate::rdf::{serialise, serialise_at};
 use crate::records::Supplied;
 use crate::resolver::{key, Maps};
-use crate::run::{self, prepare_skipping, Prepared, Source};
+use crate::run::{self, prepare, prepare_skipping, Prepared, Source};
 use crate::terms::{
     BRIDGE_ADAPTER, BRIDGE_CASCADE_VOCABULARY_REPOSITORY, BRIDGE_CRATE_FILE, BRIDGE_ENVELOPE,
     BRIDGE_LOAD_FILE, BRIDGE_SOURCE_MEDIA_TYPE, BRIDGE_TEST_MANIFEST, BRIDGE_VOCABULARY_FILE,
@@ -16,8 +16,8 @@ use crate::terms::{
 };
 use crate::vocabulary::{require_vocabularies, unvalidated_output};
 use oxrdf::{GraphName, Literal, NamedNode, NamedOrBlankNode, Quad, Term, TermRef};
-use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 // std's clock panics on wasm32-unknown-unknown, where this one asks the host.
 use web_time::Instant;
@@ -186,15 +186,26 @@ pub struct Loaded {
 }
 
 pub fn load(adapter: Named<'_>, vocabulary: Option<Named<'_>>) -> Result<Loaded> {
-    load_skipping(adapter, vocabulary, &[])
+    loaded_by(adapter, vocabulary, |adapter, maps| prepare(adapter, maps))
 }
 
 /// For measuring only: an adapter that leaves out what it is told to skip, for its
-/// whole life. What it converts says so, and is not a validated conversion.
+/// whole life, and times its loading (`Loaded::load_stages`). What it converts says so,
+/// and is not a validated conversion.
 pub fn load_skipping(
     adapter: Named<'_>,
     vocabulary: Option<Named<'_>>,
     skipping: &[Skip],
+) -> Result<Loaded> {
+    loaded_by(adapter, vocabulary, |adapter, maps| {
+        prepare_skipping(adapter, maps, skipping)
+    })
+}
+
+fn loaded_by(
+    adapter: Named<'_>,
+    vocabulary: Option<Named<'_>>,
+    preparing: impl FnOnce(&load::Adapter, &Maps<'_>) -> Result<Prepared>,
 ) -> Result<Loaded> {
     let maps = Maps {
         adapter,
@@ -213,7 +224,7 @@ pub fn load_skipping(
             unoffered.join(", ")
         )));
     }
-    let prepared = prepare_skipping(&loaded, &maps, skipping)?;
+    let prepared = preparing(&loaded, &maps)?;
     Ok(Loaded {
         unvalidated: unvalidated_output(&loaded, &maps),
         adapter: loaded,
@@ -231,7 +242,6 @@ impl Loaded {
         self.adapter.identifier.as_deref()
     }
 
-    /// What loading this adapter spent in each stage it went through.
     pub fn load_stages(&self) -> &[StageTime] {
         &self.prepared.loading
     }
@@ -292,7 +302,7 @@ impl Loaded {
             quads: run.quads,
             findings: run.findings,
             stages: None,
-            serialising: Cell::default(),
+            serialising: AtomicU64::default(),
         })
     }
 }
@@ -315,7 +325,8 @@ pub struct Conversion {
     pub finding_count: usize,
     /// The detect query's answer, where the adapter names one.
     pub detected: Option<bool>,
-    /// Why the graph was not validated against the vocabulary's files, where it was not.
+    /// Why the graph was not validated against the vocabulary's files, where it was not. A
+    /// conversion with `skipped` was not validated either, and this stays `None` for it.
     pub unvalidated: Option<String>,
     /// What the adapter it was converted by was loaded to leave out: a measurement, not a
     /// validated conversion, wherever this is not empty.
@@ -325,7 +336,7 @@ pub struct Conversion {
     quads: Vec<Quad>,
     findings: Vec<Quad>,
     stages: Option<Vec<StageTime>>,
-    serialising: Cell<Duration>,
+    serialising: AtomicU64,
 }
 
 impl Conversion {
@@ -349,7 +360,7 @@ impl Conversion {
         let mut stages = self.stages.clone()?;
         stages.push(StageTime {
             stage: Stage::Serialising,
-            elapsed: self.serialising.get(),
+            elapsed: Duration::from_nanos(self.serialising.load(Ordering::Relaxed)),
         });
         Some(stages)
     }
@@ -360,8 +371,8 @@ impl Conversion {
         }
         let started = Instant::now();
         let done = work();
-        self.serialising
-            .set(self.serialising.get() + started.elapsed());
+        let nanoseconds = u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX);
+        self.serialising.fetch_add(nanoseconds, Ordering::Relaxed);
         done
     }
 }

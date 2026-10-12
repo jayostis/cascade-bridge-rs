@@ -214,6 +214,11 @@ fn writes_what_the_shapes_draw_given_the_vocabularies_directory_and_no_findings_
     succeeded(&run);
     let with = read_at_its_own_iri(&against, RdfFormat::Turtle);
     assert!(names(&with, MAX_LENGTH), "{with:?}");
+    let said = String::from_utf8_lossy(&run.stderr);
+    assert!(
+        !said.contains("MEASUREMENT") && !said.contains("Skipped"),
+        "{said}"
+    );
 
     let bare = scratch.path().join("no-vocabulary.ttl");
     let run = cascade_bridge(&[
@@ -264,7 +269,7 @@ fn a_run_that_skips_says_it_is_a_measurement_and_refuses_to_write_findings() {
     );
     assert!(
         said.lines()
-            .any(|line| line.starts_with("Skipped  findings, schema")),
+            .any(|line| line.starts_with("Skipped  schema, findings")),
         "{said}"
     );
 
@@ -287,24 +292,6 @@ fn a_run_that_skips_says_it_is_a_measurement_and_refuses_to_write_findings() {
         String::from_utf8_lossy(&run.stderr)
     );
     assert!(!refused.exists());
-}
-
-#[test]
-fn a_run_that_skips_nothing_says_nothing_of_a_measurement() {
-    let document = tiny().join("fixtures/in/two.xml");
-    let run = cascade_bridge(&[
-        "convert",
-        &tiny().to_string_lossy(),
-        &document.to_string_lossy(),
-        "--vocabularies",
-        &vocabularies().to_string_lossy(),
-    ]);
-    succeeded(&run);
-    let said = String::from_utf8_lossy(&run.stderr);
-    assert!(
-        !said.contains("MEASUREMENT") && !said.contains("Skipped"),
-        "{said}"
-    );
 }
 
 #[test]

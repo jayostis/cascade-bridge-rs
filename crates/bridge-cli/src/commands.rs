@@ -1,8 +1,8 @@
 use crate::folder::{Folder, Inputs};
 use crate::iri::file_iri;
 use cascade_bridge::{
-    describe, load_skipping, test, Budgets, ConvertOptions, Description, Document, Executor, Facts,
-    Format, Outcome, Skip, Stage, StageTime, TestOptions, NAME, VERSION,
+    describe, load, load_skipping, test, Budgets, ConvertOptions, Description, Document, Executor,
+    Facts, Format, Outcome, Skip, Stage, StageTime, TestOptions, NAME, VERSION,
 };
 use std::fmt::Write as _;
 use std::io::Write as _;
@@ -277,9 +277,7 @@ fn crate_named(adapter: &str, named: &str) -> Result<String, String> {
 }
 
 fn skipped(skip: &[Skip]) -> String {
-    let mut names: Vec<&str> = skip.iter().map(|skip| skip.as_str()).collect();
-    names.sort_unstable();
-    names.dedup();
+    let names: Vec<&str> = skip.iter().map(|skip| skip.as_str()).collect();
     names.join(", ")
 }
 
@@ -328,8 +326,13 @@ fn convert(arguments: &Convert) -> Result<u8, String> {
     let (mut inputs, _) = opened(&arguments.directory, arguments.vocabularies.as_deref())?;
     inputs.adapter = inputs.adapter.with_every_file()?;
     let loading = Instant::now();
-    let loaded = inputs
-        .complete(|adapter, vocabulary| load_skipping(adapter, vocabulary, &arguments.skip))?;
+    let loaded = inputs.complete(|adapter, vocabulary| {
+        if arguments.profile || !arguments.skip.is_empty() {
+            load_skipping(adapter, vocabulary, &arguments.skip)
+        } else {
+            load(adapter, vocabulary)
+        }
+    })?;
     let loaded_in = loading.elapsed();
     let bytes = read(&arguments.document)?;
     let iri = iri_of(&arguments.document)?;
