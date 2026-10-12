@@ -5,7 +5,7 @@ use crate::error::{Error, ErrorKind, Explained, Result};
 use crate::load::{
     as_subject, list, objects, one, parse_into, subject, term_value, values, Adapter,
 };
-use crate::query::Profile;
+use crate::query::{Fallback, Profile};
 use crate::rdf::{canonical_lines, canonical_parts};
 use crate::records::Supplied;
 use crate::resolver::Resolver;
@@ -366,11 +366,20 @@ fn is_missing(error: &Error) -> bool {
     matches!(error.kind(), ErrorKind::Missing { .. })
 }
 
+#[cfg(test)]
 pub(crate) fn run_manifest(
     adapter: &Adapter,
     resolver: &dyn Resolver,
     options: RunOptions,
 ) -> Result<Vec<EntryResult>> {
+    Ok(run_manifest_noting_fallbacks(adapter, resolver, options)?.0)
+}
+
+pub(crate) fn run_manifest_noting_fallbacks(
+    adapter: &Adapter,
+    resolver: &dyn Resolver,
+    options: RunOptions,
+) -> Result<(Vec<EntryResult>, Vec<Fallback>)> {
     let manifest = adapter
         .manifest
         .as_deref()
@@ -494,7 +503,11 @@ pub(crate) fn run_manifest(
             elapsed: start.elapsed(),
         });
     }
-    Ok(results)
+    let fallbacks = match &setup {
+        Some(Ok(prepared)) => prepared.fallbacks(),
+        _ => Vec::new(),
+    };
+    Ok((results, fallbacks))
 }
 
 #[cfg(test)]

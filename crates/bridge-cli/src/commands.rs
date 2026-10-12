@@ -8,7 +8,7 @@ use std::fmt::Write as _;
 use std::io::Write as _;
 use std::time::{Duration, Instant};
 
-const USAGE: &str = "usage: cascade-bridge test <adapter-dir> [--vocabularies <directory>] [--earl <out.ttl>] [--datasets] [--executor compiled|spareval|both] [--memory-budget-mib <1-3072>] [--time-budget-seconds <n>]
+const USAGE: &str = "usage: cascade-bridge test <adapter-dir> [--vocabularies <directory>] [--earl <out.ttl>] [--fallbacks <out.json>] [--datasets] [--executor compiled|spareval|both] [--memory-budget-mib <1-3072>] [--time-budget-seconds <n>]
        cascade-bridge convert <adapter-dir> <document> [--envelope <iri>] [--facts <file>] [--vocabularies <directory>] [--out <file>] [--findings <file>] [--format turtle|ntriples] [--executor compiled|spareval|both] [--memory-budget-mib <1-3072>] [--time-budget-seconds <n>] [--profile] [--skip schema|shapes|findings]
        cascade-bridge library <calls file> <results directory>
 
@@ -32,6 +32,7 @@ struct Test {
     directory: String,
     vocabularies: Option<String>,
     earl: Option<String>,
+    fallbacks: Option<String>,
     datasets: bool,
     executor: Executor,
     budgets: Budgets,
@@ -75,6 +76,7 @@ fn parse(argv: impl IntoIterator<Item = String>) -> Option<Command> {
                 directory: argv.next()?,
                 vocabularies: None,
                 earl: None,
+                fallbacks: None,
                 datasets: false,
                 executor: Executor::default(),
                 budgets: Budgets::default(),
@@ -83,6 +85,7 @@ fn parse(argv: impl IntoIterator<Item = String>) -> Option<Command> {
                 match flag.as_str() {
                     "--vocabularies" => arguments.vocabularies = Some(argv.next()?),
                     "--earl" => arguments.earl = Some(argv.next()?),
+                    "--fallbacks" => arguments.fallbacks = Some(argv.next()?),
                     "--datasets" => arguments.datasets = true,
                     "--executor" => arguments.executor = Executor::named(&argv.next()?)?,
                     "--memory-budget-mib" => {
@@ -263,6 +266,20 @@ fn run_test(arguments: &Test) -> Result<u8, String> {
     if let Some(path) = &arguments.earl {
         written(path, &report.earl)?;
         out(format!("EARL     {path}\n").as_bytes())?;
+    }
+    if let Some(path) = &arguments.fallbacks {
+        let fallbacks: Vec<serde_json::Value> = report
+            .fallbacks
+            .iter()
+            .map(|fallback| {
+                serde_json::json!({
+                    "query": fallback.query.strip_prefix(&description.iri).unwrap_or(&fallback.query),
+                    "reason": fallback.reason,
+                })
+            })
+            .collect();
+        let json = serde_json::to_string_pretty(&fallbacks).map_err(|e| e.to_string())?;
+        written(path, format!("{json}\n").as_bytes())?;
     }
     Ok(u8::from(outcomes.iter().any(|o| FAILING.contains(o))))
 }

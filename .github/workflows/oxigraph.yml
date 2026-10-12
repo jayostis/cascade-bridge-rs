@@ -34,10 +34,12 @@ jobs:
             executor: spareval
             cache: wasm
             memory: report
-          # The compiler and stock spareval on every query; any difference fails.
+          # The compiler and stock spareval on every query; any difference fails, and so does a
+          # query of an adapter that the compiler does not take and .github/allowed-fallbacks.json does not name.
           - variant: executor both
             executor: both
             cache: native
+            fallbacks: check
           # Oxigraph from jayostis/oxigraph, patched in this job only. The limit is in MiB.
           - variant: oxigraph fork
             executor: spareval
@@ -91,12 +93,17 @@ jobs:
             directory="../cascade-bridge-adapter-$adapter"
             vocabulary=$(jq -r '."@graph"[] | ."bridge:cascadeVocabularyRepository"."@id" // empty' "$directory/ro-crate-metadata.json")
             echo "::group::$adapter, vocabulary ${vocabulary##*/}, --executor $EXECUTOR"
-            target/release/cascade-bridge test "$directory" --vocabularies "../${vocabulary##*/}" --executor "$EXECUTOR" || failed=1
+            fallbacks="$RUNNER_TEMP/fallbacks-$adapter.json"
+            target/release/cascade-bridge test "$directory" --vocabularies "../${vocabulary##*/}" --executor "$EXECUTOR" --fallbacks "$fallbacks" || failed=1
             echo "::endgroup::"
+            if [ -n "$FALLBACKS" ]; then
+              bash .github/scripts/no-fallbacks.sh "$adapter" "$fallbacks" || failed=1
+            fi
           done
           exit "$failed"
         env:
           EXECUTOR: ${{ matrix.executor }}
+          FALLBACKS: ${{ matrix.fallbacks }}
         working-directory: ${{ github.event.repository.name }}
       - if: matrix.memory
         uses: actions/cache@v6
