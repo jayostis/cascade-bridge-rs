@@ -21,23 +21,28 @@ impl Nested {
     }
 }
 
-impl Display for Compiled {
+/// A plan made to be printed: it keeps what the plan to run forgets, each variable's
+/// label and each expression's text.
+pub(crate) struct Explained {
+    pub(super) compiled: Compiled,
+    pub(super) labels: Vec<String>,
+}
+
+impl Display for Explained {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        for line in lines(&self.plan, &self.names) {
+        for line in lines(&self.compiled.plan, &self.labels) {
             writeln!(f, "{line}")?;
         }
         writeln!(f, "construct")?;
-        for template in &self.template {
-            writeln!(f, "  {}", pattern(template, &self.names))?;
+        for template in &self.compiled.template {
+            writeln!(f, "  {}", pattern(template, &self.labels))?;
         }
         Ok(())
     }
 }
 
 fn slot(slot: usize, labels: &[String]) -> String {
-    labels
-        .get(slot)
-        .map_or_else(|| format!("?#{slot}"), |label| format!("?{label}"))
+    format!("?{}", labels[slot])
 }
 
 fn slots(slots: &[usize], labels: &[String]) -> String {
@@ -46,8 +51,7 @@ fn slots(slots: &[usize], labels: &[String]) -> String {
 }
 
 fn shown(note: &Note) -> &str {
-    note.as_ref()
-        .map_or("(expression not kept)", |noted| noted.source.as_str())
+    note.as_ref().map_or("", |noted| noted.source.as_str())
 }
 
 fn place(place: &Place, labels: &[String]) -> String {

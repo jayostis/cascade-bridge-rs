@@ -678,6 +678,30 @@ fn prints_a_plan_by_its_steps_with_variables_by_name_and_the_exists_it_remembers
 }
 
 #[test]
+fn prints_the_same_plan_each_time_a_query_is_parsed_and_tells_shadowed_variables_apart() {
+    let query = "CONSTRUCT { ?i :seen ?c } WHERE { ?i :name ?code . { SELECT ?i (COUNT(*) AS ?c) (SUM(?s) AS ?t) WHERE { ?i :size ?s . ?i :id ?code . FILTER(STRLEN(?code) > 0) } GROUP BY ?i } FILTER(STRLEN(?code) > 1) }";
+    let plan = explained(query);
+    assert_eq!(plan, explained(query));
+    assert_eq!(
+        plan,
+        concat!(
+            "scan ?i <urn:t#name> ?code\n",
+            "filter (STRLEN(?code) > \"1\"^^<http://www.w3.org/2001/XMLSchema#integer>)\n",
+            "group by (?i)\n",
+            "  ?gen0 := count(*)\n",
+            "  ?gen1 := sum(?s)\n",
+            "  scan ?i <urn:t#size> ?s\n",
+            "  scan ?i <urn:t#id> ?code~5\n",
+            "  filter (STRLEN(?code~5) > \"0\"^^<http://www.w3.org/2001/XMLSchema#integer>)\n",
+            "bind ?c := ?gen0\n",
+            "bind ?t := ?gen1\n",
+            "construct\n",
+            "  ?i <urn:t#seen> ?c\n",
+        )
+    );
+}
+
+#[test]
 fn answers_two_plans_that_each_remember_an_exists_alike_on_one_tree() {
     let store = graph();
     let tree = Tree::of(&store, Watch::default()).expect("a tree");

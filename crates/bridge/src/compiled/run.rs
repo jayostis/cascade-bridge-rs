@@ -19,7 +19,6 @@ pub(crate) struct Compiled {
     pub(super) template: Vec<Pattern>,
     pub(super) blanks: usize,
     pub(super) width: usize,
-    pub(super) names: Vec<String>,
 }
 
 impl Compiled {

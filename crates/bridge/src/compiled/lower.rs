@@ -1,4 +1,4 @@
-use super::explain::{Nested, Noted};
+use super::explain::{Explained, Nested, Noted};
 use super::keys::{known_values, settled, Hints};
 use super::run::Compiled;
 use super::scope::analysis as node;
@@ -16,14 +16,14 @@ use spargebra::Query;
 const UNREACHABLE: u8 = u8::MAX;
 
 pub(crate) fn compile(query: &Query) -> Result<Compiled, String> {
-    lowered(query, Names::default())
+    lowered(query, Names::default()).map(|(compiled, _)| compiled)
 }
 
-pub(crate) fn compile_explained(query: &Query) -> Result<Compiled, String> {
-    lowered(query, Names::explaining())
+pub(crate) fn compile_explained(query: &Query) -> Result<Explained, String> {
+    lowered(query, Names::explaining()).map(|(compiled, labels)| Explained { compiled, labels })
 }
 
-fn lowered(query: &Query, mut names: Names) -> Result<Compiled, String> {
+fn lowered(query: &Query, mut names: Names) -> Result<(Compiled, Vec<String>), String> {
     let Query::Construct {
         template,
         pattern,
@@ -48,13 +48,17 @@ fn lowered(query: &Query, mut names: Names) -> Result<Compiled, String> {
         .iter()
         .map(|triple| lowering.template(triple, &mut blanks))
         .collect::<Result<_, _>>()?;
-    Ok(Compiled {
+    debug_assert!(
+        lowering.nested.is_empty(),
+        "an EXISTS was lowered outside a noted expression"
+    );
+    let compiled = Compiled {
         plan: built.plan(),
         template,
         blanks: blanks.len(),
         width: lowering.names.width(),
-        names: lowering.names.into_labels(),
-    })
+    };
+    Ok((compiled, lowering.names.into_labels()))
 }
 
 type Placed = (Step, Certain);
@@ -93,7 +97,7 @@ impl Lowering {
     fn note(&mut self, expression: &Expression) -> Note {
         self.names.is_explaining().then(|| {
             Box::new(Noted {
-                source: expression.to_string(),
+                source: self.names.relabel(&expression.to_string()),
                 exists: std::mem::take(&mut self.nested),
             })
         })
