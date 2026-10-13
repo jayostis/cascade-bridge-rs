@@ -20,10 +20,6 @@
     <#ccda-no-id-key>
     <#ccda-no-id-members>
     <#ccda-class-alone>
-    <#clinvar-variation-archive>
-    <#clinvar-clinical-assertion>
-    <#clinvar-interpretation-first>
-    <#clinvar-interpretation-second>
     <#repeated-id-first>
     <#repeated-id-second>
     <#no-id>
@@ -127,30 +123,6 @@
   mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "Observation" ) ] ;
   mf:result [ bridge:expectedName <urn:uuid:c4f7242a-96c9-833a-ac13-a6bf87142982> ] .
 
-<#clinvar-variation-archive> a bridge:NamingTest ;
-  mf:name "clinvar-variation-archive" ;
-  rdfs:comment "A ClinVar VariationArchive: ClinVar's address and its VCV accession." ;
-  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "https://www.ncbi.nlm.nih.gov/clinvar" "VCV000012345" ) ] ;
-  mf:result [ bridge:expectedName <urn:uuid:dc603298-28db-8b02-8fef-c3ce803b61d0> ] .
-
-<#clinvar-clinical-assertion> a bridge:NamingTest ;
-  mf:name "clinvar-clinical-assertion" ;
-  rdfs:comment "A ClinVar ClinicalAssertion: ClinVar's address and its SCV accession." ;
-  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "https://www.ncbi.nlm.nih.gov/clinvar" "SCV000123456" ) ] ;
-  mf:result [ bridge:expectedName <urn:uuid:e7cd0833-9313-86d3-8012-da829b7da456> ] .
-
-<#clinvar-interpretation-first> a bridge:NamingTest ;
-  mf:name "clinvar-interpretation-first" ;
-  rdfs:comment "A ClinVar interpretation: ClinVar's address, the RCV accession, and its ClassifiedCondition's position among its list's, counted from 0." ;
-  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "https://www.ncbi.nlm.nih.gov/clinvar" "RCV000067890" "0" ) ] ;
-  mf:result [ bridge:expectedName <urn:uuid:2922e32d-4d44-8eab-84be-62798f502ff3> ] .
-
-<#clinvar-interpretation-second> a bridge:NamingTest ;
-  mf:name "clinvar-interpretation-second" ;
-  rdfs:comment "The second ClassifiedCondition of the same RCV is another record." ;
-  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "https://www.ncbi.nlm.nih.gov/clinvar" "RCV000067890" "1" ) ] ;
-  mf:result [ bridge:expectedName <urn:uuid:ee61b306-8318-8070-9247-0658ce7758ea> ] .
-
 <#repeated-id-first> a bridge:NamingTest ;
   mf:name "repeated-id-first" ;
   rdfs:comment "An id repeated within its document names no record: the first entry holding it is named by the document's name and its JSON Pointer." ;
@@ -178,8 +150,8 @@
 <#xml-address> a bridge:NamingTest ;
   mf:name "xml-address" ;
   rdfs:comment "A record without a usable id in an XML document: the document's name and the record's XPath." ;
-  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "ni:///sha-256;HIELGty0gmK9X2oIlPDlGm-xvWIXkMCrEPN-xoVoYYg" "/ClinVarResult-Set/VariationArchive[3]" ) ] ;
-  mf:result [ bridge:expectedName <urn:uuid:51d1501d-7618-8b4b-abf4-c9b09943f7c8> ] .
+  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "ni:///sha-256;HIELGty0gmK9X2oIlPDlGm-xvWIXkMCrEPN-xoVoYYg" "/ExampleRecordSet/ExampleRecord[3]" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:aff78e4f-1ced-8127-a900-e8ba06cd7b98> ] .
 
 <#base-url-scheme-and-host> a bridge:BaseUrlNormalisationTest ;
   mf:name "base-url-scheme-and-host" ;

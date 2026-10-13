@@ -87,7 +87,7 @@ jobs:
       - name: every fixture of every adapter
         run: |
           failed=0
-          for adapter in ccda fhir-r4 clinvar; do
+          for adapter in ccda fhir-r4; do
             directory="../cascade-bridge-adapter-$adapter"
             vocabulary=$(jq -r '."@graph"[] | ."bridge:cascadeVocabularyRepository"."@id" // empty' "$directory/ro-crate-metadata.json")
             echo "::group::$adapter, vocabulary ${vocabulary##*/}, --executor $EXECUTOR"
