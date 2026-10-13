@@ -5,7 +5,7 @@ use crate::error::{Error, ErrorKind, Explained, Result};
 use crate::lift::{admitting, Admission, Lift, Paths, Reading, Unit};
 use crate::load::{subject, value, Adapter};
 use crate::measure::{Skip, Stage, StageTime, Stopwatch};
-use crate::query::{Fallback, Form, Profile, Query};
+use crate::query::{Fallback, Form, Planned, Profile, Query};
 use crate::rdf::FINDINGS_PREFIXES;
 use crate::records::{self, Document, Release, Supplied};
 use crate::resolver::Resolver;
@@ -67,6 +67,16 @@ impl SourceSchemas {
 }
 
 impl Prepared {
+    pub(crate) fn explanations(&self) -> Vec<Planned> {
+        self.mappings
+            .iter()
+            .chain(&self.findings_queries)
+            .chain(&self.document_table_queries)
+            .chain(&self.detect)
+            .map(Query::explained)
+            .collect()
+    }
+
     pub(crate) fn fallbacks(&self) -> Vec<Fallback> {
         self.mappings
             .iter()

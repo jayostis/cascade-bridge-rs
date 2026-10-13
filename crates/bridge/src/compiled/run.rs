@@ -25,7 +25,8 @@ impl Compiled {
     pub(crate) fn construct(&self, tree: &Tree) -> Result<Vec<Quad>, Fail> {
         let mut emitted: HashSet<Triple> = HashSet::new();
         let mut quads = Vec::new();
-        run(&self.plan, &mut vec![None; self.width], tree, &mut |row| {
+        tree.forget_answers();
+        let ran = run(&self.plan, &mut vec![None; self.width], tree, &mut |row| {
             let mut blanks = vec![None; self.blanks];
             for template in &self.template {
                 let Some(triple) = instance(template, row, &mut blanks) else {
@@ -42,7 +43,9 @@ impl Compiled {
                 }
             }
             Ok(())
-        })?;
+        });
+        tree.forget_answers();
+        ran?;
         Ok(quads)
     }
 }
@@ -91,15 +94,15 @@ fn run(steps: &[Step], row: &mut Row, tree: &Tree, sink: Sink<'_>) -> Result<(),
     let mut next = |row: &mut Row| run(rest, row, tree, sink);
     match step {
         Step::Triple(pattern) => scan(pattern, row, tree, &mut next),
-        Step::Filter(expr) => {
+        Step::Filter(expr, _) => {
             if holds(expr, tree, row)? {
                 next(row)
             } else {
                 Ok(())
             }
         }
-        Step::Bind(slot, expr) => bind(*slot, expr, row, tree, &mut next),
-        Step::Agree(slot, expr) => agree(*slot, expr, row, tree, &mut next),
+        Step::Bind(slot, expr, _) => bind(*slot, expr, row, tree, &mut next),
+        Step::Agree(slot, expr, _) => agree(*slot, expr, row, tree, &mut next),
         Step::Values(slots, table) => each_values(slots, table, row, &mut next),
         Step::Union(branches) => {
             for branch in branches {
@@ -107,7 +110,7 @@ fn run(steps: &[Step], row: &mut Row, tree: &Tree, sink: Sink<'_>) -> Result<(),
             }
             Ok(())
         }
-        Step::Optional(branch, condition) => {
+        Step::Optional(branch, condition, _) => {
             optional(branch, condition.as_ref(), row, tree, &mut next)
         }
         Step::Group(group) => group.run(row, tree, &mut next),

@@ -1,8 +1,9 @@
+use super::explain::{Explained, Nested, Noted};
 use super::keys::{known_values, settled, Hints};
 use super::run::Compiled;
 use super::scope::analysis as node;
 use super::scope::{analyze, Bound, Certain, Frame, Hidden, Names, Reads, Scope, Scoped};
-use super::{Aggregate, Expr, Group, Key, Kind, Pattern, Place, Plan, Reach, Step};
+use super::{Aggregate, Expr, Group, Key, Kind, Note, Pattern, Place, Plan, Reach, Step};
 use oxigraph::model::vocab::xsd;
 use oxigraph::model::{BlankNode, Literal, Term};
 use oxiri::Iri;
@@ -11,18 +12,18 @@ use spargebra::algebra::{
 };
 use spargebra::term::{GroundTerm, NamedNodePattern, TermPattern, TriplePattern};
 use spargebra::Query;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 const UNREACHABLE: u8 = u8::MAX;
 
-static MEMOS: AtomicUsize = AtomicUsize::new(0);
-
-/// A name for an answer that depends on the tree alone, unique across every plan.
-pub(super) fn next_memo() -> usize {
-    MEMOS.fetch_add(1, Ordering::Relaxed)
+pub(crate) fn compile(query: &Query) -> Result<Compiled, String> {
+    lowered(query, Names::default()).map(|(compiled, _)| compiled)
 }
 
-pub(crate) fn compile(query: &Query) -> Result<Compiled, String> {
+pub(crate) fn compile_explained(query: &Query) -> Result<Explained, String> {
+    lowered(query, Names::explaining()).map(|(compiled, labels)| Explained { compiled, labels })
+}
+
+fn lowered(query: &Query, mut names: Names) -> Result<(Compiled, Vec<String>), String> {
     let Query::Construct {
         template,
         pattern,
@@ -32,12 +33,13 @@ pub(crate) fn compile(query: &Query) -> Result<Compiled, String> {
     else {
         return Err("it is not a CONSTRUCT".to_owned());
     };
-    let mut names = Names::default();
     let scoped = analyze(&mut names, pattern, &mut Frame::default());
     let mut lowering = Lowering {
         names,
         base: base_iri.clone(),
         hints: Hints::default(),
+        memos: 0,
+        nested: Vec::new(),
     };
     let mut built = Built::default();
     lowering.pattern(&scoped, &mut built)?;
@@ -46,12 +48,17 @@ pub(crate) fn compile(query: &Query) -> Result<Compiled, String> {
         .iter()
         .map(|triple| lowering.template(triple, &mut blanks))
         .collect::<Result<_, _>>()?;
-    Ok(Compiled {
+    debug_assert!(
+        lowering.nested.is_empty(),
+        "an EXISTS was lowered outside a noted expression"
+    );
+    let compiled = Compiled {
         plan: built.plan(),
         template,
         blanks: blanks.len(),
         width: lowering.names.width(),
-    })
+    };
+    Ok((compiled, lowering.names.into_labels()))
 }
 
 type Placed = (Step, Certain);
@@ -76,9 +83,31 @@ pub(super) struct Lowering {
     pub(super) names: Names,
     pub(super) base: Option<Iri<String>>,
     hints: Hints,
+    memos: usize,
+    pub(super) nested: Vec<Nested>,
 }
 
 impl Lowering {
+    /// A name for an answer that depends on the tree alone, unique within the plan.
+    pub(super) fn next_memo(&mut self) -> usize {
+        self.memos += 1;
+        self.memos - 1
+    }
+
+    fn note(&mut self, expression: &Expression) -> Note {
+        self.names.is_explaining().then(|| {
+            Box::new(Noted {
+                source: self.names.relabel(&expression.to_string()),
+                exists: std::mem::take(&mut self.nested),
+            })
+        })
+    }
+
+    fn noted(&mut self, expression: &Expression, scope: &Scope) -> Result<(Expr, Note), String> {
+        let expr = self.expression(expression, scope)?;
+        Ok((expr, self.note(expression)))
+    }
+
     /// Runs `lower` without the filters around the pattern.
     fn apart<T>(&mut self, lower: impl FnOnce(&mut Self) -> T) -> T {
         let hints = self.hints.replace(Vec::new());
@@ -119,23 +148,23 @@ impl Lowering {
                 let pending = self.patterns(triples.patterns)?;
                 let mut bound = triples.entry.clone();
                 let rest = self.schedule(pending, Some(&extend.operands), &mut bound, out)?;
-                let operand = self.operand(extend, &bound.scope(Hidden::new()))?;
+                let (operand, note) = self.operand(extend, &bound.scope(Hidden::new()))?;
                 bound.binds(extend.slot, extend.certainly);
-                out.push(bind_step(extend, operand), &bound.certain);
+                out.push(bind_step(extend, operand, note), &bound.certain);
                 self.schedule(rest, None, &mut bound, out)?;
             }
             inner => {
                 self.pattern(inner, out)?;
-                let operand = self.operand(extend, &extend.scope)?;
-                out.push(bind_step(extend, operand), &extend.certain_after);
+                let (operand, note) = self.operand(extend, &extend.scope)?;
+                out.push(bind_step(extend, operand, note), &extend.certain_after);
             }
         }
         Ok(())
     }
 
-    fn operand(&mut self, extend: &node::Binding, scope: &Scope) -> Result<Expr, String> {
+    fn operand(&mut self, extend: &node::Binding, scope: &Scope) -> Result<(Expr, Note), String> {
         extend.reads?;
-        self.expression(extend.expression, scope)
+        self.noted(extend.expression, scope)
     }
 
     fn union(&mut self, union: &node::Union, out: &mut Built) -> Result<(), String> {
@@ -159,13 +188,15 @@ impl Lowering {
         optional.reads?;
         let mut built = Built::default();
         self.apart(|me| me.pattern(&optional.right, &mut built))?;
-        let condition = optional
-            .condition
-            .as_ref()
-            .map(|(condition, scope)| self.expression(condition, scope))
-            .transpose()?;
+        let (condition, note) = match &optional.condition {
+            Some((condition, scope)) => {
+                let (expr, note) = self.noted(condition, scope)?;
+                (Some(expr), note)
+            }
+            None => (None, None),
+        };
         out.push(
-            Step::Optional(built.plan(), condition),
+            Step::Optional(built.plan(), condition, note),
             &optional.certain_after,
         );
         Ok(())
@@ -231,18 +262,27 @@ impl Lowering {
         scope: &Scope,
     ) -> Result<Aggregate, String> {
         aggregate.fresh?;
+        let (kind, note) = self.aggregate(aggregate, scope)?;
         Ok(Aggregate {
             slot: aggregate.slot,
-            kind: self.aggregate(aggregate, scope)?,
+            kind,
+            note,
         })
     }
 
-    fn aggregate(&mut self, aggregate: &node::Aggregated, scope: &Scope) -> Result<Kind, String> {
+    fn aggregate(
+        &mut self,
+        aggregate: &node::Aggregated,
+        scope: &Scope,
+    ) -> Result<(Kind, Note), String> {
         match aggregate.expression {
-            AggregateExpression::CountSolutions { distinct: false } => Ok(Kind::Count {
-                of: None,
-                distinct: false,
-            }),
+            AggregateExpression::CountSolutions { distinct: false } => Ok((
+                Kind::Count {
+                    of: None,
+                    distinct: false,
+                },
+                None,
+            )),
             AggregateExpression::CountSolutions { .. } => Err("COUNT(DISTINCT *)".to_owned()),
             AggregateExpression::FunctionCall {
                 name,
@@ -259,25 +299,24 @@ impl Lowering {
         expr: &Expression,
         distinct: bool,
         scope: &Scope,
-    ) -> Result<Kind, String> {
+    ) -> Result<(Kind, Note), String> {
         if let (AggregateFunction::Count, Expression::Variable(variable)) = (name, expr) {
-            return Ok(Kind::Count {
-                of: Some(self.names.slot(variable)),
-                distinct,
-            });
+            let of = Some(self.names.slot(variable));
+            return Ok((Kind::Count { of, distinct }, None));
         }
         if distinct {
             return Err("DISTINCT in an aggregate".to_owned());
         }
         aggregate.reads?;
-        let operand = self.expression(expr, scope)?;
-        match name {
-            AggregateFunction::Sum => Ok(Kind::Sum(operand)),
-            AggregateFunction::Min => Ok(Kind::Min(operand)),
-            AggregateFunction::Max => Ok(Kind::Max(operand)),
-            AggregateFunction::Sample => Ok(Kind::Sample(operand)),
-            _ => Err("an aggregate other than COUNT, SUM, MIN, MAX or SAMPLE".to_owned()),
-        }
+        let (operand, note) = self.noted(expr, scope)?;
+        let kind = match name {
+            AggregateFunction::Sum => Kind::Sum(operand),
+            AggregateFunction::Min => Kind::Min(operand),
+            AggregateFunction::Max => Kind::Max(operand),
+            AggregateFunction::Sample => Kind::Sample(operand),
+            _ => return Err("an aggregate other than COUNT, SUM, MIN, MAX or SAMPLE".to_owned()),
+        };
+        Ok((kind, note))
     }
 
     fn walk(&mut self, path: &node::Path, out: &mut Built) -> Result<(), String> {
@@ -350,9 +389,9 @@ impl Lowering {
             if let (Some(key), Place::Var(slot)) = (&keys[at], &triple.object) {
                 let reads = self.names.read_by(key);
                 self.hints.record(reads.clone());
-                let expr = self.expression(key, &bound.scope(Hidden::new()))?;
+                let (expr, note) = self.noted(key, &bound.scope(Hidden::new()))?;
                 let reads = reads.iter().collect();
-                triple.object = Place::Key(*slot, Key { expr, reads });
+                triple.object = Place::Key(*slot, Key { expr, reads, note });
             }
             for place in [&triple.subject, &triple.predicate, &triple.object] {
                 if let Place::Var(slot) | Place::Key(slot, _) = place {
@@ -441,7 +480,8 @@ impl Lowering {
                 maybe: filter.maybe.clone(),
                 hidden,
             };
-            let test = Step::Filter(self.expression(conjunct.expression, &scope)?);
+            let (expr, note) = self.noted(conjunct.expression, &scope)?;
+            let test = Step::Filter(expr, note);
             filters[after].push((test, certain.clone()));
         }
         self.hints.keep_clear(&mark, &filter.unbound)?;
@@ -456,11 +496,11 @@ impl Lowering {
     }
 }
 
-fn bind_step(extend: &node::Binding, operand: Expr) -> Step {
+fn bind_step(extend: &node::Binding, operand: Expr, note: Note) -> Step {
     if extend.joins {
-        Step::Agree(extend.slot, operand)
+        Step::Agree(extend.slot, operand, note)
     } else {
-        Step::Bind(extend.slot, operand)
+        Step::Bind(extend.slot, operand, note)
     }
 }
 

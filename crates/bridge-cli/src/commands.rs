@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 
 const USAGE: &str = "usage: cascade-bridge test <adapter-dir> [--vocabularies <directory>] [--earl <out.ttl>] [--fallbacks <out.json>] [--datasets] [--executor compiled|spareval|both] [--memory-budget-mib <1-3072>] [--time-budget-seconds <n>]
        cascade-bridge convert <adapter-dir> <document> [--envelope <iri>] [--facts <file>] [--vocabularies <directory>] [--out <file>] [--findings <file>] [--format turtle|ntriples] [--executor compiled|spareval|both] [--memory-budget-mib <1-3072>] [--time-budget-seconds <n>] [--profile] [--skip schema|shapes|findings]
+       cascade-bridge explain <adapter-dir> [--vocabularies <directory>]
        cascade-bridge library <calls file> <results directory>
 
 --skip is for measuring only: the run leaves out the source schema check, the output shapes check or the findings queries, and its conversion is not a validated one.";
@@ -62,9 +63,15 @@ impl Convert {
     }
 }
 
+struct Explain {
+    directory: String,
+    vocabularies: Option<String>,
+}
+
 enum Command {
     Test(Test),
     Convert(Convert),
+    Explain(Explain),
     Library { calls: String, results: String },
 }
 
@@ -136,6 +143,19 @@ fn parse(argv: impl IntoIterator<Item = String>) -> Option<Command> {
             }
             Some(Command::Convert(arguments))
         }
+        "explain" => {
+            let mut arguments = Explain {
+                directory: argv.next()?,
+                vocabularies: None,
+            };
+            while let Some(flag) = argv.next() {
+                match flag.as_str() {
+                    "--vocabularies" => arguments.vocabularies = Some(argv.next()?),
+                    _ => return None,
+                }
+            }
+            Some(Command::Explain(arguments))
+        }
         "library" => {
             let command = Command::Library {
                 calls: argv.next()?,
@@ -157,6 +177,7 @@ pub fn run(argv: impl IntoIterator<Item = String>) -> u8 {
     let ran = match command {
         Command::Test(arguments) => run_test(&arguments),
         Command::Convert(arguments) => convert(&arguments),
+        Command::Explain(arguments) => explain(&arguments),
         Command::Library { calls, results } => crate::library::run(&calls, &results),
     };
     ran.unwrap_or_else(|reason| {
@@ -325,6 +346,29 @@ fn stage_report(what: &str, wall: Duration, stages: &[StageTime]) -> String {
         wall.saturating_sub(counted).as_secs_f64()
     );
     said
+}
+
+fn explain(arguments: &Explain) -> Result<u8, String> {
+    let (mut inputs, _) = opened(&arguments.directory, arguments.vocabularies.as_deref())?;
+    inputs.adapter = inputs.adapter.with_every_file()?;
+    let loaded = inputs.complete(load)?;
+    let mut said = String::new();
+    for explained in loaded.explain() {
+        let query = explained
+            .query
+            .strip_prefix(loaded.iri())
+            .unwrap_or(&explained.query);
+        match explained.plan {
+            Ok(plan) => {
+                let _ = write!(said, "Query    {query}\n{plan}\n");
+            }
+            Err(reason) => {
+                let _ = writeln!(said, "Query    {query}\n  evaluated: {reason}\n");
+            }
+        }
+    }
+    out(said.as_bytes())?;
+    Ok(0)
 }
 
 fn convert(arguments: &Convert) -> Result<u8, String> {

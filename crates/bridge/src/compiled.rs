@@ -9,6 +9,7 @@ use std::cell::OnceCell;
 use std::rc::Rc;
 
 mod builtin;
+mod explain;
 mod expr;
 mod keys;
 mod lower;
@@ -18,7 +19,7 @@ mod scope;
 mod tests;
 mod tree;
 
-pub(crate) use lower::compile;
+pub(crate) use lower::{compile, compile_explained};
 pub(crate) use run::Compiled;
 pub(crate) use tree::Tree;
 
@@ -87,11 +88,14 @@ enum Place {
     Key(usize, Key),
 }
 
+type Note = Option<Box<explain::Noted>>;
+
 /// A lookup by the one string a filter equates the variable with, in place of a scan,
 /// where `Hints` finds one safe.
 struct Key {
     expr: Expr,
     reads: Vec<usize>,
+    note: Note,
 }
 
 struct Pattern {
@@ -102,12 +106,12 @@ struct Pattern {
 
 enum Step {
     Triple(Pattern),
-    Filter(Expr),
-    Bind(usize, Expr),
-    Agree(usize, Expr),
+    Filter(Expr, Note),
+    Bind(usize, Expr, Note),
+    Agree(usize, Expr, Note),
     Values(Vec<usize>, Vec<Vec<Option<Term>>>),
     Union(Vec<Plan>),
-    Optional(Plan, Option<Expr>),
+    Optional(Plan, Option<Expr>, Note),
     Group(Group),
     Reach(Reach),
 }
@@ -128,6 +132,7 @@ struct Group {
 struct Aggregate {
     slot: usize,
     kind: Kind,
+    note: Note,
 }
 
 enum Kind {

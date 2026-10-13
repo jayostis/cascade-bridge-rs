@@ -1,5 +1,6 @@
 use super::builtin::{self, Call};
-use super::lower::{next_memo, Lowering};
+use super::explain::Nested;
+use super::lower::Lowering;
 use super::scope::Scope;
 use super::{run, Eval, Expr, Fail, Row, Tree};
 use oxigraph::model::{Term, Variable};
@@ -210,7 +211,10 @@ impl Lowering {
 
     fn exists_test(&mut self, body: &GraphPattern, scope: &Scope) -> Result<Expr, String> {
         let inside = self.names.variables_of(body);
-        let plan = self.exists(body, scope)?;
+        let outer = std::mem::take(&mut self.nested);
+        let plan = self.exists(body, scope);
+        self.nested = outer;
+        let plan = plan?;
         let masked: Vec<usize> = inside
             .iter()
             .filter(|&slot| scope.hidden.contains(slot))
@@ -218,7 +222,11 @@ impl Lowering {
         let once = inside
             .iter()
             .all(|slot| scope.hidden.contains(slot) || !scope.maybe.contains(slot))
-            .then(next_memo);
+            .then(|| self.next_memo());
+        if self.names.is_explaining() {
+            let nested = Nested::of(once, &plan, self.names.labels());
+            self.nested.push(nested);
+        }
         Ok(eval_fn(move |tree, row| {
             let found = || run::exists(&plan, tree, row, &masked);
             boolean(match once {

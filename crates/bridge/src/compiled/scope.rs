@@ -14,6 +14,8 @@ pub(super) use slots::{Certain, Hidden, Maybe, Reads, Slots};
 pub(super) struct Names {
     next: usize,
     scopes: Vec<HashMap<String, usize>>,
+    labels: Option<Vec<String>>,
+    minted: usize,
 }
 
 impl Default for Names {
@@ -21,11 +23,41 @@ impl Default for Names {
         Self {
             next: 0,
             scopes: vec![HashMap::new()],
+            labels: None,
+            minted: 0,
         }
     }
 }
 
+/// A name the parser made up: 128 random bits in hex.
+fn minted(name: &str) -> bool {
+    name.len() >= 24 && name.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
+fn name_char(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
+}
+
 impl Names {
+    pub(super) fn explaining() -> Self {
+        Self {
+            labels: Some(Vec::new()),
+            ..Self::default()
+        }
+    }
+
+    pub(super) fn is_explaining(&self) -> bool {
+        self.labels.is_some()
+    }
+
+    pub(super) fn labels(&self) -> &[String] {
+        self.labels.as_deref().unwrap_or_default()
+    }
+
+    pub(super) fn into_labels(self) -> Vec<String> {
+        self.labels.unwrap_or_default()
+    }
+
     pub(super) fn slot(&mut self, variable: &Variable) -> usize {
         let name = variable.as_str();
         if let Some(&slot) = self.scopes.last().and_then(|scope| scope.get(name)) {
@@ -33,10 +65,61 @@ impl Names {
         }
         let slot = self.next;
         self.next += 1;
+        if let Some(labels) = &mut self.labels {
+            let label = if minted(name) {
+                self.minted += 1;
+                format!("gen{}", self.minted - 1)
+            } else {
+                name.to_owned()
+            };
+            labels.push(if labels.contains(&label) {
+                format!("{label}~{slot}")
+            } else {
+                label
+            });
+        }
         if let Some(scope) = self.scopes.last_mut() {
             scope.insert(name.to_owned(), slot);
         }
         slot
+    }
+
+    /// An expression's text with each variable of the current scope that is labelled
+    /// otherwise than its name written as its label.
+    pub(super) fn relabel(&self, text: &str) -> String {
+        let (Some(labels), Some(scope)) = (&self.labels, self.scopes.last()) else {
+            return text.to_owned();
+        };
+        let mut out = String::with_capacity(text.len());
+        let mut rest = text;
+        while let Some(c) = rest.chars().next() {
+            let skipped = match c {
+                '"' => quoted(rest),
+                '<' => iri(rest),
+                _ => 0,
+            };
+            if skipped > 0 {
+                out.push_str(&rest[..skipped]);
+                rest = &rest[skipped..];
+            } else if c == '?' || c == '$' {
+                let end = rest[1..]
+                    .find(|c: char| !name_char(c))
+                    .map_or(rest.len(), |at| at + 1);
+                let name = &rest[1..end];
+                match scope.get(name).map(|&slot| &labels[slot]) {
+                    Some(label) if label != name => {
+                        out.push('?');
+                        out.push_str(label);
+                    }
+                    _ => out.push_str(&rest[..end]),
+                }
+                rest = &rest[end..];
+            } else {
+                out.push(c);
+                rest = &rest[c.len_utf8()..];
+            }
+        }
+        out
     }
 
     pub(super) fn width(&self) -> usize {
@@ -49,6 +132,28 @@ impl Names {
 
     pub(super) fn leave(&mut self) -> HashMap<String, usize> {
         self.scopes.pop().unwrap_or_default()
+    }
+}
+
+/// The length of the string literal `text` opens with, or 0 if it opens with none.
+fn quoted(text: &str) -> usize {
+    let mut escaped = false;
+    for (at, c) in text.char_indices().skip(1) {
+        match c {
+            _ if escaped => escaped = false,
+            '\\' => escaped = true,
+            '"' => return at + 1,
+            _ => {}
+        }
+    }
+    0
+}
+
+/// The length of the IRI `text` opens with, or 0 if it opens with an operator.
+fn iri(text: &str) -> usize {
+    match text.find(|c: char| c == '>' || c.is_whitespace()) {
+        Some(at) if text[at..].starts_with('>') => at + 1,
+        _ => 0,
     }
 }
 
