@@ -1,23 +1,4 @@
 [
   { "adapter": "ccda", "query": "in/sparql/detect.rq", "reason": "it is not a CONSTRUCT" },
-  { "adapter": "fhir-r4", "query": "in/sparql/detect.rq", "reason": "it is not a CONSTRUCT" },
-  { "adapter": "clinvar", "query": "in/sparql/detect.rq", "reason": "it is not a CONSTRUCT" },
-  {
-    "adapter": "clinvar",
-    "query": "in/sparql/assertion.rq",
-    "reason": "a property path that is not a walk"
-  },
-  {
-    "adapter": "clinvar",
-    "query": "in/sparql/interpretation.rq",
-    "reason": "a property path that is not a walk"
-  },
-  {
-    "adapter": "clinvar",
-    "query": "in/sparql/variant.rq",
-    "reason": "a typed literal in VALUES, which a join matches by value"
-  },
-  { "adapter": "clinvar", "query": "in/sparql/assertion-findings.rq", "reason": "MINUS" },
-  { "adapter": "clinvar", "query": "in/sparql/interpretation-findings.rq", "reason": "MINUS" },
-  { "adapter": "clinvar", "query": "in/sparql/variant-findings.rq", "reason": "MINUS" }
+  { "adapter": "fhir-r4", "query": "in/sparql/detect.rq", "reason": "it is not a CONSTRUCT" }
 ]
