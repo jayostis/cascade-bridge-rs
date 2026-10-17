@@ -13,5 +13,5 @@ hl7-examples/
   at ad5007abd912a45bbd04ce96e871c70954c2b2c2, unchanged. CC0-1.0.
 
 conformance/
-  fixtures/in/ of https://github.com/jayostis/cascade-bridge-adapter-ccda,
-  unchanged, and checked against it by CI. Apache-2.0.
+  fixtures/in/ of the C-CDA Bridge Adapter, unchanged, and checked
+  against it by CI. Apache-2.0.
