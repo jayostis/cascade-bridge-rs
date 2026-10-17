@@ -38,3 +38,9 @@ jobs:
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo clippy --locked -p cascade-bridge-wasm --target wasm32-unknown-unknown -- -D warnings
       - run: cargo test --locked
+      - uses: actions/checkout@v7
+        with:
+          repository: jayostis/cascade-bridge-adapter-ccda
+          path: cascade-bridge-adapter-ccda
+          persist-credentials: false
+      - run: bash .github/scripts/conformance-matches-adapter.sh cascade-bridge-adapter-ccda
