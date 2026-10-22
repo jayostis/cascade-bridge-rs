@@ -409,16 +409,20 @@ rdfs:label a owl:AnnotationProperty ;
 oa:hasSelector a owl:ObjectProperty ;
   rdfs:isDefinedBy <http://www.w3.org/ns/oa#> .
 
+oa:hasSource a owl:ObjectProperty ;
+  rdfs:isDefinedBy <http://www.w3.org/ns/oa#> .
+
 oa:XPathSelector a owl:Class ;
   rdfs:isDefinedBy <http://www.w3.org/ns/oa#> .
 
 oa:FragmentSelector a owl:Class ;
+  rdfs:comment "Its rdf:value is the fragment identifier, without the #, in the URI fragment form of RFC 6901 section 6 for a selector conforming to JSON Pointer: the pointer with each character a fragment does not allow percent-encoded, as Web Annotation defines oa:FragmentSelector."@en ;
   rdfs:isDefinedBy <http://www.w3.org/ns/oa#> .
 
-rdf:value a owl:DatatypeProperty ;
+rdf:value a rdf:Property ;
   rdfs:isDefinedBy <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 
-dct:conformsTo a owl:ObjectProperty ;
+dct:conformsTo a rdf:Property ;
   rdfs:isDefinedBy <http://purl.org/dc/terms/> .
 
 # Test terms, used with W3C's mf: test-manifest vocabulary
