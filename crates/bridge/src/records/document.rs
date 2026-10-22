@@ -1,7 +1,7 @@
 use super::{ni_name, normalised_base_url, Versioned};
 use crate::error::{Error, Result};
 use crate::terms::{
-    BRIDGE_ARRIVED_AS, BRIDGE_SELECTOR, BRIDGE_SERVER_BASE_URL, BRIDGE_SHA256,
+    BRIDGE_ARRIVED_AS, BRIDGE_SELECTOR, CASCADE_SERVER_BASE_URL, BRIDGE_SHA256,
     BRIDGE_THIS_DOCUMENT, BRIDGE_THIS_IMPORT, BRIDGE_THIS_RECORD, PAV_LAST_UPDATE_ON, PAV_VERSION,
     PROV_ACTIVITY, PROV_AGENT, PROV_ENTITY, PROV_HAD_PLAN, PROV_PLAN, PROV_QUALIFIED_ASSOCIATION,
     PROV_SOFTWARE_AGENT, PROV_USED, PROV_WAS_DERIVED_FROM, PROV_WAS_GENERATED_BY, RDFS_LABEL,
@@ -75,9 +75,9 @@ fn supplied(facts: Option<Supplied<'_>>, document: &str) -> Result<Vec<Quad>> {
         if let Term::BlankNode(node) = &fact.object {
             fact.object = relabel(node).into();
         }
-        if fact.predicate.as_str() == BRIDGE_SERVER_BASE_URL {
+        if fact.predicate.as_str() == CASCADE_SERVER_BASE_URL {
             if let Term::Literal(url) = &fact.object {
-                fact.object = Literal::new_simple_literal(normalised_base_url(url.value())).into();
+                fact.object = Literal::new_simple_literal(normalised_base_url(url.value())?).into();
             }
         }
         supplied.push(fact);

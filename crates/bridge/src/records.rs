@@ -20,7 +20,7 @@ pub(crate) fn ni_name(octets: &[u8]) -> String {
     )
 }
 
-pub(crate) fn normalised_base_url(url: &str) -> String {
+pub(crate) fn normalised_base_url(url: &str) -> Result<String> {
     let normal = match url.split_once("://") {
         Some((scheme, rest)) => {
             let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
@@ -37,7 +37,7 @@ pub(crate) fn normalised_base_url(url: &str) -> String {
         }
         None => url.to_owned(),
     };
-    normal.trim_end_matches('/').to_owned()
+    Ok(normal.trim_end_matches('/').to_owned())
 }
 
 pub(crate) struct Version {

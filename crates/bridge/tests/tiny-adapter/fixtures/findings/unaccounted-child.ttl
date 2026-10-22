@@ -1,7 +1,7 @@
 @prefix rdf:    <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix sh:     <http://www.w3.org/ns/shacl#> .
 @prefix oa:     <http://www.w3.org/ns/oa#> .
-@prefix bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
 
 [] a oa:Annotation ;
   oa:hasTarget [
@@ -12,7 +12,7 @@
       oa:refinedBy [ a oa:XPathSelector ; rdf:value "novelty[1]" ]
     ]
   ] ;
-  oa:hasBody bridge:pathNotAccounted ;
+  oa:hasBody cascade:SourcePathNotAccounted ;
   oa:motivatedBy oa:classifying ;
   sh:value "/item/novelty" ;
   sh:resultSeverity sh:Info .

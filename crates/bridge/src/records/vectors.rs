@@ -1,16 +1,16 @@
-// tests/naming/ and tests/versioning/ are copies of fixtures/naming/ and
-// fixtures/versioning/ in jayostis/cascade-bridge-spec, the authority.
+// tests/naming/ is a copy of tests/vectors/naming/ in jayostis/cascade-vocabulary and
+// tests/versioning/ of fixtures/versioning/ in jayostis/cascade-bridge-spec, the authorities.
 use super::{normalised_base_url, versioned};
 use crate::fixtures::fixture;
+use crate::rdf::canonical_lines;
 use crate::load::{as_subject, instances, list, objects, one, term_value, turtle};
 use crate::terms::{
-    BRIDGE_BASE_URL_NORMALISATION_TEST, BRIDGE_CANONICAL_CONTENT, BRIDGE_EXPECTED_FINGERPRINT,
-    BRIDGE_EXPECTED_GRAPH, BRIDGE_EXPECTED_NAME, BRIDGE_EXPECTED_VERSION,
-    BRIDGE_FINGERPRINT_MEMBERS, BRIDGE_FINGERPRINT_TEST, BRIDGE_INPUT, BRIDGE_NAME_INPUTS,
-    BRIDGE_NAMING_TEST, BRIDGE_SERVER_BASE_URL, BRIDGE_VERSIONING_TEST, MF_ACTION, MF_NAME,
-    MF_RESULT, QT_QUERY,
+    BRIDGE_BASE_URL_NORMALISATION_TEST, BRIDGE_BASE_URL_REFUSAL_TEST, BRIDGE_CANONICAL_CONTENT,
+    BRIDGE_EXPECTED_GRAPH, BRIDGE_EXPECTED_NAME, BRIDGE_EXPECTED_VERSION, BRIDGE_INPUT,
+    BRIDGE_NAME_INPUTS, BRIDGE_NAMING_TEST, BRIDGE_VERSIONING_TEST, CASCADE_SERVER_BASE_URL,
+    MF_ACTION, MF_NAME, MF_RESULT, QT_QUERY,
 };
-use oxigraph::model::{BlankNode, GraphName, Literal, NamedNode, Term};
+use oxigraph::model::{Literal, Term};
 use oxigraph::sparql::{QueryResults, SparqlEvaluator, Variable};
 use oxigraph::store::Store;
 use oxrdf::{Graph, NamedOrBlankNode, Quad};
@@ -58,19 +58,19 @@ fn entries(graph: &Graph, class: &str) -> Vec<NamedOrBlankNode> {
     entries
 }
 
-fn names(query: &[u8], input: &str) -> Vec<Term> {
+fn names(query: &[u8], inputs: &[String]) -> Vec<Term> {
     let parsed = spargebra::SparqlParser::new()
         .parse_query(std::str::from_utf8(query).expect("UTF-8"))
         .expect("the query");
-    let QueryResults::Solutions(solutions) = SparqlEvaluator::new()
-        .for_query(parsed)
-        .on_store(&Store::new().expect("a store"))
-        .substitute_variable(
-            Variable::new_unchecked("input"),
+    let mut evaluator = SparqlEvaluator::new().for_query(parsed);
+    let store = Store::new().expect("a store");
+    for (position, input) in inputs.iter().enumerate() {
+        evaluator = evaluator.substitute_variable(
+            Variable::new_unchecked(format!("input{}", position + 1)),
             Literal::new_simple_literal(input),
-        )
-        .execute()
-        .expect("evaluated")
+        );
+    }
+    let QueryResults::Solutions(solutions) = evaluator.on_store(&store).execute().expect("evaluated")
     else {
         panic!("the naming query is not a SELECT");
     };
@@ -86,111 +86,71 @@ fn names(query: &[u8], input: &str) -> Vec<Term> {
 }
 
 #[test]
-fn computes_every_naming_vector_of_the_specification_with_its_query_run_by_oxigraph() {
+fn computes_every_naming_vector_that_names_a_query_with_that_query_run_by_oxigraph() {
     let graph = manifest("tests/naming");
+    let mut run = 0;
     for entry in entries(&graph, BRIDGE_NAMING_TEST) {
         let action = node(&graph, &entry, MF_ACTION);
-        let query = file(&only(&graph, &action, QT_QUERY));
+        let Some(query) = one(&graph, &action, QT_QUERY).expect(QT_QUERY) else {
+            continue;
+        };
         let head = objects(&graph, &action, BRIDGE_NAME_INPUTS).expect("inputs");
         let inputs: Vec<String> = list(&graph, head.first())
             .expect("a list")
             .iter()
             .map(term_value)
             .collect();
-        let expected = only(
+        let expected = objects(
             &graph,
             &node(&graph, &entry, MF_RESULT),
             BRIDGE_EXPECTED_NAME,
-        );
-        let names = names(&query, &inputs.join("|"));
+        )
+        .expect("a name");
         assert_eq!(
-            names.iter().map(term_value).collect::<Vec<_>>(),
-            [expected],
+            names(&file(&query), &inputs),
+            expected,
             "{}",
             named(&graph, &entry)
         );
+        run += 1;
     }
-}
-
-fn fingerprints(query: &[u8], members: &[String]) -> Vec<String> {
-    let store = Store::new().expect("a store");
-    let value = NamedNode::new_unchecked("http://www.w3.org/1999/02/22-rdf-syntax-ns#value");
-    for member in members {
-        store
-            .insert(&Quad::new(
-                BlankNode::default(),
-                value.clone(),
-                Literal::new_simple_literal(member),
-                GraphName::DefaultGraph,
-            ))
-            .expect("inserted");
-    }
-    let parsed = spargebra::SparqlParser::new()
-        .parse_query(std::str::from_utf8(query).expect("UTF-8"))
-        .expect("the query");
-    let QueryResults::Solutions(solutions) = SparqlEvaluator::new()
-        .for_query(parsed)
-        .on_store(&store)
-        .execute()
-        .expect("evaluated")
-    else {
-        panic!("the fingerprint query is not a SELECT");
-    };
-    solutions
-        .map(|solution| {
-            term_value(
-                solution
-                    .expect("a solution")
-                    .get("fingerprint")
-                    .expect("a ?fingerprint"),
-            )
-        })
-        .collect()
+    assert!(run > 0, "no naming vector names a query");
 }
 
 #[test]
-fn computes_every_fingerprint_vector_of_the_specification_with_its_query_run_by_oxigraph() {
-    let graph = manifest("tests/naming");
-    for entry in entries(&graph, BRIDGE_FINGERPRINT_TEST) {
-        let action = node(&graph, &entry, MF_ACTION);
-        let query = file(&only(&graph, &action, QT_QUERY));
-        let head = objects(&graph, &action, BRIDGE_FINGERPRINT_MEMBERS).expect("members");
-        let members: Vec<String> = list(&graph, head.first())
-            .expect("a list")
-            .iter()
-            .map(term_value)
-            .collect();
-        let expected = only(
-            &graph,
-            &node(&graph, &entry, MF_RESULT),
-            BRIDGE_EXPECTED_FINGERPRINT,
-        );
-        assert_eq!(
-            fingerprints(&query, &members),
-            [expected],
-            "{}",
-            named(&graph, &entry)
-        );
-    }
-}
-
-#[test]
-fn normalises_every_base_url_vector_of_the_specification() {
+fn normalises_every_base_url_vector() {
     let graph = manifest("tests/naming");
     for entry in entries(&graph, BRIDGE_BASE_URL_NORMALISATION_TEST) {
         let given = only(
             &graph,
             &node(&graph, &entry, MF_ACTION),
-            BRIDGE_SERVER_BASE_URL,
+            CASCADE_SERVER_BASE_URL,
         );
         let expected = only(
             &graph,
             &node(&graph, &entry, MF_RESULT),
-            BRIDGE_SERVER_BASE_URL,
+            CASCADE_SERVER_BASE_URL,
         );
         assert_eq!(
-            normalised_base_url(&given),
+            normalised_base_url(&given).expect(&given),
             expected,
+            "{}",
+            named(&graph, &entry)
+        );
+    }
+}
+
+#[test]
+fn refuses_every_base_url_the_vectors_refuse() {
+    let graph = manifest("tests/naming");
+    for entry in entries(&graph, BRIDGE_BASE_URL_REFUSAL_TEST) {
+        let given = only(
+            &graph,
+            &node(&graph, &entry, MF_ACTION),
+            CASCADE_SERVER_BASE_URL,
+        );
+        assert!(
+            normalised_base_url(&given).is_err(),
             "{}",
             named(&graph, &entry)
         );
@@ -205,7 +165,7 @@ fn ntriples(bytes: &[u8]) -> Vec<Quad> {
 }
 
 fn lines(quads: &[Quad]) -> BTreeSet<String> {
-    quads.iter().map(ToString::to_string).collect()
+    canonical_lines(quads.iter().cloned()).expect("canonical")
 }
 
 #[test]

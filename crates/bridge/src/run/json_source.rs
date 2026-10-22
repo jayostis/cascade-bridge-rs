@@ -1,4 +1,5 @@
 use crate::fixtures;
+use crate::terms::BRIDGE_ARRIVED_AS;
 use crate::fixtures::{converted, objects, tiny_json, Variant, OA, RDF_TYPE, RDF_VALUE};
 use crate::harness::{run_manifest, RunOptions};
 use crate::load::load_adapter;
@@ -294,4 +295,36 @@ fn refuses_a_source_schema_whose_fragment_names_no_subschema() {
         .expect("refused")
         .to_string();
     assert!(refused.contains("#/definitions/absent"), "{refused}");
+}
+
+#[test]
+fn writes_an_arrival_s_selector_in_a_json_document_as_a_fragment_selector_conforming_to_json_pointer() {
+    let quads = converted(&tiny_json(), "list.json").quads;
+    let arrivals: Vec<String> = quads
+        .iter()
+        .filter(|q| q.predicate.as_str() == BRIDGE_ARRIVED_AS)
+        .map(|q| q.subject.to_string())
+        .collect();
+    assert!(!arrivals.is_empty());
+    for arrival in arrivals {
+        let selectors = objects(&quads, &arrival, &format!("{OA}hasSelector"));
+        let [selector] = selectors.as_slice() else {
+            panic!("{arrival} carries {selectors:?}");
+        };
+        let selector = selector.to_string();
+        assert_eq!(
+            objects(&quads, &selector, RDF_TYPE)
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+            [format!("<{OA}FragmentSelector>")]
+        );
+        assert_eq!(
+            objects(&quads, &selector, "http://purl.org/dc/terms/conformsTo")
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+            ["<https://www.rfc-editor.org/rfc/rfc6901>"]
+        );
+    }
 }
