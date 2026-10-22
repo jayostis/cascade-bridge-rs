@@ -56,6 +56,15 @@ jobs:
           rustup default "$channel"
           rustup toolchain list | cut -d' ' -f1 | grep -v "^$channel-" | xargs -r -n1 rustup toolchain uninstall
         working-directory: ${{ github.event.repository.name }}
+      # cargo clones the fork with its submodules to resolve the patch below, before rust-cache restores anything.
+      - if: matrix.fork
+        id: fork-clone
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/git/db/oxigraph-*
+            ~/.cargo/git/checkouts/oxigraph-*
+          key: oxigraph-fork-clone-${{ env.OXIGRAPH_FORK_REV }}
       # Before rust-cache, which hashes Cargo.lock. Patching sparopt alone leaves two copies of
       # spargebra and oxrdf, which spareval does not compile against; the update takes the
       # patched crates' own dependencies at the versions the registry's copies use.
