@@ -59,6 +59,8 @@
     <#version-nested-identifiers>
     <#version-literal-forms>
     <#version-language-tag-case>
+    <#version-code-point-order>
+    <#version-repeated-triple>
     <#revision>
     <#finding>
     <#table-version-first>
@@ -76,12 +78,35 @@
     <#base-url-percent-encoding>
     <#base-url-host-alone>
     <#base-url-percent-encoded-host>
+    <#base-url-ipv6>
+    <#base-url-ipv6-port>
+    <#base-url-ipvfuture>
+    <#base-url-port-leading-zeros-default>
+    <#base-url-port-leading-zeros>
+    <#base-url-port-highest>
+    <#base-url-space>
+    <#base-url-nul>
+    <#base-url-del>
+    <#base-url-query>
+    <#base-url-empty-query>
+    <#base-url-fragment>
+    <#base-url-empty-fragment>
     <#base-url-userinfo>
     <#base-url-port-not-digits>
     <#base-url-no-scheme>
     <#base-url-no-host>
     <#base-url-tab>
     <#base-url-line-feed>
+    <#base-url-non-ascii-host>
+    <#base-url-non-ascii-compatibility-host>
+    <#base-url-bracket-unclosed>
+    <#base-url-bracket-unopened>
+    <#base-url-bracket-not-ip>
+    <#base-url-bracket-empty>
+    <#base-url-ipv6-zone>
+    <#base-url-bad-percent-in-host>
+    <#base-url-port-non-ascii-digits>
+    <#base-url-port-too-high>
   ) .
 
 <#record-from-server> a bridge:NamingTest ;
@@ -191,7 +216,7 @@
 
 <#record-from-ccda-without-id-members> a bridge:NamingTest ;
   mf:name "record-from-ccda-without-id-members" ;
-  rdfs:comment "An id-less entry with no key: \"\" for the key, then its members fingerprint, so a key and a members fingerprint of one value name two records." ;
+  rdfs:comment "An id-less entry whose key fingerprint is absent or \"\": \"\" for the key, then its members fingerprint, so a key and a members fingerprint of one value name two records." ;
   bridge:namingRule cascade:RecordFromCcdaWithoutIdNamingRule ;
   mf:action [ qt:query <RecordFromCcdaWithoutIdNamingRule.rq> ; bridge:nameInputs ( "2.16.840.1.113883.19.5" "CLINIC-1" "2.16.840.1.113883.19.5.99" "MRN-1234" "https://ns.cascadeprotocol.org/cascade#AllergyOrIntolerance" "" "31544120" ) ] ;
   mf:result [ bridge:expectedName <urn:uuid:1ecaba18-53b4-8dc7-a139-a37458cc20de> ] .
@@ -212,7 +237,7 @@
 
 <#contained-record-last-updated> a bridge:NamingTest ;
   mf:name "contained-record-last-updated" ;
-  rdfs:comment "A container with no meta.versionId gives its meta.lastUpdated as written." ;
+  rdfs:comment "A container whose meta.versionId is absent or \"\" gives its meta.lastUpdated as written." ;
   bridge:namingRule cascade:ContainedRecordNamingRule ;
   mf:action [ qt:query <ContainedRecordNamingRule.rq> ; bridge:nameInputs ( "urn:uuid:7435b3b8-2d93-8912-9d48-940c5870dc81" "2026-03-01T10:00:00.000+00:00" "r1" ) ] ;
   mf:result [ bridge:expectedName <urn:uuid:e8e1e56b-adc0-89dd-bb4b-12a66c30100c> ] .
@@ -448,6 +473,20 @@
   mf:action [ bridge:input <content/version-language-tag-case.nt> ] ;
   mf:result [ bridge:expectedName <ni:///sha-256;YZvBMln2ccupi06IT5zkjwmaSa6hbU_wHF5VC2w2yAk> ; bridge:canonicalContent <content/version-language-tag-case.nq> ] .
 
+<#version-code-point-order> a bridge:NamingTest ;
+  mf:name "version-code-point-order" ;
+  rdfs:comment "Canonical lines are in code point order: U+FF5E (a UTF-16 unit of 0xFF5E) before U+1F600 (a surrogate pair starting 0xD83D), which a UTF-16 sort would put the other way round." ;
+  bridge:namingRule cascade:VersionNamingRule ;
+  mf:action [ bridge:input <content/version-code-point-order.nt> ] ;
+  mf:result [ bridge:expectedName <ni:///sha-256;K8Z4H3UpO4nZMzq3OyssdbKrQmaL1mp_7TuYvUTrceA> ; bridge:canonicalContent <content/version-code-point-order.nq> ] .
+
+<#version-repeated-triple> a bridge:NamingTest ;
+  mf:name "version-repeated-triple" ;
+  rdfs:comment "A triple written twice is one triple: a graph is a set, so its canonical form holds one line for it." ;
+  bridge:namingRule cascade:VersionNamingRule ;
+  mf:action [ bridge:input <content/version-repeated-triple.nt> ] ;
+  mf:result [ bridge:expectedName <ni:///sha-256;wozFEeN9darCg3lk8CQBiPSn3eDcKBQ5mGYYTo0xagw> ; bridge:canonicalContent <content/version-repeated-triple.nq> ] .
+
 <#revision> a bridge:NamingTest ;
   mf:name "revision" ;
   rdfs:comment "A revision: the same hash over its triples, its subject urn:cascade:this-revision." ;
@@ -558,6 +597,77 @@
   mf:action [ cascade:serverBaseUrl "https://%41PI.%c3%a9xample.ORG/r4" ] ;
   mf:result [ cascade:serverBaseUrl "https://api.%C3%A9xample.org/r4" ] .
 
+<#base-url-ipv6> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-ipv6" ;
+  rdfs:comment "A bracketed IPv6 address in lower case, and the scheme's default port dropped after it." ;
+  mf:action [ cascade:serverBaseUrl "HTTPS://[2001:DB8::1]:443/r4/" ] ;
+  mf:result [ cascade:serverBaseUrl "https://[2001:db8::1]/r4" ] .
+
+<#base-url-ipv6-port> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-ipv6-port" ;
+  rdfs:comment "A bracketed IPv6 address keeps any other port." ;
+  mf:action [ cascade:serverBaseUrl "https://[::1]:8443/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "https://[::1]:8443/r4" ] .
+
+<#base-url-ipvfuture> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-ipvfuture" ;
+  rdfs:comment "An IPvFuture literal (RFC 3986 §3.2.2) is kept, in lower case." ;
+  mf:action [ cascade:serverBaseUrl "https://[V1.Fe]/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "https://[v1.fe]/r4" ] .
+
+<#base-url-port-leading-zeros-default> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-port-leading-zeros-default" ;
+  rdfs:comment "A port is an integer (RFC 3986 section 3.2.3): 0443 is 443, https's default, so it is dropped." ;
+  mf:action [ cascade:serverBaseUrl "https://fhir.example.org:0443/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "https://fhir.example.org/r4" ] .
+
+<#base-url-port-leading-zeros> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-port-leading-zeros" ;
+  rdfs:comment "Leading zeros are dropped from a port that is not the default." ;
+  mf:action [ cascade:serverBaseUrl "https://fhir.example.org:08080/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "https://fhir.example.org:8080/r4" ] .
+
+<#base-url-port-highest> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-port-highest" ;
+  rdfs:comment "65535 is the highest port, and is kept." ;
+  mf:action [ cascade:serverBaseUrl "https://fhir.example.org:65535/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "https://fhir.example.org:65535/r4" ] .
+
+<#base-url-space> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-space" ;
+  rdfs:comment "A space is refused." ;
+  mf:action [ cascade:serverBaseUrl "https://fhir.example.org/r 4" ] .
+
+<#base-url-nul> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-nul" ;
+  rdfs:comment "U+0000 is refused." ;
+  mf:action [ cascade:serverBaseUrl "https://fhir.example.org/r4\u0000" ] .
+
+<#base-url-del> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-del" ;
+  rdfs:comment "U+007F (DEL) is refused." ;
+  mf:action [ cascade:serverBaseUrl "https://fhir.example.org/r4\u007F" ] .
+
+<#base-url-query> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-query" ;
+  rdfs:comment "A query is refused: a server's base never has one, and a credential in it must never be a name input." ;
+  mf:action [ cascade:serverBaseUrl "https://fhir.example.org/r4?tok=abc" ] .
+
+<#base-url-empty-query> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-empty-query" ;
+  rdfs:comment "An empty query is refused too." ;
+  mf:action [ cascade:serverBaseUrl "https://fhir.example.org/r4?" ] .
+
+<#base-url-fragment> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-fragment" ;
+  rdfs:comment "A fragment is refused." ;
+  mf:action [ cascade:serverBaseUrl "https://fhir.example.org/r4#x" ] .
+
+<#base-url-empty-fragment> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-empty-fragment" ;
+  rdfs:comment "An empty fragment is refused too." ;
+  mf:action [ cascade:serverBaseUrl "https://fhir.example.org/r4#" ] .
+
 <#base-url-userinfo> a bridge:BaseUrlRefusalTest ;
   mf:name "base-url-userinfo" ;
   rdfs:comment "A base URL carrying userinfo is refused: a credential is never a name input." ;
@@ -587,3 +697,53 @@
   mf:name "base-url-line-feed" ;
   rdfs:comment "A line feed is refused, not dropped as a URL parser drops it." ;
   mf:action [ cascade:serverBaseUrl "https://fhir.example.org/r4\n" ] .
+
+<#base-url-non-ascii-host> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-non-ascii-host" ;
+  rdfs:comment "A host holding a non-ASCII character is refused: a source sends an IDN punycoded." ;
+  mf:action [ cascade:serverBaseUrl "https://ΟΔΟΣ.example.org/r4" ] .
+
+<#base-url-non-ascii-compatibility-host> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-non-ascii-compatibility-host" ;
+  rdfs:comment "A host holding a compatibility character (U+2100) is refused, not folded." ;
+  mf:action [ cascade:serverBaseUrl "https://a℀b/r4" ] .
+
+<#base-url-bracket-unclosed> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-bracket-unclosed" ;
+  rdfs:comment "A host opening a bracket it never closes is refused." ;
+  mf:action [ cascade:serverBaseUrl "https://[abc/r4" ] .
+
+<#base-url-bracket-unopened> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-bracket-unopened" ;
+  rdfs:comment "A host closing a bracket it never opened is refused." ;
+  mf:action [ cascade:serverBaseUrl "https://abc]/r4" ] .
+
+<#base-url-bracket-not-ip> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-bracket-not-ip" ;
+  rdfs:comment "A bracketed host that is neither IPv6 nor IPvFuture is refused." ;
+  mf:action [ cascade:serverBaseUrl "https://[zzz]/r4" ] .
+
+<#base-url-bracket-empty> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-bracket-empty" ;
+  rdfs:comment "Empty brackets are refused." ;
+  mf:action [ cascade:serverBaseUrl "https://[]/r4" ] .
+
+<#base-url-ipv6-zone> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-ipv6-zone" ;
+  rdfs:comment "A zone id is refused: RFC 3986 section 3.2.2 has none." ;
+  mf:action [ cascade:serverBaseUrl "https://[fe80::1%25eth0]/r4" ] .
+
+<#base-url-bad-percent-in-host> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-bad-percent-in-host" ;
+  rdfs:comment "A host's % must open two hex digits." ;
+  mf:action [ cascade:serverBaseUrl "https://a%zz.example.org/r4" ] .
+
+<#base-url-port-non-ascii-digits> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-port-non-ascii-digits" ;
+  rdfs:comment "A port is ASCII digits: Arabic-Indic digits are refused." ;
+  mf:action [ cascade:serverBaseUrl "https://fhir.example.org:٤٤٣/r4" ] .
+
+<#base-url-port-too-high> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-port-too-high" ;
+  rdfs:comment "A port above 65535 is refused." ;
+  mf:action [ cascade:serverBaseUrl "https://fhir.example.org:65536/r4" ] .

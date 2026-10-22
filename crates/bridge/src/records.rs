@@ -6,6 +6,7 @@ use base64::Engine;
 use oxrdf::{BlankNode, NamedNode, NamedOrBlankNode, Quad, Term};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::net::Ipv6Addr;
 
 mod document;
 
@@ -95,14 +96,19 @@ fn without_dot_segments(path: &str) -> String {
 }
 
 /// RFC 3986 sections 6.2.2 and 6.2.3, then every trailing `/` removed. Refused: userinfo, a control
-/// character or space, no scheme, no host, and a port that is not digits.
+/// character or space, a query or a fragment (empty ones too), no scheme, no host, a host that is
+/// not ASCII, a registered name or a bracketed IPv6 address or IPvFuture (lower-cased), and a port that
+/// is not ASCII digits or is above 65535 (leading zeros dropped). A refusal says which rule, never the URL: it may carry a credential.
 pub(crate) fn normalised_base_url(url: &str) -> Result<String> {
-    let refused = |why: &str| Error::facts(format!("the server base URL {url:?} {why}"));
+    let refused = |why: &str| Error::facts(format!("a server base URL {why}"));
     if url
         .chars()
         .any(|character| character <= ' ' || character == '\x7f')
     {
         return Err(refused("holds a control character or space"));
+    }
+    if url.contains(['?', '#']) {
+        return Err(refused("carries a query or a fragment"));
     }
     let (scheme, rest) = url
         .split_once(':')
@@ -117,19 +123,29 @@ pub(crate) fn normalised_base_url(url: &str) -> Result<String> {
     let rest = rest
         .strip_prefix("//")
         .ok_or_else(|| refused("has no host"))?;
-    let (rest, fragment) = rest.split_once('#').unwrap_or((rest, ""));
-    let (rest, query) = rest.split_once('?').unwrap_or((rest, ""));
     let (authority, path) = rest.split_at(rest.find('/').unwrap_or(rest.len()));
     if authority.contains('@') {
         return Err(refused("carries userinfo"));
     }
-    let (host, port) = match authority
-        .strip_prefix('[')
-        .and_then(|_| authority.find(']'))
-    {
-        Some(close) => authority.split_at(close + 1),
-        None => authority.split_at(authority.find(':').unwrap_or(authority.len())),
+    let (host, port) = if authority.starts_with('[') {
+        let close = authority
+            .find(']')
+            .ok_or_else(|| refused("has a bracket that is not closed"))?;
+        authority.split_at(close + 1)
+    } else {
+        authority.split_at(authority.find(':').unwrap_or(authority.len()))
     };
+    if !host.is_ascii() {
+        return Err(refused("has a host that is not ASCII"));
+    }
+    if host.starts_with('[') {
+        let literal = &host[1..host.len() - 1];
+        if !(literal.parse::<Ipv6Addr>().is_ok() || ip_vfuture(literal)) {
+            return Err(refused("has a bracketed host that is not an IP literal"));
+        }
+    } else if !reg_name(host) {
+        return Err(refused("has a host that is not a registered name"));
+    }
     let port = match port.strip_prefix(':') {
         Some(digits) => digits,
         None if port.is_empty() => "",
@@ -138,6 +154,19 @@ pub(crate) fn normalised_base_url(url: &str) -> Result<String> {
     if !port.chars().all(|digit| digit.is_ascii_digit()) {
         return Err(refused("has a port that is not digits"));
     }
+    let significant = port.trim_start_matches('0');
+    if significant.len() > 5
+        || significant
+            .parse::<u32>()
+            .is_ok_and(|number| number > 65535)
+    {
+        return Err(refused("has a port above 65535"));
+    }
+    let port = if significant.is_empty() && !port.is_empty() {
+        "0"
+    } else {
+        significant
+    };
     if host.is_empty() {
         return Err(refused("has no host"));
     }
@@ -151,16 +180,46 @@ pub(crate) fn normalised_base_url(url: &str) -> Result<String> {
         format!("{host}:{port}")
     };
     let path = without_dot_segments(&percent_normalised(path, false));
-    let mut normal = format!("{scheme}://{authority}{}", path.trim_end_matches('/'));
-    if !query.is_empty() {
-        normal.push('?');
-        normal.push_str(query);
+    Ok(format!(
+        "{scheme}://{authority}{}",
+        path.trim_end_matches('/')
+    ))
+}
+
+/// RFC 3986 section 3.2.2's reg-name: unreserved and sub-delimiter characters and `%` before two hex digits.
+fn reg_name(host: &str) -> bool {
+    let mut rest = host;
+    while let Some(character) = rest.chars().next() {
+        if character == '%' {
+            if !rest
+                .get(1..3)
+                .is_some_and(|digits| digits.chars().all(|d| d.is_ascii_hexdigit()))
+            {
+                return false;
+            }
+            rest = &rest[3..];
+        } else if unreserved(character) || "!$&'()*+,;=".contains(character) {
+            rest = &rest[1..];
+        } else {
+            return false;
+        }
     }
-    if !fragment.is_empty() {
-        normal.push('#');
-        normal.push_str(fragment);
-    }
-    Ok(normal)
+    true
+}
+
+/// RFC 3986 section 3.2.2: `v`, hex digits, `.`, then unreserved, sub-delimiter and `:` characters.
+fn ip_vfuture(literal: &str) -> bool {
+    literal
+        .strip_prefix(['v', 'V'])
+        .and_then(|rest| rest.split_once('.'))
+        .is_some_and(|(version, address)| {
+            !version.is_empty()
+                && version.chars().all(|c| c.is_ascii_hexdigit())
+                && !address.is_empty()
+                && address
+                    .chars()
+                    .all(|c| unreserved(c) || ":!$&'()*+,;=".contains(c))
+        })
 }
 
 pub(crate) struct Version {
@@ -309,7 +368,7 @@ pub(crate) fn versioned(mapped: Vec<Quad>) -> Result<Versioned> {
     let names_dropped = |node: &NamedNode| dropped.contains(version_of(node.as_str()));
 
     let mut arrivals: BTreeMap<&str, Vec<&NamedOrBlankNode>> = BTreeMap::new();
-    let mut selected: HashMap<&NamedOrBlankNode, Vec<&BlankNode>> = HashMap::new();
+    let mut selected: HashMap<&NamedOrBlankNode, Vec<NamedOrBlankNode>> = HashMap::new();
     let mut selecting: HashMap<&NamedOrBlankNode, Vec<&str>> = HashMap::new();
     let mut referrers: HashMap<&BlankNode, Vec<&NamedOrBlankNode>> = HashMap::new();
     for quad in &mapped {
@@ -329,9 +388,18 @@ pub(crate) fn versioned(mapped: Vec<Quad>) -> Result<Versioned> {
                     .or_default()
                     .push(selector.value());
             }
+            Term::NamedNode(node) if quad.predicate.as_str() == OA_HAS_SELECTOR => {
+                selected
+                    .entry(&quad.subject)
+                    .or_default()
+                    .push(node.clone().into());
+            }
             Term::BlankNode(node) => {
                 if quad.predicate.as_str() == OA_HAS_SELECTOR {
-                    selected.entry(&quad.subject).or_default().push(node);
+                    selected
+                        .entry(&quad.subject)
+                        .or_default()
+                        .push(node.clone().into());
                 }
                 referrers.entry(node).or_default().push(&quad.subject);
             }
@@ -349,7 +417,7 @@ pub(crate) fn versioned(mapped: Vec<Quad>) -> Result<Versioned> {
                 .flatten()
                 .filter_map(|arrival| selected.get(arrival))
                 .flatten()
-                .filter_map(|selector| selecting.get(&NamedOrBlankNode::from((*selector).clone())))
+                .filter_map(|selector| selecting.get(selector))
                 .flatten()
                 .min()
                 .map(|selector| (*selector).to_owned()),
@@ -404,6 +472,8 @@ pub(crate) fn versioned(mapped: Vec<Quad>) -> Result<Versioned> {
 }
 
 #[cfg(test)]
+mod base_url;
+#[cfg(test)]
 mod vectors;
 #[cfg(test)]
 mod written;
@@ -449,6 +519,36 @@ mod tests {
             .as_deref()
             .is_some_and(|selector| selector
                 .contains("[local-name()='entry' and namespace-uri()='urn:hl7-org:v3'][1]")));
+    }
+
+    #[test]
+    fn finds_a_dropped_arrival_s_selector_when_the_selector_node_is_named() {
+        let quads: Vec<Quad> = RdfParser::from_format(RdfFormat::NTriples)
+            .for_slice(
+                format!(
+                    "<urn:example:v1> {OF} <urn:example:record> .
+<urn:example:v1> <urn:example:t> \"1\" .
+<urn:example:v2> {OF} <urn:example:record> .
+<urn:example:v2> <urn:example:t> \"2\" .
+<urn:example:a1> <{ARRIVED_AS}> <urn:example:v1> .
+<urn:example:a1> <http://www.w3.org/ns/oa#hasSelector> <urn:example:s1> .
+<urn:example:s1> <http://www.w3.org/1999/02/22-rdf-syntax-ns#value> \"/one\" .
+<urn:example:a2> <{ARRIVED_AS}> <urn:example:v2> .
+<urn:example:a2> <http://www.w3.org/ns/oa#hasSelector> <urn:example:s2> .
+<urn:example:s2> <http://www.w3.org/1999/02/22-rdf-syntax-ns#value> \"/two\" .
+"
+                )
+                .as_bytes(),
+            )
+            .map(|quad| quad.expect("N-Triples"))
+            .collect();
+        let dropped = versioned(quads).expect("versioned").dropped;
+        assert_eq!(dropped.len(), 1);
+        assert!(
+            matches!(dropped[0].selector.as_deref(), Some("/one" | "/two")),
+            "{:?}",
+            dropped[0].selector
+        );
     }
 
     #[test]

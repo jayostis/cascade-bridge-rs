@@ -1,14 +1,15 @@
 // tests/naming/ is a copy of tests/vectors/naming/ in jayostis/cascade-vocabulary and
 // tests/versioning/ of fixtures/versioning/ in jayostis/cascade-bridge-spec, the authorities.
 use super::{normalised_base_url, versioned};
+use crate::error::ErrorKind;
 use crate::fixtures::fixture;
-use crate::load::{as_subject, instances, list, objects, one, term_value, turtle};
+use crate::load::{as_subject, list, objects, one, subjects, term_value, turtle, values};
 use crate::rdf::canonical_lines;
 use crate::terms::{
     BRIDGE_BASE_URL_NORMALISATION_TEST, BRIDGE_BASE_URL_REFUSAL_TEST, BRIDGE_CANONICAL_CONTENT,
     BRIDGE_EXPECTED_GRAPH, BRIDGE_EXPECTED_NAME, BRIDGE_EXPECTED_VERSION, BRIDGE_INPUT,
-    BRIDGE_NAME_INPUTS, BRIDGE_NAMING_TEST, BRIDGE_VERSIONING_TEST, CASCADE_SERVER_BASE_URL,
-    MF_ACTION, MF_NAME, MF_RESULT, QT_QUERY,
+    BRIDGE_NAME_INPUTS, BRIDGE_NAMING_RULE, BRIDGE_NAMING_TEST, BRIDGE_VERSIONING_TEST,
+    CASCADE_SERVER_BASE_URL, MF_ACTION, MF_ENTRIES, MF_NAME, MF_RESULT, QT_QUERY, RDF_TYPE,
 };
 use oxigraph::model::{Literal, Term};
 use oxigraph::sparql::{QueryResults, SparqlEvaluator, Variable};
@@ -52,10 +53,44 @@ fn only(graph: &Graph, subject: &NamedOrBlankNode, predicate: &str) -> String {
         .unwrap_or_else(|| panic!("{subject} has no {predicate}"))
 }
 
+/// The rules whose names a vector gives without a query: a list or content rule, the runtime's.
+const WITHOUT_QUERY: [&str; 7] = [
+    "ClaimNamingRule",
+    "SnapshotNamingRule",
+    "VersionNamingRule",
+    "RevisionNamingRule",
+    "FindingNamingRule",
+    "TableVersionNamingRule",
+    "DocumentNamingRule",
+];
+
+/// What `mf:entries` lists of one class; every entry listed is of a class this runner knows.
 fn entries(graph: &Graph, class: &str) -> Vec<NamedOrBlankNode> {
-    let entries = instances(graph, class).expect("entries");
-    assert!(!entries.is_empty(), "no {class}");
-    entries
+    let root = subjects(graph, MF_ENTRIES).expect("the manifest").remove(0);
+    let listed = list(
+        graph,
+        objects(graph, &root, MF_ENTRIES).expect("entries").first(),
+    )
+    .expect("a list");
+    let known = [
+        BRIDGE_NAMING_TEST,
+        BRIDGE_BASE_URL_NORMALISATION_TEST,
+        BRIDGE_BASE_URL_REFUSAL_TEST,
+        BRIDGE_VERSIONING_TEST,
+    ];
+    let mut of_class = Vec::new();
+    for entry in listed.iter().filter_map(as_subject) {
+        let types = values(graph, &entry, RDF_TYPE).expect("types");
+        assert!(
+            types.iter().any(|kind| known.contains(&kind.as_str())),
+            "{entry} is of no class this runner knows: {types:?}"
+        );
+        if types.iter().any(|kind| kind == class) {
+            of_class.push(entry);
+        }
+    }
+    assert!(!of_class.is_empty(), "no {class}");
+    of_class
 }
 
 fn names(query: &[u8], inputs: &[String]) -> Vec<Term> {
@@ -89,10 +124,20 @@ fn names(query: &[u8], inputs: &[String]) -> Vec<Term> {
 #[test]
 fn computes_every_naming_vector_that_names_a_query_with_that_query_run_by_oxigraph() {
     let graph = manifest("tests/naming");
-    let mut run = 0;
-    for entry in entries(&graph, BRIDGE_NAMING_TEST) {
-        let action = node(&graph, &entry, MF_ACTION);
+    let listed = entries(&graph, BRIDGE_NAMING_TEST);
+    let (mut run, mut skipped) = (0, 0);
+    for entry in listed.iter() {
+        let action = node(&graph, entry, MF_ACTION);
         let Some(query) = one(&graph, &action, QT_QUERY).expect(QT_QUERY) else {
+            let rule = only(&graph, entry, BRIDGE_NAMING_RULE);
+            assert!(
+                WITHOUT_QUERY
+                    .iter()
+                    .any(|named| rule.ends_with(&format!("#{named}"))),
+                "{} has no query but {rule} has one",
+                named(&graph, entry)
+            );
+            skipped += 1;
             continue;
         };
         let head = objects(&graph, &action, BRIDGE_NAME_INPUTS).expect("inputs");
@@ -103,7 +148,7 @@ fn computes_every_naming_vector_that_names_a_query_with_that_query_run_by_oxigra
             .collect();
         let expected = objects(
             &graph,
-            &node(&graph, &entry, MF_RESULT),
+            &node(&graph, entry, MF_RESULT),
             BRIDGE_EXPECTED_NAME,
         )
         .expect("a name");
@@ -111,11 +156,12 @@ fn computes_every_naming_vector_that_names_a_query_with_that_query_run_by_oxigra
             names(&file(&query), &inputs),
             expected,
             "{}",
-            named(&graph, &entry)
+            named(&graph, entry)
         );
         run += 1;
     }
     assert!(run > 0, "no naming vector names a query");
+    assert_eq!(run + skipped, listed.len());
 }
 
 #[test]
@@ -150,8 +196,10 @@ fn refuses_every_base_url_the_vectors_refuse() {
             &node(&graph, &entry, MF_ACTION),
             CASCADE_SERVER_BASE_URL,
         );
-        assert!(
-            normalised_base_url(&given).is_err(),
+        let refusal = normalised_base_url(&given).expect_err(&named(&graph, &entry));
+        assert_eq!(
+            refusal.kind(),
+            &ErrorKind::Facts,
             "{}",
             named(&graph, &entry)
         );

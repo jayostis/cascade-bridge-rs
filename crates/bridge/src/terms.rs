@@ -96,6 +96,7 @@ terms! {
     BRIDGE_INPUT_ONLY = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "InputOnlyTest";
     BRIDGE_DATASET = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "DatasetCompletionTest";
 
+    BRIDGE_NAMING_RULE = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "namingRule";
     BRIDGE_NAMING_TEST = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "NamingTest";
     BRIDGE_BASE_URL_NORMALISATION_TEST = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "BaseUrlNormalisationTest";
     BRIDGE_BASE_URL_REFUSAL_TEST = "https://ns.cascadeprotocol.org/bridge/v1-draft#", "BaseUrlRefusalTest";
