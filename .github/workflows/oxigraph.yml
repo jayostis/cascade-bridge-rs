@@ -59,7 +59,7 @@ jobs:
       # cargo clones the fork with its submodules to resolve the patch below, before rust-cache restores anything.
       - if: matrix.fork
         id: fork-clone
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cargo/git/db/oxigraph-*
@@ -82,6 +82,13 @@ jobs:
           cargo update -p oxrdf -p oxsdatatypes -p spargebra -p sparopt
           grep -A2 '^name = "sparopt"' Cargo.lock
         working-directory: ${{ github.event.repository.name }}
+      - if: matrix.fork && github.ref == 'refs/heads/main' && steps.fork-clone.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.cargo/git/db/oxigraph-*
+            ~/.cargo/git/checkouts/oxigraph-*
+          key: oxigraph-fork-clone-${{ env.OXIGRAPH_FORK_REV }}
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: ${{ github.event.repository.name }}
