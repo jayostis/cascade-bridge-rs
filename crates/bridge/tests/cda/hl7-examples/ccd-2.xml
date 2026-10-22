@@ -568,7 +568,7 @@
 							<code xsi:type="CE" code="6025007" displayName="Laparoscopic appendectomy" codeSystem="2.16.840.1.113883.6.96" codeSystemName="SNOMED-CT">
 								<originalText> Laparoscopic appendectomy<reference value="#ProcedureDesc1"/>
 								</originalText>
-								<translation xsi:type="CE" codeSystem="2.16.840.1.113883.6.12" codeSystemName="CPT" code="44970" displayName="Laparoscopic Appendectomy"/>
+								<translation xsi:type="CE" codeSystem="2.16.840.1.113883.6.12" codeSystemName="CPT" code="44970"/>
 								<translation xsi:type="CE" codeSystem="2.16.840.1.113883.6.4" codeSystemName="ICD-10-PCS" code="0DTJ4ZZ" displayName="Resection of Appendix, Percutaneous Endoscopic Approach"/>
 								<translation xsi:type="CE" codeSystem="2.16.840.1.113883.6.104" codeSystemName="ICD-9-CM" code="47.01" displayName="Laparoscopic appendectomy"/>
 							</code>
@@ -620,7 +620,7 @@
 							<code xsi:type="CE" code="268400002" codeSystem="2.16.840.1.113883.6.96" displayName="12 lead electrocardiogram" codeSystemName="SNOMED-CT">
 								<originalText> Electrocardiogram (12-Lead)<reference value="#ProcedureDesc2"/>
 								</originalText>
-								<translation xsi:type="CE" code="93000" codeSystem="2.16.840.1.113883.6.12" displayName="Electrocardiogram, complete" codeSystemName="CPT"/>
+								<translation xsi:type="CE" code="93000" codeSystem="2.16.840.1.113883.6.12" codeSystemName="CPT"/>
 								<translation xsi:type="CE" code="G8704" codeSystem="2.16.840.1.113883.6.13" displayName="12-Lead Electrocardiogram (Ecg) Performed" codeSystemName="HCPCS"/>
 								<translation xsi:type="CE" code="89.52" codeSystem="2.16.840.1.113883.6.104" displayName="Electrocardiogram" codeSystemName="ICD-9 Procedure"/>
 								<translation xsi:type="CE" code="4A02X4Z" codeSystem="2.16.840.1.113883.6.4" displayName="Measurement of Cardiac Electrical Activity, External Approach" codeSystemName="ICD-10 Procedure"/>
@@ -669,7 +669,7 @@
 							<code xsi:type="CE" code="61310001" codeSystem="2.16.840.1.113883.6.96" displayName="Nutrition education" codeSystemName="SNOMED-CT">
 								<originalText> Individual Counseling For Medical Nutrition<reference value="#ProcedureDesc3"/>
 								</originalText>
-								<translation xsi:type="CE" code="97802" codeSystem="2.16.840.1.113883.6.12" displayName="Medical nutrition therapy; initial assessment and intervention, individual, face-to-face with the patient, each 15 minutes" codeSystemName="CPT"/>
+								<translation xsi:type="CE" code="97802" codeSystem="2.16.840.1.113883.6.12" codeSystemName="CPT"/>
 								<translation xsi:type="CE" code="S9470" codeSystem="2.16.840.1.113883.6.13" displayName="Nutritional counseling, diet" codeSystemName="HCPCS"/>
 								<!-- For some activities, ICD-9 and ICD-10 procedure codes may not apply (e.g. nutritional counseling). ICD-9 and ICD-10 diagnosis codes translate and shown below-->
 								<translation xsi:type="CE" code="V65.3" codeSystem="2.16.840.1.113883.6.103" displayName="Dietary surveillance and counseling" codeSystemName="ICD-9 Diagnosis"/>
