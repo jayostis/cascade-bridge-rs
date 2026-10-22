@@ -1,10 +1,10 @@
 use crate::fixtures;
-use crate::terms::BRIDGE_ARRIVED_AS;
 use crate::fixtures::{converted, objects, tiny_json, Variant, OA, RDF_TYPE, RDF_VALUE};
 use crate::harness::{run_manifest, RunOptions};
 use crate::load::load_adapter;
 use crate::resolver::Resolver;
 use crate::run::{convert, prepare, Conversion, Source};
+use crate::terms::BRIDGE_ARRIVED_AS;
 use oxrdf::Quad;
 
 fn read_in(resolver: &dyn Resolver, input: &str, envelope: &str) -> Conversion {
@@ -298,8 +298,23 @@ fn refuses_a_source_schema_whose_fragment_names_no_subschema() {
 }
 
 #[test]
-fn writes_an_arrival_s_selector_in_a_json_document_as_a_fragment_selector_conforming_to_json_pointer() {
-    let quads = converted(&tiny_json(), "list.json").quads;
+fn writes_an_arrival_s_selector_in_a_json_document_as_a_fragment_selector_conforming_to_json_pointer(
+) {
+    let resolver = Variant::of(tiny_json()).with(
+        "mapping/item.rq",
+        "PREFIX fx:   <http://sparql.xyz/facade-x/ns/>
+PREFIX xyz:  <http://sparql.xyz/facade-x/data/>
+PREFIX prov: <http://www.w3.org/ns/prov#>
+PREFIX bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#>
+PREFIX ex:   <urn:example:list#>
+CONSTRUCT { ?s a ex:Item . ?v prov:specializationOf ?s ; ex:title ?id . [] bridge:arrivedAs ?v . }
+WHERE {
+  ?item a fx:root ; xyz:id ?id .
+  BIND(IRI(CONCAT(\"urn:example:item:\", ?id)) AS ?s)
+  BIND(IRI(CONCAT(\"urn:example:draft:\", ?id)) AS ?v)
+}",
+    );
+    let quads = converted(&resolver, "list.json").quads;
     let arrivals: Vec<String> = quads
         .iter()
         .filter(|q| q.predicate.as_str() == BRIDGE_ARRIVED_AS)

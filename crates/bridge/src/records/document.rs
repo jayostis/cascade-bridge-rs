@@ -1,11 +1,12 @@
 use super::{ni_name, normalised_base_url, Versioned};
+use crate::annotation::SelectorType;
 use crate::error::{Error, Result};
 use crate::terms::{
-    BRIDGE_ARRIVED_AS, BRIDGE_SELECTOR, CASCADE_SERVER_BASE_URL, BRIDGE_SHA256,
-    BRIDGE_THIS_DOCUMENT, BRIDGE_THIS_IMPORT, BRIDGE_THIS_RECORD, PAV_LAST_UPDATE_ON, PAV_VERSION,
-    PROV_ACTIVITY, PROV_AGENT, PROV_ENTITY, PROV_HAD_PLAN, PROV_PLAN, PROV_QUALIFIED_ASSOCIATION,
-    PROV_SOFTWARE_AGENT, PROV_USED, PROV_WAS_DERIVED_FROM, PROV_WAS_GENERATED_BY, RDFS_LABEL,
-    RDF_TYPE,
+    BRIDGE_ARRIVED_AS, BRIDGE_SELECTOR, BRIDGE_SHA256, BRIDGE_THIS_DOCUMENT, BRIDGE_THIS_IMPORT,
+    BRIDGE_THIS_RECORD, CASCADE_SERVER_BASE_URL, OA_HAS_SELECTOR, OA_HAS_SOURCE,
+    PAV_LAST_UPDATE_ON, PAV_VERSION, PROV_ACTIVITY, PROV_AGENT, PROV_ENTITY, PROV_HAD_PLAN,
+    PROV_PLAN, PROV_QUALIFIED_ASSOCIATION, PROV_SOFTWARE_AGENT, PROV_USED, PROV_WAS_DERIVED_FROM,
+    PROV_WAS_GENERATED_BY, RDFS_LABEL, RDF_TYPE,
 };
 use oxigraph::store::Store;
 use oxrdf::vocab::xsd;
@@ -162,6 +163,7 @@ impl Document {
         &self,
         versioned: Versioned,
         selector: &str,
+        selector_type: SelectorType,
         source: &Store,
     ) -> Result<Vec<Quad>> {
         let arrivals: HashMap<&str, BlankNode> = versioned
@@ -199,24 +201,25 @@ impl Document {
             .collect();
         let mapping_selected: HashSet<NamedOrBlankNode> = graph
             .iter()
-            .filter(|quad| quad.predicate.as_str() == BRIDGE_SELECTOR)
+            .filter(|quad| quad.predicate.as_str() == OA_HAS_SELECTOR)
             .map(|quad| quad.subject.clone())
             .collect();
+        let mut written = Vec::new();
         for version in &versioned.versions {
             let arrival = arrivals[version.name.as_str()].clone();
             if !mapping_selected.contains(&NamedOrBlankNode::from(arrival.clone())) {
-                graph.push(quad(
-                    arrival.clone(),
-                    BRIDGE_SELECTOR,
-                    Literal::new_simple_literal(selector),
-                ));
+                let node = stable(&[self.name.as_str(), "selector", &version.name, selector]);
+                selector_type.write_as(node.clone(), selector, &mut written)?;
+                graph.push(quad(arrival.clone(), OA_HAS_SELECTOR, node));
             }
             graph.extend([
                 quad(arrival.clone(), BRIDGE_ARRIVED_AS, named(&version.name)),
+                quad(arrival.clone(), OA_HAS_SOURCE, self.name.clone()),
                 quad(arrival.clone(), PROV_WAS_DERIVED_FROM, self.name.clone()),
                 quad(arrival, PROV_WAS_GENERATED_BY, self.import.clone()),
             ]);
         }
+        graph.extend(written);
         let arrivals = arrivals.into_values().map(NamedOrBlankNode::from).collect();
         last_updates_as_the_source_wrote(&mut graph, &arrivals, source)?;
         Ok(graph)

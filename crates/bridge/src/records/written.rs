@@ -4,8 +4,9 @@ use crate::fixtures::{
     CRATE,
 };
 use crate::terms::{
-    BRIDGE_ARRIVED_AS, OA_HAS_SELECTOR, OA_XPATH_SELECTOR, PAV_LAST_UPDATE_ON, PAV_VERSION, PROV_ACTIVITY, PROV_AGENT,
-    PROV_WAS_DERIVED_FROM, PROV_WAS_GENERATED_BY, RDFS_LABEL, RDF_TYPE, RDF_VALUE,
+    BRIDGE_ARRIVED_AS, OA_HAS_SELECTOR, OA_HAS_SOURCE, OA_XPATH_SELECTOR, PAV_LAST_UPDATE_ON,
+    PAV_VERSION, PROV_ACTIVITY, PROV_AGENT, PROV_WAS_DERIVED_FROM, PROV_WAS_GENERATED_BY,
+    RDFS_LABEL, RDF_TYPE, RDF_VALUE,
 };
 use crate::terms::{
     BRIDGE_VERSION_NOT_KEPT, OA_HAS_BODY, PROV_SPECIALIZATION_OF, SH_RESULT_SEVERITY, SH_VALUE,
@@ -69,7 +70,7 @@ WHERE {{
 fn loads_the_facts_the_document_s_name_and_the_record_s_selector_into_each_record_s_dataset() {
     let resolver = reading(
         "?s ex:server ?server ; ex:document ?document ; ex:at ?at .",
-        "bridge:thisDocument cascade:serverBaseUrl ?server ; bridge:sha256 ?document .
+        "bridge:thisDocument <https://ns.cascadeprotocol.org/cascade#serverBaseUrl> ?server ; bridge:sha256 ?document .
          bridge:thisRecord bridge:selector ?at .",
     );
     let quads = converted_with_facts(&resolver, "two.xml").quads;
@@ -150,6 +151,11 @@ fn folds_each_version_s_arrival_into_one_node_naming_its_selector_its_document_a
             BTreeSet::from([format!("<{}>", two())])
         );
         assert_eq!(
+            said(&quads, arrival, OA_HAS_SOURCE),
+            BTreeSet::from([format!("<{}>", two())]),
+            "an arrival names the document it was read from"
+        );
+        assert_eq!(
             said(&quads, arrival, PROV_WAS_GENERATED_BY),
             BTreeSet::from([import.clone()])
         );
@@ -158,7 +164,10 @@ fn folds_each_version_s_arrival_into_one_node_naming_its_selector_its_document_a
             .iter()
             .flat_map(|selector| objects(&quads, &selector.to_string(), RDF_TYPE))
             .collect();
-        assert_eq!(kinds, [Term::from(NamedNode::new_unchecked(OA_XPATH_SELECTOR))]);
+        assert_eq!(
+            kinds,
+            [Term::from(NamedNode::new_unchecked(OA_XPATH_SELECTOR))]
+        );
         let written = said(&quads, arrival, PAV_VERSION);
         assert_eq!((selector.len(), written.len()), (1, 1), "{arrival}");
         arrived.extend(selector.into_iter().zip(written));
@@ -390,7 +399,7 @@ fn refuses_facts_that_supply_a_base_url_with_userinfo() {
         }),
     );
     assert_eq!(
-        refused.err().map(|error| *error.kind()),
+        refused.err().map(|error| error.kind().clone()),
         Some(crate::error::ErrorKind::Facts)
     );
 }

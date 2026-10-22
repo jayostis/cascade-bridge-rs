@@ -42,7 +42,8 @@ pub const XSD_INTEGER: &str = "http://www.w3.org/2001/XMLSchema#integer";
 /// The namespace the namespaced fixture is written in.
 pub const CATALOG: &str = "urn:example:catalog";
 pub const NOTE_GAP: &str = "urn:example:catalog#noteHasNoTerm";
-pub const PATH_NOT_ACCOUNTED: &str = "https://ns.cascadeprotocol.org/cascade#SourcePathNotAccounted";
+pub const PATH_NOT_ACCOUNTED: &str =
+    "https://ns.cascadeprotocol.org/cascade#SourcePathNotAccounted";
 
 pub const CRATE: &str = "ro-crate-metadata.json";
 pub const ACCOUNTING: &str = "vocab/catalog-accounting.ttl";

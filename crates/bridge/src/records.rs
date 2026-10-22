@@ -1,6 +1,6 @@
 use crate::error::{Error, Result};
 use crate::rdf::canonical_lines;
-use crate::terms::{BRIDGE_ARRIVED_AS, BRIDGE_SELECTOR, PROV_SPECIALIZATION_OF};
+use crate::terms::{BRIDGE_ARRIVED_AS, OA_HAS_SELECTOR, PROV_SPECIALIZATION_OF, RDF_VALUE};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use oxrdf::{BlankNode, NamedNode, NamedOrBlankNode, Quad, Term};
@@ -20,24 +20,147 @@ pub(crate) fn ni_name(octets: &[u8]) -> String {
     )
 }
 
-pub(crate) fn normalised_base_url(url: &str) -> Result<String> {
-    let normal = match url.split_once("://") {
-        Some((scheme, rest)) => {
-            let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
-            let (authority, path) = rest.split_at(end);
-            let (userinfo, host) = match authority.rsplit_once('@') {
-                Some((userinfo, host)) => (format!("{userinfo}@"), host),
-                None => (String::new(), authority),
-            };
-            format!(
-                "{}://{userinfo}{}{path}",
-                scheme.to_ascii_lowercase(),
-                host.to_ascii_lowercase()
-            )
+const DEFAULT_PORTS: [(&str, &str); 2] = [("http", "80"), ("https", "443")];
+
+fn unreserved(character: char) -> bool {
+    character.is_ascii_alphanumeric() || matches!(character, '-' | '.' | '_' | '~')
+}
+
+/// Each percent-encoded unreserved character decoded and every other encoding's hex digits upper
+/// case; with `lower`, every other character lower case too (RFC 3986 section 6.2.2.1).
+fn percent_normalised(text: &str, lower: bool) -> String {
+    let case = |character: char, into: &mut String| {
+        if lower {
+            into.extend(character.to_lowercase());
+        } else {
+            into.push(character);
         }
-        None => url.to_owned(),
     };
-    Ok(normal.trim_end_matches('/').to_owned())
+    let mut normal = String::new();
+    let mut rest = text;
+    while let Some(character) = rest.chars().next() {
+        let hex = rest
+            .strip_prefix('%')
+            .and_then(|after| after.get(..2))
+            .filter(|digits| digits.chars().all(|digit| digit.is_ascii_hexdigit()));
+        match hex {
+            Some(digits) => {
+                let decoded = char::from(u8::from_str_radix(digits, 16).expect("hex digits"));
+                if unreserved(decoded) {
+                    case(decoded, &mut normal);
+                } else {
+                    normal.push('%');
+                    normal.push_str(&digits.to_ascii_uppercase());
+                }
+                rest = &rest[3..];
+            }
+            None => {
+                case(character, &mut normal);
+                rest = &rest[character.len_utf8()..];
+            }
+        }
+    }
+    normal
+}
+
+/// RFC 3986 section 5.2.4.
+fn without_dot_segments(path: &str) -> String {
+    let mut path = path;
+    let mut output: Vec<&str> = Vec::new();
+    while !path.is_empty() {
+        if let Some(rest) = path.strip_prefix("../") {
+            path = rest;
+        } else if let Some(rest) = path.strip_prefix("./") {
+            path = rest;
+        } else if path.starts_with("/./") {
+            path = &path[2..];
+        } else if path == "/." {
+            path = "/";
+        } else if path.starts_with("/../") {
+            path = &path[3..];
+            output.pop();
+        } else if path == "/.." {
+            path = "/";
+            output.pop();
+        } else if path == "." || path == ".." {
+            path = "";
+        } else {
+            let start = usize::from(path.starts_with('/'));
+            let end = path[start..].find('/').map_or(path.len(), |at| at + start);
+            output.push(&path[..end]);
+            path = &path[end..];
+        }
+    }
+    output.concat()
+}
+
+/// RFC 3986 sections 6.2.2 and 6.2.3, then every trailing `/` removed. Refused: userinfo, a control
+/// character or space, no scheme, no host, and a port that is not digits.
+pub(crate) fn normalised_base_url(url: &str) -> Result<String> {
+    let refused = |why: &str| Error::facts(format!("the server base URL {url:?} {why}"));
+    if url
+        .chars()
+        .any(|character| character <= ' ' || character == '\x7f')
+    {
+        return Err(refused("holds a control character or space"));
+    }
+    let (scheme, rest) = url
+        .split_once(':')
+        .filter(|(scheme, _)| {
+            scheme.starts_with(|first: char| first.is_ascii_alphabetic())
+                && scheme
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || "+-.".contains(c))
+        })
+        .ok_or_else(|| refused("has no scheme"))?;
+    let scheme = scheme.to_ascii_lowercase();
+    let rest = rest
+        .strip_prefix("//")
+        .ok_or_else(|| refused("has no host"))?;
+    let (rest, fragment) = rest.split_once('#').unwrap_or((rest, ""));
+    let (rest, query) = rest.split_once('?').unwrap_or((rest, ""));
+    let (authority, path) = rest.split_at(rest.find('/').unwrap_or(rest.len()));
+    if authority.contains('@') {
+        return Err(refused("carries userinfo"));
+    }
+    let (host, port) = match authority
+        .strip_prefix('[')
+        .and_then(|_| authority.find(']'))
+    {
+        Some(close) => authority.split_at(close + 1),
+        None => authority.split_at(authority.find(':').unwrap_or(authority.len())),
+    };
+    let port = match port.strip_prefix(':') {
+        Some(digits) => digits,
+        None if port.is_empty() => "",
+        None => return Err(refused("has a port that is not digits")),
+    };
+    if !port.chars().all(|digit| digit.is_ascii_digit()) {
+        return Err(refused("has a port that is not digits"));
+    }
+    if host.is_empty() {
+        return Err(refused("has no host"));
+    }
+    let host = percent_normalised(host, true);
+    let default = DEFAULT_PORTS
+        .iter()
+        .find_map(|(named, port)| (*named == scheme).then_some(*port));
+    let authority = if port.is_empty() || Some(port) == default {
+        host
+    } else {
+        format!("{host}:{port}")
+    };
+    let path = without_dot_segments(&percent_normalised(path, false));
+    let mut normal = format!("{scheme}://{authority}{}", path.trim_end_matches('/'));
+    if !query.is_empty() {
+        normal.push('?');
+        normal.push_str(query);
+    }
+    if !fragment.is_empty() {
+        normal.push('#');
+        normal.push_str(fragment);
+    }
+    Ok(normal)
 }
 
 pub(crate) struct Version {
@@ -186,7 +309,8 @@ pub(crate) fn versioned(mapped: Vec<Quad>) -> Result<Versioned> {
     let names_dropped = |node: &NamedNode| dropped.contains(version_of(node.as_str()));
 
     let mut arrivals: BTreeMap<&str, Vec<&NamedOrBlankNode>> = BTreeMap::new();
-    let mut selectors: HashMap<&NamedOrBlankNode, Vec<&str>> = HashMap::new();
+    let mut selected: HashMap<&NamedOrBlankNode, Vec<&BlankNode>> = HashMap::new();
+    let mut selecting: HashMap<&NamedOrBlankNode, Vec<&str>> = HashMap::new();
     let mut referrers: HashMap<&BlankNode, Vec<&NamedOrBlankNode>> = HashMap::new();
     for quad in &mapped {
         match &quad.object {
@@ -199,13 +323,18 @@ pub(crate) fn versioned(mapped: Vec<Quad>) -> Result<Versioned> {
                     .or_default()
                     .push(&quad.subject);
             }
-            Term::Literal(selector) if quad.predicate.as_str() == BRIDGE_SELECTOR => {
-                selectors
+            Term::Literal(selector) if quad.predicate.as_str() == RDF_VALUE => {
+                selecting
                     .entry(&quad.subject)
                     .or_default()
                     .push(selector.value());
             }
-            Term::BlankNode(node) => referrers.entry(node).or_default().push(&quad.subject),
+            Term::BlankNode(node) => {
+                if quad.predicate.as_str() == OA_HAS_SELECTOR {
+                    selected.entry(&quad.subject).or_default().push(node);
+                }
+                referrers.entry(node).or_default().push(&quad.subject);
+            }
             _ => {}
         }
     }
@@ -218,7 +347,9 @@ pub(crate) fn versioned(mapped: Vec<Quad>) -> Result<Versioned> {
                 .get(version)
                 .into_iter()
                 .flatten()
-                .filter_map(|arrival| selectors.get(arrival))
+                .filter_map(|arrival| selected.get(arrival))
+                .flatten()
+                .filter_map(|selector| selecting.get(&NamedOrBlankNode::from((*selector).clone())))
                 .flatten()
                 .min()
                 .map(|selector| (*selector).to_owned()),

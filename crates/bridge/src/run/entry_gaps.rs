@@ -1,7 +1,7 @@
 use crate::fixtures::{
     accounting, address, annotations, concept, conversion, count, entry, findings, gap_scheme,
-    node, one, says, step, tiny, with_accounting, Variant, ACCOUNTING, ACCOUNTING_PREAMBLE, BRIDGE, CASCADE,
-    CRATE, GAPS_PREAMBLE, GAP_SCHEME, NOTE_GAP, OA, PATH_NOT_ACCOUNTED, SH, XSD_INTEGER,
+    node, one, says, step, tiny, with_accounting, Variant, ACCOUNTING, ACCOUNTING_PREAMBLE, BRIDGE,
+    CASCADE, CRATE, GAPS_PREAMBLE, GAP_SCHEME, NOTE_GAP, OA, PATH_NOT_ACCOUNTED, SH, XSD_INTEGER,
 };
 use crate::resolver::Resolver;
 use oxrdf::{Quad, Term};

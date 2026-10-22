@@ -2,11 +2,12 @@
 // alternatives of each other.
 use crate::error::{Error, Result};
 use crate::terms::{
-    BRIDGE_ADDRESS_NOT_ONE_NODE, CASCADE_OCCURRENCE_COUNT, CASCADE_SOURCE_PATH_NOT_ACCOUNTED, BRIDGE_THIS_RECORD,
-    BRIDGE_VERSION_NOT_KEPT, DCTERMS_CONFORMS_TO, JSON_POINTER, OA_ANNOTATION, OA_CLASSIFYING,
-    OA_FRAGMENT_SELECTOR, OA_HAS_BODY, OA_HAS_SELECTOR, OA_HAS_SOURCE, OA_HAS_TARGET,
-    OA_MOTIVATED_BY, OA_REFINED_BY, OA_XPATH_SELECTOR, RDF_TYPE, RDF_VALUE, SH_FOCUS_NODE, SH_INFO,
-    SH_RESULT_PATH, SH_RESULT_SEVERITY, SH_VALUE, SH_VIOLATION, SH_WARNING,
+    BRIDGE_ADDRESS_NOT_ONE_NODE, BRIDGE_THIS_RECORD, BRIDGE_VERSION_NOT_KEPT,
+    CASCADE_OCCURRENCE_COUNT, CASCADE_SOURCE_PATH_NOT_ACCOUNTED, DCTERMS_CONFORMS_TO, JSON_POINTER,
+    OA_ANNOTATION, OA_CLASSIFYING, OA_FRAGMENT_SELECTOR, OA_HAS_BODY, OA_HAS_SELECTOR,
+    OA_HAS_SOURCE, OA_HAS_TARGET, OA_MOTIVATED_BY, OA_REFINED_BY, OA_XPATH_SELECTOR, RDF_TYPE,
+    RDF_VALUE, SH_FOCUS_NODE, SH_INFO, SH_RESULT_PATH, SH_RESULT_SEVERITY, SH_VALUE, SH_VIOLATION,
+    SH_WARNING,
 };
 use oxrdf::vocab::xsd;
 use oxrdf::{BlankNode, GraphName, Literal, NamedNode, NamedOrBlankNode, Quad, Term};
@@ -27,7 +28,15 @@ pub(crate) enum SelectorType {
 
 impl SelectorType {
     fn write(self, value: &str, into: &mut Vec<Quad>) -> Result<BlankNode> {
-        let node = BlankNode::default();
+        self.write_as(BlankNode::default(), value, into)
+    }
+
+    pub(crate) fn write_as(
+        self,
+        node: BlankNode,
+        value: &str,
+        into: &mut Vec<Quad>,
+    ) -> Result<BlankNode> {
         match self {
             Self::XPath => into.push(triple(node.clone(), RDF_TYPE, named(OA_XPATH_SELECTOR)?)?),
             Self::JsonPointer => {

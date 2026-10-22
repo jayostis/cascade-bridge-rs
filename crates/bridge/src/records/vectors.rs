@@ -2,8 +2,8 @@
 // tests/versioning/ of fixtures/versioning/ in jayostis/cascade-bridge-spec, the authorities.
 use super::{normalised_base_url, versioned};
 use crate::fixtures::fixture;
-use crate::rdf::canonical_lines;
 use crate::load::{as_subject, instances, list, objects, one, term_value, turtle};
+use crate::rdf::canonical_lines;
 use crate::terms::{
     BRIDGE_BASE_URL_NORMALISATION_TEST, BRIDGE_BASE_URL_REFUSAL_TEST, BRIDGE_CANONICAL_CONTENT,
     BRIDGE_EXPECTED_GRAPH, BRIDGE_EXPECTED_NAME, BRIDGE_EXPECTED_VERSION, BRIDGE_INPUT,
@@ -70,7 +70,8 @@ fn names(query: &[u8], inputs: &[String]) -> Vec<Term> {
             Literal::new_simple_literal(input),
         );
     }
-    let QueryResults::Solutions(solutions) = evaluator.on_store(&store).execute().expect("evaluated")
+    let QueryResults::Solutions(solutions) =
+        evaluator.on_store(&store).execute().expect("evaluated")
     else {
         panic!("the naming query is not a SELECT");
     };
