@@ -126,7 +126,7 @@ fn address_of_the_element_starting_at(xml: &str, offset: usize) -> String {
 }
 
 #[test]
-fn holds_each_third_party_file_as_published() {
+fn holds_each_third_party_file_as_published_but_for_the_cpt_descriptors_removed() {
     let published = [
         (
             "conformance/allergies-section.xml",
@@ -158,11 +158,11 @@ fn holds_each_third_party_file_as_published() {
         ),
         (
             "hl7-examples/ccd-1.xml",
-            "9f75d7df96fb711841c8ce8d71da901e132185ac83290a00bf3bdd4eea008783",
+            "f1d5758f243918c38a113af9eee262269fa80561226769352bf653dd33a05ac3",
         ),
         (
             "hl7-examples/ccd-2.xml",
-            "c5c60ef2281f66a69581ea7671188adb0bc3585c37828470eeb565c778a5970e",
+            "59e4d176472c5d3896924c058d8e09fc541aa85e02f55bc8ed49dcf7ef12fd78",
         ),
         (
             "schema/infrastructure/cda/CDA_SDTC.xsd",
