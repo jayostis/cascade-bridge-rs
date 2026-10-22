@@ -32,10 +32,17 @@ jobs:
     outputs:
       built: ${{ steps.pack.outputs.built }}
       pull: ${{ steps.decide.outputs.pull }}
+    # Checked out where the oxigraph workflow checks out, so that its executor spareval job's cache,
+    # saved on main from the same two builds, restores here: main's own run of this job reuses its
+    # pull request's build and so never saves one.
+    defaults:
+      run:
+        working-directory: ${{ github.event.repository.name }}
     steps:
       - uses: actions/checkout@v7
         with:
           ref: ${{ env.COMMIT }}
+          path: ${{ github.event.repository.name }}
           persist-credentials: false
       - uses: actions/setup-node@v5
         with:
@@ -137,14 +144,16 @@ jobs:
       - if: steps.decide.outputs.build == 'true'
         uses: Swatinem/rust-cache@v2
         with:
+          workspaces: ${{ github.event.repository.name }}
+          shared-key: oxigraph-wasm
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - if: steps.decide.outputs.build == 'true'
         uses: actions/cache@v6
         with:
           path: |
-            target/wasm-bindgen-*
-            target/binaryen-*
-          key: package-tools-${{ hashFiles('Cargo.lock', 'package/build.sh') }}
+            ${{ github.event.repository.name }}/target/wasm-bindgen-*
+            ${{ github.event.repository.name }}/target/binaryen-*
+          key: package-tools-${{ hashFiles(format('{0}/Cargo.lock', github.event.repository.name), format('{0}/package/build.sh', github.event.repository.name)) }}
       - if: steps.decide.outputs.build == 'true'
         run: sh package/build.sh
       - if: steps.decide.outputs.build == 'true'
@@ -155,7 +164,7 @@ jobs:
         if: steps.decide.outputs.exists == 'false'
         env:
           PULL: ${{ github.event.pull_request.number }}
-        working-directory: package/dist
+        working-directory: ${{ github.event.repository.name }}/package/dist
         run: |
           out="$RUNNER_TEMP/out"
           npm pack --json > ../pack.json
