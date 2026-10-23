@@ -57,6 +57,7 @@ https://h.example:0443/r4	https://h.example/r4
 https://h.example:65536/r4	REFUSED
 https://h.example:00000/r4	https://h.example:0/r4
 https://h.example:099999/r4	REFUSED
+https://h.example:0000080/r4	REFUSED
 https://h.example:0080/r4	https://h.example:80/r4
 https://h.example:/r4	https://h.example/r4
 # an upper-case scheme, and a default port after it

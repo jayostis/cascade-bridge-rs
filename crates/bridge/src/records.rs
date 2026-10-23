@@ -155,7 +155,7 @@ pub(crate) fn normalised_base_url(url: &str) -> Result<String> {
         return Err(refused("has a port that is not digits"));
     }
     let significant = port.trim_start_matches('0');
-    if significant.len() > 5
+    if port.len() > 5
         || significant
             .parse::<u32>()
             .is_ok_and(|number| number > 65535)
