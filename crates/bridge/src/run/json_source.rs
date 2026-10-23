@@ -4,6 +4,7 @@ use crate::harness::{run_manifest, RunOptions};
 use crate::load::load_adapter;
 use crate::resolver::Resolver;
 use crate::run::{convert, prepare, Conversion, Source};
+use crate::terms::BRIDGE_ARRIVED_AS;
 use oxrdf::Quad;
 
 fn read_in(resolver: &dyn Resolver, input: &str, envelope: &str) -> Conversion {
@@ -294,4 +295,73 @@ fn refuses_a_source_schema_whose_fragment_names_no_subschema() {
         .expect("refused")
         .to_string();
     assert!(refused.contains("#/definitions/absent"), "{refused}");
+}
+
+const ARRIVING: &str = "PREFIX fx:   <http://sparql.xyz/facade-x/ns/>
+PREFIX xyz:  <http://sparql.xyz/facade-x/data/>
+PREFIX prov: <http://www.w3.org/ns/prov#>
+PREFIX bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#>
+PREFIX ex:   <urn:example:list#>
+CONSTRUCT { ?s a ex:Item . ?v prov:specializationOf ?s ; ex:title ?id . [] bridge:arrivedAs ?v . }
+WHERE {
+  ?item a fx:root ; xyz:id ?id .
+  BIND(IRI(CONCAT(\"urn:example:item:\", ?id)) AS ?s)
+  BIND(IRI(CONCAT(\"urn:example:draft:\", ?id)) AS ?v)
+}";
+
+#[test]
+fn writes_an_arrival_s_selector_in_a_json_document_as_a_fragment_selector_conforming_to_json_pointer(
+) {
+    let resolver = Variant::of(tiny_json()).with("mapping/item.rq", ARRIVING);
+    let quads = converted(&resolver, "list.json").quads;
+    let arrivals: Vec<String> = quads
+        .iter()
+        .filter(|q| q.predicate.as_str() == BRIDGE_ARRIVED_AS)
+        .map(|q| q.subject.to_string())
+        .collect();
+    assert!(!arrivals.is_empty());
+    for arrival in arrivals {
+        let selectors = objects(&quads, &arrival, &format!("{OA}hasSelector"));
+        let [selector] = selectors.as_slice() else {
+            panic!("{arrival} carries {selectors:?}");
+        };
+        let selector = selector.to_string();
+        assert_eq!(
+            objects(&quads, &selector, RDF_TYPE)
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+            [format!("<{OA}FragmentSelector>")]
+        );
+        assert_eq!(
+            objects(&quads, &selector, "http://purl.org/dc/terms/conformsTo")
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>(),
+            ["<https://www.rfc-editor.org/rfc/rfc6901>"]
+        );
+    }
+}
+
+#[test]
+fn writes_an_arrival_s_selector_value_with_a_key_s_tilde_slash_space_and_non_ascii_character_escaped(
+) {
+    let resolver = Variant::of(tiny_json())
+        .with("mapping/item.rq", ARRIVING)
+        .replacing(
+            "ro-crate-metadata.json",
+            "$.items[*]",
+            "$.items[*].sub['a~b/c d \u{e9}']",
+        )
+        .with(
+            "fixtures/in/list.json",
+            r#"{"kind": "list", "items": [{"id": "1", "sub": {"a~b/c d é": {"id": "1"}}}]}"#,
+        );
+    let quads = converted(&resolver, "list.json").quads;
+    let values: Vec<String> = quads
+        .iter()
+        .filter(|q| q.predicate.as_str() == RDF_VALUE)
+        .map(|q| q.object.to_string())
+        .collect();
+    assert_eq!(values, [r#""/items/0/sub/a~0b~1c%20d%20%C3%A9""#]);
 }

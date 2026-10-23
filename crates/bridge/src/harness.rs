@@ -14,8 +14,8 @@ use crate::terms::{
     BRIDGE_ARRIVED_AS, BRIDGE_CONVERSION, BRIDGE_DATASET, BRIDGE_ENVELOPE,
     BRIDGE_EXPECTED_FINDINGS, BRIDGE_EXPECTED_GRAPH, BRIDGE_FACTS, BRIDGE_IDENTITY_RELATION_TEST,
     BRIDGE_INPUT, BRIDGE_INPUT_ONLY, BRIDGE_ISOMORPHIC, BRIDGE_SAME_RECORD, BRIDGE_SELECTOR,
-    BRIDGE_SPARQL_1_1, MF_ACTION, MF_ENTRIES, MF_NAME, MF_RESULT, PROV_AGENT,
-    PROV_QUALIFIED_ASSOCIATION, PROV_SPECIALIZATION_OF, RDF_TYPE,
+    BRIDGE_SPARQL_1_1, MF_ACTION, MF_ENTRIES, MF_NAME, MF_RESULT, OA_HAS_SELECTOR, PROV_AGENT,
+    PROV_QUALIFIED_ASSOCIATION, PROV_SPECIALIZATION_OF, RDF_TYPE, RDF_VALUE,
 };
 use oxigraph::model::{Graph, NamedOrBlankNode, Quad, Term};
 use oxrdfio::{RdfFormat, RdfParser};
@@ -173,22 +173,30 @@ impl Entry<'_> {
         let graph = self.graph;
         let selector = one(graph, conversion, BRIDGE_SELECTOR)?;
         let (run, _) = self.converted(Some(conversion))?;
-        let said = |subject: &NamedOrBlankNode, predicate: &str| -> Vec<String> {
+        let objects_of = |subject: &NamedOrBlankNode, predicate: &str| -> Vec<Term> {
             run.quads
                 .iter()
                 .filter(|q| &q.subject == subject && q.predicate.as_str() == predicate)
-                .map(|q| term_value(&q.object))
+                .map(|q| q.object.clone())
                 .collect()
+        };
+        let said = |subject: &NamedOrBlankNode, predicate: &str| -> Vec<String> {
+            objects_of(subject, predicate)
+                .iter()
+                .map(term_value)
+                .collect()
+        };
+        let stood_at = |arrival: &NamedOrBlankNode, at: &String| -> bool {
+            objects_of(arrival, OA_HAS_SELECTOR)
+                .iter()
+                .filter_map(as_subject)
+                .any(|node| said(&node, RDF_VALUE).contains(at))
         };
         let records: BTreeSet<String> = run
             .quads
             .iter()
             .filter(|q| q.predicate.as_str() == BRIDGE_ARRIVED_AS)
-            .filter(|q| {
-                selector
-                    .as_ref()
-                    .is_none_or(|at| said(&q.subject, BRIDGE_SELECTOR).contains(at))
-            })
+            .filter(|q| selector.as_ref().is_none_or(|at| stood_at(&q.subject, at)))
             .filter_map(|q| as_subject(&q.object))
             .flat_map(|version| said(&version, PROV_SPECIALIZATION_OF))
             .collect();

@@ -522,7 +522,7 @@ fn unit_converted(
         )?);
     }
     let produced = profile.during(Stage::Records, || {
-        arrived_in.arrived(versioned, &selector, &unit.store)
+        arrived_in.arrived(versioned, &selector, selector_type, &unit.store)
     })?;
     if let Some(vocabulary) = &prepared.vocabulary {
         findings.extend(profile.during(Stage::OutputValidation, || {

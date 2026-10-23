@@ -1,7 +1,7 @@
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix sh:  <http://www.w3.org/ns/shacl#> .
 @prefix oa:  <http://www.w3.org/ns/oa#> .
-@prefix bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
 @prefix ex:  <urn:example:catalog#> .
 
 [] a oa:Annotation ;
@@ -64,7 +64,7 @@
   oa:hasBody ex:noteHasNoTerm ;
   oa:motivatedBy oa:classifying ;
   sh:value "/item/note" ;
-  bridge:occurrences 2 ;
+  cascade:occurrenceCount 2 ;
   sh:resultSeverity sh:Info .
 
 [] a oa:Annotation ;

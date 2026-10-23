@@ -2,13 +2,13 @@
 @prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix prov:   <http://www.w3.org/ns/prov#> .
 @prefix pav:    <http://purl.org/pav/> .
-@prefix bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
 
 <urn:example:item:1> a ex:Item ; ex:title "First" .
 <urn:example:item:2> a ex:Item .
 
 <ni:///sha-256;kJbbG0Tc_OF62d4PyvYQbHkMRx39JhjjoiCLaRvGKhA> a prov:Entity ;
-  bridge:serverBaseUrl "http://shop.example/Catalog" ;
+  cascade:serverBaseUrl "http://shop.example/Catalog" ;
   pav:retrievedFrom <http://shop.example/Catalog/items> .
 
 [] a prov:Activity ;
