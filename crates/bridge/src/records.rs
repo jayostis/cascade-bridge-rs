@@ -155,18 +155,14 @@ pub(crate) fn normalised_base_url(url: &str) -> Result<String> {
         return Err(refused("has a port that is not digits"));
     }
     let significant = port.trim_start_matches('0');
-    if port.len() > 5
-        || significant
-            .parse::<u32>()
-            .is_ok_and(|number| number > 65535)
-    {
-        return Err(refused("has a port above 65535"));
-    }
     let port = if significant.is_empty() && !port.is_empty() {
         "0"
     } else {
         significant
     };
+    if port.len() > 5 || port.parse::<u32>().is_ok_and(|number| number > 65535) {
+        return Err(refused("has a port above 65535"));
+    }
     if host.is_empty() {
         return Err(refused("has no host"));
     }
