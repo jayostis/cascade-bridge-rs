@@ -317,6 +317,11 @@ const DECLINED: &[(&str, &str, &str)] = &[
         "a property path from a node not yet bound",
     ),
     (
+        "a subquery that makes blank nodes, which stock Oxigraph evaluates once for every row around it",
+        "CONSTRUCT { ?i :has ?b } WHERE { ?r a :Root ; ?slot ?i . { SELECT ?i ?b WHERE { ?i a :Item BIND(BNODE() AS ?b) } } }",
+        "a subquery that makes blank nodes",
+    ),
+    (
         "BNODE of a label",
         "CONSTRUCT { ?s :p ?o } WHERE { ?s a :Item . BIND(BNODE(\"x\") AS ?o) }",
         "the function BNODE",
