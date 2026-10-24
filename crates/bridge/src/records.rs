@@ -468,8 +468,6 @@ pub(crate) fn versioned(mapped: Vec<Quad>) -> Result<Versioned> {
 }
 
 #[cfg(test)]
-mod base_url;
-#[cfg(test)]
 mod vectors;
 #[cfg(test)]
 mod written;

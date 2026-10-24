@@ -188,21 +188,22 @@ fn normalises_every_base_url_vector() {
 }
 
 #[test]
-fn refuses_every_base_url_the_vectors_refuse() {
+fn says_which_rule_refused_a_base_url_and_never_the_url() {
     let graph = manifest("tests/naming");
-    for entry in entries(&graph, BRIDGE_BASE_URL_REFUSAL_TEST) {
+    let refusals = entries(&graph, BRIDGE_BASE_URL_REFUSAL_TEST);
+    assert!(!refusals.is_empty(), "the manifest lists no refusal");
+    for entry in refusals {
+        let name = named(&graph, &entry);
         let given = only(
             &graph,
             &node(&graph, &entry, MF_ACTION),
             CASCADE_SERVER_BASE_URL,
         );
-        let refusal = normalised_base_url(&given).expect_err(&named(&graph, &entry));
-        assert_eq!(
-            refusal.kind(),
-            &ErrorKind::Facts,
-            "{}",
-            named(&graph, &entry)
-        );
+        let refusal = normalised_base_url(&given).expect_err(&name);
+        assert_eq!(refusal.kind(), &ErrorKind::Facts, "{name}");
+        let said = refusal.to_string();
+        assert!(said.starts_with("a server base URL "), "{name}: {said}");
+        assert!(given.is_empty() || !said.contains(&given), "{name}: {said}");
     }
 }
 
