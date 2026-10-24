@@ -1,15 +1,14 @@
 use super::explain::{Explained, Nested, Noted};
 use super::keys::{known_values, settled, Hints};
 use super::run::Compiled;
-use super::scope::analysis as node;
+use super::scope::analysis::{self as node, makes_blank_nodes};
 use super::scope::{analyze, Bound, Certain, Frame, Hidden, Names, Reads, Scope, Scoped};
 use super::{Aggregate, Edge, Expr, Group, Key, Kind, Note, Pattern, Place, Plan, Reach, Step};
 use oxigraph::model::vocab::xsd;
 use oxigraph::model::{BlankNode, Literal, NamedNode, NamedNodeRef, Term};
 use oxiri::Iri;
 use spargebra::algebra::{
-    AggregateExpression, AggregateFunction, Expression, Function, GraphPattern,
-    PropertyPathExpression,
+    AggregateExpression, AggregateFunction, Expression, GraphPattern, PropertyPathExpression,
 };
 use spargebra::term::{GroundTerm, NamedNodePattern, TermPattern, TriplePattern};
 use spargebra::Query;
@@ -524,41 +523,6 @@ impl Lowering {
             out.steps.extend(placed);
         }
         Ok(())
-    }
-}
-
-/// Whether an expression calls BNODE, whose node is another for each row: a BIND
-/// of one is evaluated after every pattern of its group, as the algebra puts it.
-fn makes_blank_nodes(expression: &Expression) -> bool {
-    match expression {
-        Expression::FunctionCall(Function::BNode, _) => true,
-        Expression::Or(a, b)
-        | Expression::And(a, b)
-        | Expression::Equal(a, b)
-        | Expression::SameTerm(a, b)
-        | Expression::Greater(a, b)
-        | Expression::GreaterOrEqual(a, b)
-        | Expression::Less(a, b)
-        | Expression::LessOrEqual(a, b)
-        | Expression::Add(a, b)
-        | Expression::Subtract(a, b)
-        | Expression::Multiply(a, b)
-        | Expression::Divide(a, b) => makes_blank_nodes(a) || makes_blank_nodes(b),
-        Expression::UnaryPlus(a) | Expression::UnaryMinus(a) | Expression::Not(a) => {
-            makes_blank_nodes(a)
-        }
-        Expression::If(a, b, c) => {
-            makes_blank_nodes(a) || makes_blank_nodes(b) || makes_blank_nodes(c)
-        }
-        Expression::In(a, list) => makes_blank_nodes(a) || list.iter().any(makes_blank_nodes),
-        Expression::Coalesce(list) | Expression::FunctionCall(_, list) => {
-            list.iter().any(makes_blank_nodes)
-        }
-        Expression::NamedNode(_)
-        | Expression::Literal(_)
-        | Expression::Variable(_)
-        | Expression::Bound(_)
-        | Expression::Exists(_) => false,
     }
 }
 
