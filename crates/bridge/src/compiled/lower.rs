@@ -3,12 +3,13 @@ use super::keys::{known_values, settled, Hints};
 use super::run::Compiled;
 use super::scope::analysis as node;
 use super::scope::{analyze, Bound, Certain, Frame, Hidden, Names, Reads, Scope, Scoped};
-use super::{Aggregate, Expr, Group, Key, Kind, Note, Pattern, Place, Plan, Reach, Step};
+use super::{Aggregate, Edge, Expr, Group, Key, Kind, Note, Pattern, Place, Plan, Reach, Step};
 use oxigraph::model::vocab::xsd;
 use oxigraph::model::{BlankNode, Literal, NamedNode, NamedNodeRef, Term};
 use oxiri::Iri;
 use spargebra::algebra::{
-    AggregateExpression, AggregateFunction, Expression, GraphPattern, PropertyPathExpression,
+    AggregateExpression, AggregateFunction, Expression, Function, GraphPattern,
+    PropertyPathExpression,
 };
 use spargebra::term::{GroundTerm, NamedNodePattern, TermPattern, TriplePattern};
 use spargebra::Query;
@@ -147,7 +148,8 @@ impl Lowering {
             Scoped::Triples(triples) => {
                 let pending = self.patterns(triples.patterns)?;
                 let mut bound = triples.entry.clone();
-                let rest = self.schedule(pending, Some(&extend.operands), &mut bound, out)?;
+                let until = (!makes_blank_nodes(extend.expression)).then_some(&extend.operands);
+                let rest = self.schedule(pending, until, &mut bound, out)?;
                 let (operand, note) = self.operand(extend, &bound.scope(Hidden::new()))?;
                 bound.binds(extend.slot, extend.certainly);
                 out.push(bind_step(extend, operand, note), &bound.certain);
@@ -336,26 +338,29 @@ impl Lowering {
         Ok(())
     }
 
-    /// A path that takes one of some edges: a UNION of a triple pattern for each.
     fn choice(
         &mut self,
         path: &node::Path,
         edges: &[(&NamedNode, bool)],
         out: &mut Built,
     ) -> Result<(), String> {
-        let mut branches = Vec::new();
+        let mut taken = Vec::new();
         for &(edge, backwards) in edges {
             let (mut subject, mut object) = (self.place(path.subject)?, self.place(path.object)?);
             if backwards {
                 std::mem::swap(&mut subject, &mut object);
             }
-            branches.push(vec![Step::Triple(Pattern {
-                subject,
-                predicate: Place::Const(Term::from(edge.clone())),
-                object,
-            })]);
+            let predicate = Place::Const(Term::from(edge.clone()));
+            taken.push(Edge {
+                pattern: Pattern {
+                    subject,
+                    predicate,
+                    object,
+                },
+                backwards,
+            });
         }
-        out.push(Step::Union(branches), &path.certain_after);
+        out.push(Step::Choice(taken), &path.certain_after);
         Ok(())
     }
 
@@ -519,6 +524,41 @@ impl Lowering {
             out.steps.extend(placed);
         }
         Ok(())
+    }
+}
+
+/// Whether an expression calls BNODE, whose node is another for each row: a BIND
+/// of one is evaluated after every pattern of its group, as the algebra puts it.
+fn makes_blank_nodes(expression: &Expression) -> bool {
+    match expression {
+        Expression::FunctionCall(Function::BNode, _) => true,
+        Expression::Or(a, b)
+        | Expression::And(a, b)
+        | Expression::Equal(a, b)
+        | Expression::SameTerm(a, b)
+        | Expression::Greater(a, b)
+        | Expression::GreaterOrEqual(a, b)
+        | Expression::Less(a, b)
+        | Expression::LessOrEqual(a, b)
+        | Expression::Add(a, b)
+        | Expression::Subtract(a, b)
+        | Expression::Multiply(a, b)
+        | Expression::Divide(a, b) => makes_blank_nodes(a) || makes_blank_nodes(b),
+        Expression::UnaryPlus(a) | Expression::UnaryMinus(a) | Expression::Not(a) => {
+            makes_blank_nodes(a)
+        }
+        Expression::If(a, b, c) => {
+            makes_blank_nodes(a) || makes_blank_nodes(b) || makes_blank_nodes(c)
+        }
+        Expression::In(a, list) => makes_blank_nodes(a) || list.iter().any(makes_blank_nodes),
+        Expression::Coalesce(list) | Expression::FunctionCall(_, list) => {
+            list.iter().any(makes_blank_nodes)
+        }
+        Expression::NamedNode(_)
+        | Expression::Literal(_)
+        | Expression::Variable(_)
+        | Expression::Bound(_)
+        | Expression::Exists(_) => false,
     }
 }
 

@@ -120,7 +120,8 @@ pub(crate) struct Path<'q> {
     pub(crate) object: &'q TermPattern,
     /// The edges it may take, each with whether it is taken backwards, where it takes one.
     pub(crate) edges: Option<Vec<(&'q NamedNode, bool)>>,
-    /// It starts from a constant or from a node bound in every row, or takes one edge.
+    /// It starts from a constant or from a node bound in every row, or takes one of
+    /// some edges, which may start from either end or neither.
     pub(crate) starts: Result<(), Declined>,
     pub(crate) certain_after: Certain,
 }

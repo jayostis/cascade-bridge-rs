@@ -114,6 +114,14 @@ enum Step {
     Optional(Plan, Option<Expr>, Note),
     Group(Group),
     Reach(Reach),
+    Choice(Vec<Edge>),
+}
+
+/// One edge a path that takes one of some edges may take, as the triple pattern it
+/// matches, its ends swapped where it is taken backwards.
+struct Edge {
+    pattern: Pattern,
+    backwards: bool,
 }
 
 struct Reach {

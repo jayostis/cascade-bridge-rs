@@ -1,6 +1,8 @@
 use super::expr::{holds, order};
 use super::tree::{Id, Tree};
-use super::{Aggregate, Expr, Fail, Group, Key, Kind, Pattern, Place, Plan, Reach, Row, Step};
+use super::{
+    Aggregate, Edge, Expr, Fail, Group, Key, Kind, Pattern, Place, Plan, Reach, Row, Step,
+};
 use oxigraph::model::{
     BlankNode, GraphName, Literal, NamedNode, NamedOrBlankNode, Quad, Term, Triple,
 };
@@ -115,6 +117,7 @@ fn run(steps: &[Step], row: &mut Row, tree: &Tree, sink: Sink<'_>) -> Result<(),
         }
         Step::Group(group) => group.run(row, tree, &mut next),
         Step::Reach(walk) => reach(walk, row, tree, &mut next),
+        Step::Choice(edges) => choose(edges, row, tree, &mut next),
     }
 }
 
@@ -189,6 +192,29 @@ fn optional(
     } else {
         next(row)
     }
+}
+
+/// Each pair of ends that one of the edges links, once, however many link it, as
+/// stock Oxigraph evaluates an alternative path.
+fn choose(edges: &[Edge], row: &mut Row, tree: &Tree, next: Sink<'_>) -> Result<(), Fail> {
+    let mut seen: HashSet<(Id, Id)> = HashSet::new();
+    for edge in edges {
+        let Some((subject, predicate, object)) = fixed(&edge.pattern, row, tree)? else {
+            continue;
+        };
+        tree.scan(subject, predicate, object, &mut |s, p, o| {
+            if !seen.insert(if edge.backwards { (o, s) } else { (s, o) }) {
+                return Ok(());
+            }
+            let Some(set) = unify(&edge.pattern, [s, p, o], row, tree) else {
+                return Ok(());
+            };
+            let done = next(row);
+            release(row, set);
+            done
+        })?;
+    }
+    Ok(())
 }
 
 fn reach(walk: &Reach, row: &mut Row, tree: &Tree, next: Sink<'_>) -> Result<(), Fail> {

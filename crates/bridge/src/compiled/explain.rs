@@ -146,6 +146,16 @@ fn step(step: &Step, labels: &[String], out: &mut Vec<String>) {
             }
             indented(lines(&group.inner, labels), 2, out);
         }
+        Step::Choice(edges) => {
+            out.push("one of".to_owned());
+            for edge in edges {
+                out.push(format!(
+                    "  scan {}{}",
+                    pattern(&edge.pattern, labels),
+                    if edge.backwards { ", backwards" } else { "" }
+                ));
+            }
+        }
         Step::Reach(walk) => out.push(format!(
             "reach {} to {} over {}, skipping [{}]",
             place(&walk.from, labels),
