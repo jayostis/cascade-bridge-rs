@@ -1,7 +1,7 @@
 use crate::fixtures::{
     accounting, address, annotations, concept, conversion, count, entry, findings, gap_scheme,
     node, one, says, step, tiny, with_accounting, Variant, ACCOUNTING, ACCOUNTING_PREAMBLE, BRIDGE,
-    CRATE, GAPS_PREAMBLE, GAP_SCHEME, NOTE_GAP, OA, PATH_NOT_ACCOUNTED, SH, XSD_INTEGER,
+    CASCADE, CRATE, GAPS_PREAMBLE, GAP_SCHEME, NOTE_GAP, OA, PATH_NOT_ACCOUNTED, SH, XSD_INTEGER,
 };
 use crate::resolver::Resolver;
 use oxrdf::{Quad, Term};
@@ -137,7 +137,7 @@ fn writes_the_count_as_an_xsd_integer() {
     let occurrences = one(
         &found,
         &about(&found, "/item/note"),
-        &format!("{BRIDGE}occurrences"),
+        &format!("{CASCADE}occurrenceCount"),
     )
     .expect("a count");
     let Term::Literal(literal) = occurrences else {

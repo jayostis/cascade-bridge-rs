@@ -1,7 +1,9 @@
 use super::{Bound, Certain, Frame, Hidden, Maybe, Names, Reads, Scope, Slots};
 use oxigraph::model::Variable;
-use spargebra::algebra::{AggregateExpression, Expression, GraphPattern, PropertyPathExpression};
-use spargebra::term::{GroundTerm, NamedNodePattern, TermPattern, TriplePattern};
+use spargebra::algebra::{
+    AggregateExpression, Expression, Function, GraphPattern, PropertyPathExpression,
+};
+use spargebra::term::{GroundTerm, NamedNode, NamedNodePattern, TermPattern, TriplePattern};
 use std::collections::HashMap;
 
 pub(crate) type Declined = &'static str;
@@ -118,7 +120,10 @@ pub(crate) struct Path<'q> {
     pub(crate) subject: &'q TermPattern,
     pub(crate) path: &'q PropertyPathExpression,
     pub(crate) object: &'q TermPattern,
-    /// It starts from a constant or from a node bound in every row.
+    /// The edges it may take, each with whether it is taken backwards, where it takes one.
+    pub(crate) edges: Option<Vec<(&'q NamedNode, bool)>>,
+    /// It starts from a constant or from a node bound in every row, or takes one of
+    /// some edges, which may start from either end or neither.
     pub(crate) starts: Result<(), Declined>,
     pub(crate) certain_after: Certain,
 }
@@ -136,7 +141,16 @@ struct Analysis<'n> {
 }
 
 impl Analysis<'_> {
+    /// What follows a pattern other than an empty group may be reached by several rows.
     fn pattern<'q>(&mut self, pattern: &'q GraphPattern, frame: &mut Frame) -> Scoped<'q> {
+        let scoped = self.pattern_alone(pattern, frame);
+        if !matches!(pattern, GraphPattern::Bgp { patterns } if patterns.is_empty()) {
+            frame.several = true;
+        }
+        scoped
+    }
+
+    fn pattern_alone<'q>(&mut self, pattern: &'q GraphPattern, frame: &mut Frame) -> Scoped<'q> {
         match pattern {
             GraphPattern::Bgp { patterns } => self.triples(patterns, frame),
             GraphPattern::Join { left, right } => {
@@ -162,6 +176,11 @@ impl Analysis<'_> {
                 variables,
                 bindings,
             } => self.values(variables, bindings, frame),
+            GraphPattern::Project { inner, .. } | GraphPattern::Distinct { inner }
+                if frame.several && binds_blank_nodes(inner) =>
+            {
+                Scoped::Declined("a subquery that makes blank nodes")
+            }
             GraphPattern::Project { inner, variables } => {
                 self.subquery(inner, variables, false, frame)
             }
@@ -450,25 +469,117 @@ impl Analysis<'_> {
         object: &'q TermPattern,
         frame: &mut Frame,
     ) -> Scoped<'q> {
+        let edges = edges(path, false);
         let starts = match subject {
             TermPattern::Variable(variable)
-                if !frame.bound.certain.contains(self.names.slot(variable)) =>
+                if edges.is_none() && !frame.bound.certain.contains(self.names.slot(variable)) =>
             {
                 Err("a property path from a node not yet bound")
             }
             _ => Ok(()),
         };
-        if let TermPattern::Variable(variable) = object {
-            let slot = self.names.slot(variable);
-            frame.binds(slot, true);
+        let ends = if edges.is_some() {
+            vec![subject, object]
+        } else {
+            vec![object]
+        };
+        for end in ends {
+            if let TermPattern::Variable(variable) = end {
+                let slot = self.names.slot(variable);
+                frame.binds(slot, true);
+            }
         }
         Scoped::Path(Path {
             subject,
             path,
             object,
+            edges,
             starts,
             certain_after: frame.bound.certain.clone(),
         })
+    }
+}
+
+/// The edges a path that takes one edge may take, each with whether it is taken backwards.
+fn edges(path: &PropertyPathExpression, backwards: bool) -> Option<Vec<(&NamedNode, bool)>> {
+    match path {
+        PropertyPathExpression::NamedNode(edge) => Some(vec![(edge, backwards)]),
+        PropertyPathExpression::Reverse(inner) => edges(inner, !backwards),
+        PropertyPathExpression::Alternative(left, right) => {
+            let mut taken = edges(left, backwards)?;
+            taken.extend(edges(right, backwards)?);
+            Some(taken)
+        }
+        _ => None,
+    }
+}
+
+/// Whether an expression calls BNODE, whose node is another for each row: a BIND
+/// of one is evaluated after every pattern of its group, as the algebra puts it.
+pub(crate) fn makes_blank_nodes(expression: &Expression) -> bool {
+    match expression {
+        Expression::FunctionCall(Function::BNode, _) => true,
+        Expression::Or(a, b)
+        | Expression::And(a, b)
+        | Expression::Equal(a, b)
+        | Expression::SameTerm(a, b)
+        | Expression::Greater(a, b)
+        | Expression::GreaterOrEqual(a, b)
+        | Expression::Less(a, b)
+        | Expression::LessOrEqual(a, b)
+        | Expression::Add(a, b)
+        | Expression::Subtract(a, b)
+        | Expression::Multiply(a, b)
+        | Expression::Divide(a, b) => makes_blank_nodes(a) || makes_blank_nodes(b),
+        Expression::UnaryPlus(a) | Expression::UnaryMinus(a) | Expression::Not(a) => {
+            makes_blank_nodes(a)
+        }
+        Expression::If(a, b, c) => {
+            makes_blank_nodes(a) || makes_blank_nodes(b) || makes_blank_nodes(c)
+        }
+        Expression::In(a, list) => makes_blank_nodes(a) || list.iter().any(makes_blank_nodes),
+        Expression::Coalesce(list) | Expression::FunctionCall(_, list) => {
+            list.iter().any(makes_blank_nodes)
+        }
+        Expression::NamedNode(_)
+        | Expression::Literal(_)
+        | Expression::Variable(_)
+        | Expression::Bound(_)
+        | Expression::Exists(_) => false,
+    }
+}
+
+/// Whether a pattern binds a variable to an expression that calls BNODE. Stock
+/// Oxigraph evaluates a subquery once, so such a node is the same for every row it
+/// joins, where a plan runs the subquery again for each row that reaches it.
+fn binds_blank_nodes(pattern: &GraphPattern) -> bool {
+    match pattern {
+        GraphPattern::Extend {
+            inner, expression, ..
+        } => makes_blank_nodes(expression) || binds_blank_nodes(inner),
+        GraphPattern::Group {
+            inner, aggregates, ..
+        } => {
+            aggregates.iter().any(|(_, aggregate)| {
+                matches!(aggregate, AggregateExpression::FunctionCall { expr, .. } if makes_blank_nodes(expr))
+            }) || binds_blank_nodes(inner)
+        }
+        GraphPattern::Join { left, right }
+        | GraphPattern::LeftJoin { left, right, .. }
+        | GraphPattern::Union { left, right }
+        | GraphPattern::Minus { left, right }
+        | GraphPattern::Lateral { left, right } => {
+            binds_blank_nodes(left) || binds_blank_nodes(right)
+        }
+        GraphPattern::Filter { inner, .. }
+        | GraphPattern::Graph { inner, .. }
+        | GraphPattern::Project { inner, .. }
+        | GraphPattern::Distinct { inner }
+        | GraphPattern::Reduced { inner }
+        | GraphPattern::Slice { inner, .. }
+        | GraphPattern::OrderBy { inner, .. }
+        | GraphPattern::Service { inner, .. } => binds_blank_nodes(inner),
+        GraphPattern::Bgp { .. } | GraphPattern::Path { .. } | GraphPattern::Values { .. } => false,
     }
 }
 

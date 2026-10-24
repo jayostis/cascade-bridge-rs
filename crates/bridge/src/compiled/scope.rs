@@ -199,12 +199,14 @@ pub(super) const READS_OUTER: &str = "a group reads a variable only the groups a
 /// - `outer` is what the groups around it may bind.
 /// - `touched` is what its own patterns may bind.
 /// - `row` is what the row an EXISTS body runs on may bind.
+/// - `several` is whether more than the one row a query starts from may reach it.
 #[derive(Default)]
 pub(super) struct Frame {
     pub(super) bound: Bound,
     outer: Maybe,
     touched: Maybe,
     row: Maybe,
+    pub(super) several: bool,
 }
 
 impl Frame {
@@ -220,6 +222,7 @@ impl Frame {
             outer: Maybe::new(),
             touched: Maybe::new(),
             row,
+            several: true,
         }
     }
 
@@ -233,6 +236,7 @@ impl Frame {
             outer: self.bound.maybe.iter().collect(),
             touched: Maybe::new(),
             row: self.row.clone(),
+            several: self.several,
         }
     }
 
@@ -241,6 +245,7 @@ impl Frame {
         self.bound.maybe = child.bound.maybe;
         self.bound.own.extend(child.bound.own.iter());
         self.touched.extend(child.touched.iter());
+        self.several |= child.several;
     }
 
     pub(super) fn binds(&mut self, slot: usize, certainly: bool) {

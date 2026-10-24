@@ -34,6 +34,7 @@ pub(crate) fn fixture_names(directory: &str) -> Vec<String> {
 pub const OA: &str = "http://www.w3.org/ns/oa#";
 pub const SH: &str = "http://www.w3.org/ns/shacl#";
 pub const BRIDGE: &str = "https://ns.cascadeprotocol.org/bridge/v1-draft#";
+pub const CASCADE: &str = "https://ns.cascadeprotocol.org/cascade#";
 pub const RDF_TYPE: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
 pub const RDF_VALUE: &str = "http://www.w3.org/1999/02/22-rdf-syntax-ns#value";
 pub const XSD_INTEGER: &str = "http://www.w3.org/2001/XMLSchema#integer";
@@ -42,7 +43,7 @@ pub const XSD_INTEGER: &str = "http://www.w3.org/2001/XMLSchema#integer";
 pub const CATALOG: &str = "urn:example:catalog";
 pub const NOTE_GAP: &str = "urn:example:catalog#noteHasNoTerm";
 pub const PATH_NOT_ACCOUNTED: &str =
-    "https://ns.cascadeprotocol.org/bridge/v1-draft#pathNotAccounted";
+    "https://ns.cascadeprotocol.org/cascade#SourcePathNotAccounted";
 
 pub const CRATE: &str = "ro-crate-metadata.json";
 pub const ACCOUNTING: &str = "vocab/catalog-accounting.ttl";
@@ -292,7 +293,7 @@ pub fn says(quads: &[Quad], subject: &str, predicate: &str) -> String {
 }
 
 pub fn count(findings: &[Quad], annotation: &str) -> Option<String> {
-    one(findings, annotation, &format!("{BRIDGE}occurrences")).map(written)
+    one(findings, annotation, &format!("{CASCADE}occurrenceCount")).map(written)
 }
 
 pub fn annotations(findings: &[Quad]) -> Vec<String> {

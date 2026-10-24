@@ -1,6 +1,7 @@
 use crate::fixtures::{
     address, annotations, conversion, count, findings, node, says, step, tiny, unaccounted,
-    with_accounting, Variant, ACCOUNTING, BRIDGE, CRATE, OA, PATH_NOT_ACCOUNTED, RDF_TYPE, SH,
+    with_accounting, Variant, ACCOUNTING, BRIDGE, CASCADE, CRATE, OA, PATH_NOT_ACCOUNTED, RDF_TYPE,
+    SH,
 };
 use crate::resolver::Resolver;
 use oxrdf::{Quad, Term};
@@ -531,7 +532,7 @@ fn names_the_census_body_the_specification_fixed_and_no_other() {
         .iter()
         .filter(|q| q.predicate.as_str() == format!("{OA}hasBody"))
         .map(|q| q.object.to_string())
-        .filter(|body| body.contains(BRIDGE))
+        .filter(|body| body.contains(BRIDGE) || body.contains(CASCADE))
         .collect();
     assert_eq!(bodies, [format!("<{PATH_NOT_ACCOUNTED}>")]);
 }

@@ -1,226 +1,915 @@
-@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
-@prefix mf:     <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#> .
-@prefix qt:     <http://www.w3.org/2001/sw/DataAccess/tests/test-query#> .
-@prefix bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+@prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix mf:      <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#> .
+@prefix qt:      <http://www.w3.org/2001/sw/DataAccess/tests/test-query#> .
+@prefix bridge:  <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
 
 <> a mf:Manifest ;
-  rdfs:label "record naming vectors" ;
+  rdfs:label "naming vectors" ;
   mf:entries (
-    <#fhir-resource>
-    <#fhir-resource-on-another-server>
-    <#fhir-patient>
-    <#fhir-bundle-entry-urn>
-    <#fhir-contained>
-    <#ccda-root-and-extension>
-    <#ccda-root-only>
-    <#ccda-non-ascii-extension>
-    <#ccda-medication>
-    <#ccda-repeated-id-active>
-    <#ccda-repeated-id-resolved>
-    <#ccda-no-id-key>
-    <#ccda-no-id-members>
-    <#ccda-class-alone>
-    <#repeated-id-first>
-    <#repeated-id-second>
-    <#no-id>
-    <#no-server>
-    <#xml-address>
-    <#base-url-scheme-and-host>
-    <#base-url-already-normal>
+    <#record-from-server>
+    <#record-from-server-on-another-server>
+    <#record-from-server-percent-in-base>
+    <#record-from-document>
+    <#record-from-document-pipe-in-selector>
+    <#record-from-document-pipe-in-document>
+    <#record-from-document-escaped-pipe>
+    <#record-from-ccda>
+    <#record-from-ccda-another-patient>
+    <#record-from-ccda-root-only>
+    <#record-from-ccda-non-ascii-extension>
+    <#record-from-ccda-bar-and-percent>
+    <#record-from-ccda-patient>
+    <#record-from-ccda-without-id>
+    <#record-from-ccda-without-id-another-patient>
+    <#record-from-ccda-without-id-members>
+    <#record-from-ccda-without-id-or-fingerprint>
+    <#contained-record>
+    <#contained-record-last-updated>
+    <#contained-record-no-source-version>
+    <#contained-record-bar-and-percent>
+    <#entered-record-first>
+    <#entered-record-second>
+    <#server>
+    <#server-another>
+    <#organization-from-server>
+    <#organization-from-ccda-custodian>
+    <#organization-from-fhir-identifier>
+    <#assertion>
+    <#retraction>
+    <#table-row-ndc-to-rxnorm>
+    <#table-row-rxnorm-to-medrt>
+    <#table-row-rxnorm-to-unii>
+    <#table-row-icd9-to-icd10>
+    <#table-row-snomed-to-icd10>
+    <#table-row-cpt-to-snomed>
+    <#table-row-cvx-to-mesh>
+    <#table-row-hgvs-to-clinvar>
+    <#table-row-panel-member>
+    <#table-row-panel-member-again>
+    <#view-entry>
+    <#claim>
+    <#claim-star-with-a-table>
+    <#claim-repeated-member-and-used>
+    <#snapshot-first>
+    <#snapshot-next>
+    <#snapshot-merge>
+    <#snapshot-merge-by-another-writer>
+    <#version>
+    <#version-nested-identifiers>
+    <#version-literal-forms>
+    <#version-language-tag-case>
+    <#version-code-point-order>
+    <#version-repeated-triple>
+    <#revision>
+    <#revision-with-selector>
+    <#finding>
+    <#table-version-first>
+    <#table-version-revising>
+    <#document-empty>
+    <#document-json>
+    <#document-xml>
+    <#document-crlf>
+    <#base-url-case>
+    <#base-url-default-port-and-slashes>
+    <#base-url-http-default-port>
+    <#base-url-other-port>
+    <#base-url-empty-port>
+    <#base-url-dot-segments>
+    <#base-url-percent-encoding>
     <#base-url-host-alone>
-    <#base-url-port-and-slashes>
-    <#fingerprint-one>
-    <#fingerprint-key-active>
-    <#fingerprint-key-active-reordered>
-    <#fingerprint-key-active-repeated>
-    <#fingerprint-key-resolved>
-    <#fingerprint-key-immunization>
-    <#fingerprint-members>
-    <#fingerprint-empty>
+    <#base-url-percent-encoded-host>
+    <#base-url-ipv6>
+    <#base-url-ipv6-port>
+    <#base-url-ipvfuture>
+    <#base-url-port-leading-zeros-default>
+    <#base-url-port-leading-zeros>
+    <#base-url-port-highest>
+    <#base-url-space>
+    <#base-url-nul>
+    <#base-url-del>
+    <#base-url-query>
+    <#base-url-empty-query>
+    <#base-url-fragment>
+    <#base-url-empty-fragment>
+    <#base-url-userinfo>
+    <#base-url-port-not-digits>
+    <#base-url-no-scheme>
+    <#base-url-no-host>
+    <#base-url-tab>
+    <#base-url-line-feed>
+    <#base-url-non-ascii-host>
+    <#base-url-non-ascii-compatibility-host>
+    <#base-url-bracket-unclosed>
+    <#base-url-bracket-unopened>
+    <#base-url-bracket-not-ip>
+    <#base-url-bracket-empty>
+    <#base-url-ipv6-zone>
+    <#base-url-bad-percent-in-host>
+    <#base-url-port-non-ascii-digits>
+    <#base-url-port-too-high>
+    <#base-url-ipv6-zone-unencoded>
+    <#base-url-encoded-slash-kept>
+    <#base-url-no-path>
+    <#base-url-port-zero>
+    <#base-url-port-many-leading-zeros>
+    <#base-url-encoded-dot-segments>
+    <#base-url-dot-segments-above-root>
+    <#base-url-percent-in-path-kept>
+    <#base-url-non-ascii-path-kept>
+    <#base-url-ipv4-in-ipv6>
+    <#base-url-ipv6-http-default-port>
+    <#base-url-underscore-host>
+    <#base-url-trailing-dot-host>
+    <#base-url-other-scheme>
+    <#base-url-no-slashes>
+    <#base-url-no-authority>
+    <#base-url-bracket-trailing>
+    <#base-url-ipv6-too-many-groups>
+    <#base-url-port-percent-encoded>
+    <#base-url-angle-brackets-host>
+    <#base-url-two-port-colons>
+    <#base-url-ipv6-port-not-digits>
+    <#base-url-port-leading-zeros-too-high>
+    <#base-url-ipv6-port-80-under-https>
   ) .
 
-<#fhir-resource> a bridge:NamingTest ;
-  mf:name "fhir-resource" ;
-  rdfs:comment "A FHIR resource whose id is unique within its document: the server's base URL, the resource type, the id." ;
-  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "https://fhir.example.org/api/FHIR/R4" "AllergyIntolerance" "eQ3xk2RtVb7Lm9Pw1aZy8A3" ) ] ;
-  mf:result [ bridge:expectedName <urn:uuid:7435b3b8-2d93-8912-9d48-940c5870dc81> ] .
+<#record-from-server> a bridge:NamingTest ;
+  mf:name "record-from-server" ;
+  rdfs:comment "A FHIR resource read from a server: the normalised base URL the client used, the resource type, the id." ;
+  bridge:namingRule cascade:RecordFromServerNamingRule ;
+  mf:action [ qt:query <RecordFromServerNamingRule.rq> ; bridge:nameInputs ( "https://fhir.example.org/api/FHIR/R4" "AllergyIntolerance" "eQ3xk2RtVb7Lm9Pw1aZy8A3" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:81ad3fab-98f1-890c-8abe-e93c84afd9e0> ] .
 
-<#fhir-resource-on-another-server> a bridge:NamingTest ;
-  mf:name "fhir-resource-on-another-server" ;
+<#record-from-server-on-another-server> a bridge:NamingTest ;
+  mf:name "record-from-server-on-another-server" ;
   rdfs:comment "The same type and id on another server name another record." ;
-  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "https://fhir.other.example/r4" "AllergyIntolerance" "eQ3xk2RtVb7Lm9Pw1aZy8A3" ) ] ;
-  mf:result [ bridge:expectedName <urn:uuid:f83d6a9d-1d0e-84bd-826c-e3f00989c291> ] .
+  bridge:namingRule cascade:RecordFromServerNamingRule ;
+  mf:action [ qt:query <RecordFromServerNamingRule.rq> ; bridge:nameInputs ( "https://fhir.other.example/r4" "AllergyIntolerance" "eQ3xk2RtVb7Lm9Pw1aZy8A3" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:482eb2d1-3697-8eff-bfb8-a1d3828964d0> ] .
 
-<#fhir-patient> a bridge:NamingTest ;
-  mf:name "fhir-patient" ;
-  rdfs:comment "A Patient is named as any resource is: the name a reference to Patient/eM5vN8qTz2Hc4Rk7Jw0Pb3 on this server resolves to." ;
-  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "https://fhir.example.org/api/FHIR/R4" "Patient" "eM5vN8qTz2Hc4Rk7Jw0Pb3" ) ] ;
-  mf:result [ bridge:expectedName <urn:uuid:83c84d0f-e803-8fc5-aa28-73f45078a304> ] .
+<#record-from-server-percent-in-base> a bridge:NamingTest ;
+  mf:name "record-from-server-percent-in-base" ;
+  rdfs:comment "A % in an input is written %25 before the join, so the base's %7C is hashed as %257C." ;
+  bridge:namingRule cascade:RecordFromServerNamingRule ;
+  mf:action [ qt:query <RecordFromServerNamingRule.rq> ; bridge:nameInputs ( "https://fhir.example.org/tenant%7Cone" "Patient" "eM5vN8qTz2Hc4Rk7Jw0Pb3" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:3533e621-016a-807c-ae63-ecb15cbd744e> ] .
 
-<#fhir-bundle-entry-urn> a bridge:NamingTest ;
-  mf:name "fhir-bundle-entry-urn" ;
-  rdfs:comment "A Bundle entry with no id and a urn:uuid fullUrl, whether a server is known or not: the urn, hashed as any input is, and never the name itself." ;
-  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "urn:uuid:5c1e0a4e-7d2b-4f0a-9a47-3f6e1b2c8d90" ) ] ;
-  mf:result [ bridge:expectedName <urn:uuid:4d3c6fb5-45a5-8405-9a5f-af391d457e6d> ] .
+<#record-from-document> a bridge:NamingTest ;
+  mf:name "record-from-document" ;
+  rdfs:comment "A record from a document: the document's ni: name, then the rdf:value of the record's selector." ;
+  bridge:namingRule cascade:RecordFromDocumentNamingRule ;
+  mf:action [ qt:query <RecordFromDocumentNamingRule.rq> ; bridge:nameInputs ( "ni:///sha-256;K96dQ7NMCx_qaokgjdYAocBi7_dSJVtKQmYSfWR4rRc" "/entry/3" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:4404ca96-5724-8b33-a5b8-9ee8c40c53d1> ] .
 
-<#fhir-contained> a bridge:NamingTest ;
-  mf:name "fhir-contained" ;
-  rdfs:comment "A contained resource: the containing record's name, the fhir-resource vector's, and the contained resource's id." ;
-  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "urn:uuid:7435b3b8-2d93-8912-9d48-940c5870dc81" "r1" ) ] ;
-  mf:result [ bridge:expectedName <urn:uuid:351ccd8a-d25c-83d4-8025-988b8769088e> ] .
+<#record-from-document-pipe-in-selector> a bridge:NamingTest ;
+  mf:name "record-from-document-pipe-in-selector" ;
+  rdfs:comment "A | in an input is written %7C before the join: this vector and the next joined unescaped give one text, and their names differ." ;
+  bridge:namingRule cascade:RecordFromDocumentNamingRule ;
+  mf:action [ qt:query <RecordFromDocumentNamingRule.rq> ; bridge:nameInputs ( "ni:///sha-256;K96dQ7NMCx_qaokgjdYAocBi7_dSJVtKQmYSfWR4rRc" "a|b" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:e4781240-2d1f-8eb6-94c0-0127fe578fef> ] .
 
-<#ccda-root-and-extension> a bridge:NamingTest ;
-  mf:name "ccda-root-and-extension" ;
-  rdfs:comment "A C-CDA record whose identifier no other record of its class in its document carries with another key: its class and its identifier, the root, : and the extension." ;
-  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "AllergyIntolerance" "2.16.840.1.113883.19.5:8237461" ) ] ;
-  mf:result [ bridge:expectedName <urn:uuid:b4a38586-bc3b-8b1d-82f8-2d7e3523ea31> ] .
+<#record-from-document-pipe-in-document> a bridge:NamingTest ;
+  mf:name "record-from-document-pipe-in-document" ;
+  rdfs:comment "The previous vector's join, \"ni:///sha-256;K96dQ7NMCx_qaokgjdYAocBi7_dSJVtKQmYSfWR4rRc|a|b\", split at the other bar." ;
+  bridge:namingRule cascade:RecordFromDocumentNamingRule ;
+  mf:action [ qt:query <RecordFromDocumentNamingRule.rq> ; bridge:nameInputs ( "ni:///sha-256;K96dQ7NMCx_qaokgjdYAocBi7_dSJVtKQmYSfWR4rRc|a" "b" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:608215e3-c82f-8360-be03-a82af1668f5a> ] .
 
-<#ccda-root-only> a bridge:NamingTest ;
-  mf:name "ccda-root-only" ;
-  rdfs:comment "An identifier with no extension is its root alone." ;
-  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "Condition" "2.16.840.1.113883.19.5.99999.1" ) ] ;
-  mf:result [ bridge:expectedName <urn:uuid:c7c71864-3281-8f90-b5f4-7b85c2b5496c> ] .
+<#record-from-document-escaped-pipe> a bridge:NamingTest ;
+  mf:name "record-from-document-escaped-pipe" ;
+  rdfs:comment "A selector holding the text %7C differs from one holding |: % is written %25 first." ;
+  bridge:namingRule cascade:RecordFromDocumentNamingRule ;
+  mf:action [ qt:query <RecordFromDocumentNamingRule.rq> ; bridge:nameInputs ( "ni:///sha-256;K96dQ7NMCx_qaokgjdYAocBi7_dSJVtKQmYSfWR4rRc" "a%7Cb" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:ddbdfd9c-e3d2-8fcb-a70e-3017c6bcba28> ] .
 
-<#ccda-non-ascii-extension> a bridge:NamingTest ;
-  mf:name "ccda-non-ascii-extension" ;
-  rdfs:comment "An input is hashed as UTF-8." ;
-  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "Procedure" "2.16.840.1.113883.19.5:Zürich-7" ) ] ;
-  mf:result [ bridge:expectedName <urn:uuid:46509281-3b72-81d2-beb6-6b658db5b256> ] .
+<#record-from-ccda> a bridge:NamingTest ;
+  mf:name "record-from-ccda" ;
+  rdfs:comment "A C-CDA entry: the custodian's id root and extension, the patient's id root and extension, the entry's id root and extension." ;
+  bridge:namingRule cascade:RecordFromCcdaNamingRule ;
+  mf:action [ qt:query <RecordFromCcdaNamingRule.rq> ; bridge:nameInputs ( "2.16.840.1.113883.19.5" "CLINIC-1" "2.16.840.1.113883.19.5.99" "MRN-1234" "2.16.840.1.113883.19.5" "8237461" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:bb2e2b2b-5b01-8991-aa76-984b9b06ed2c> ] .
 
-<#ccda-medication> a bridge:NamingTest ;
-  mf:name "ccda-medication" ;
-  rdfs:comment "A medication's class is MedicationRequest, in either mood." ;
-  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "MedicationRequest" "2.16.840.1.113883.19.5:rx-551" ) ] ;
-  mf:result [ bridge:expectedName <urn:uuid:8949020f-bf42-83fd-9ab1-b180a3214bc6> ] .
+<#record-from-ccda-another-patient> a bridge:NamingTest ;
+  mf:name "record-from-ccda-another-patient" ;
+  rdfs:comment "The same entry id for another patient at the same custodian names another record." ;
+  bridge:namingRule cascade:RecordFromCcdaNamingRule ;
+  mf:action [ qt:query <RecordFromCcdaNamingRule.rq> ; bridge:nameInputs ( "2.16.840.1.113883.19.5" "CLINIC-1" "2.16.840.1.113883.19.5.99" "MRN-5678" "2.16.840.1.113883.19.5" "8237461" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:0eaf6562-b4c8-830c-9983-b4b09e51a2e8> ] .
 
-<#ccda-repeated-id-active> a bridge:NamingTest ;
-  mf:name "ccda-repeated-id-active" ;
-  rdfs:comment "An identifier two allergies of one document carry with keys differing in status: the class, the identifier and this one's key's fingerprint, fingerprint-key-active's." ;
-  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "AllergyIntolerance" "2.16.840.1.113883.19.5:2210" "506034893686827" ) ] ;
-  mf:result [ bridge:expectedName <urn:uuid:146187ec-84af-85ab-b1b4-8f06a954fa2c> ] .
+<#record-from-ccda-root-only> a bridge:NamingTest ;
+  mf:name "record-from-ccda-root-only" ;
+  rdfs:comment "An id with no extension gives the empty string as its extension." ;
+  bridge:namingRule cascade:RecordFromCcdaNamingRule ;
+  mf:action [ qt:query <RecordFromCcdaNamingRule.rq> ; bridge:nameInputs ( "2.16.840.1.113883.19.5" "" "2.16.840.1.113883.19.5.99" "MRN-1234" "1.2.3.4.5.6.7.8.9" "" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:b0ca738a-1177-8c6e-8183-3d9dd2ae6b3d> ] .
 
-<#ccda-repeated-id-resolved> a bridge:NamingTest ;
-  mf:name "ccda-repeated-id-resolved" ;
-  rdfs:comment "The other allergy carrying ccda-repeated-id-active's identifier, resolved, is another record." ;
-  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "AllergyIntolerance" "2.16.840.1.113883.19.5:2210" "485897515424792" ) ] ;
-  mf:result [ bridge:expectedName <urn:uuid:16e3a9ac-4dc3-886d-9ada-c315aaf1890d> ] .
+<#record-from-ccda-non-ascii-extension> a bridge:NamingTest ;
+  mf:name "record-from-ccda-non-ascii-extension" ;
+  rdfs:comment "Inputs are hashed as UTF-8: an extension with an accented letter and a character outside the Basic Multilingual Plane." ;
+  bridge:namingRule cascade:RecordFromCcdaNamingRule ;
+  mf:action [ qt:query <RecordFromCcdaNamingRule.rq> ; bridge:nameInputs ( "2.16.840.1.113883.19.5" "CLINIC-1" "2.16.840.1.113883.19.5.99" "MRN-1234" "2.16.840.1.113883.19.5" "Ñandú-7-🥜" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:e1ee9668-f67c-8b0a-9c98-9395426c062a> ] .
 
-<#ccda-no-id-key> a bridge:NamingTest ;
-  mf:name "ccda-no-id-key" ;
-  rdfs:comment "A record with no identifier and a key: the class, the empty string and its key's fingerprint, fingerprint-key-immunization's." ;
-  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "Immunization" "" "116633954584022" ) ] ;
-  mf:result [ bridge:expectedName <urn:uuid:0d53ee53-aa38-8ec4-a740-36fe7f92bf38> ] .
+<#record-from-ccda-bar-and-percent> a bridge:NamingTest ;
+  mf:name "record-from-ccda-bar-and-percent" ;
+  rdfs:comment "An extension holding | and % is escaped before the join, | as %7C and % as %25." ;
+  bridge:namingRule cascade:RecordFromCcdaNamingRule ;
+  mf:action [ qt:query <RecordFromCcdaNamingRule.rq> ; bridge:nameInputs ( "2.16.840.1.113883.19.5" "CLINIC-1" "2.16.840.1.113883.19.5.99" "MRN-1234" "2.16.840.1.113883.19.5" "A|B%7C" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:7c477edc-2723-81ea-9301-ce15ffd32166> ] .
 
-<#ccda-no-id-members> a bridge:NamingTest ;
-  mf:name "ccda-no-id-members" ;
-  rdfs:comment "A record with no identifier and no key: the class, two empty strings and its members' fingerprint, fingerprint-members's." ;
-  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "Condition" "" "" "334992598836920" ) ] ;
-  mf:result [ bridge:expectedName <urn:uuid:6e689e64-69b0-81a5-878f-e5debf9e21f4> ] .
+<#record-from-ccda-patient> a bridge:NamingTest ;
+  mf:name "record-from-ccda-patient" ;
+  rdfs:comment "The patient's own record: the custodian's id, then the patient's id as both the patient scope and the entry's id." ;
+  bridge:namingRule cascade:RecordFromCcdaNamingRule ;
+  mf:action [ qt:query <RecordFromCcdaNamingRule.rq> ; bridge:nameInputs ( "2.16.840.1.113883.19.5" "CLINIC-1" "2.16.840.1.113883.19.5.99" "MRN-1234" "2.16.840.1.113883.19.5.99" "MRN-1234" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:61535fef-9432-8aa6-9d00-45be6ad77330> ] .
 
-<#ccda-class-alone> a bridge:NamingTest ;
-  mf:name "ccda-class-alone" ;
-  rdfs:comment "A record with no identifier, no key and no member: its class alone." ;
-  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "Observation" ) ] ;
-  mf:result [ bridge:expectedName <urn:uuid:c4f7242a-96c9-833a-ac13-a6bf87142982> ] .
+<#record-from-ccda-without-id> a bridge:NamingTest ;
+  mf:name "record-from-ccda-without-id" ;
+  rdfs:comment "A C-CDA entry with no id: the custodian's id root and extension, the patient's id root and extension, the IRI of its record class, its key fingerprint, and \"\" for its members fingerprint, which a keyed entry does not use." ;
+  bridge:namingRule cascade:RecordFromCcdaWithoutIdNamingRule ;
+  mf:action [ qt:query <RecordFromCcdaWithoutIdNamingRule.rq> ; bridge:nameInputs ( "2.16.840.1.113883.19.5" "CLINIC-1" "2.16.840.1.113883.19.5.99" "MRN-1234" "https://ns.cascadeprotocol.org/cascade#AllergyOrIntolerance" "31544120" "" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:6dd926f0-4b6b-8c4f-8d23-22f2887e3b0e> ] .
 
-<#repeated-id-first> a bridge:NamingTest ;
-  mf:name "repeated-id-first" ;
-  rdfs:comment "An id repeated within its document names no record: the first entry holding it is named by the document's name and its JSON Pointer." ;
-  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "ni:///sha-256;tGm9FWfUKGlKI5ifQdPtjK86ZoCkfBTJr0IBDqbDSE8" "/entry/0" ) ] ;
-  mf:result [ bridge:expectedName <urn:uuid:c436feab-ce69-8b9d-84ec-d82aa7f89cca> ] .
+<#record-from-ccda-without-id-another-patient> a bridge:NamingTest ;
+  mf:name "record-from-ccda-without-id-another-patient" ;
+  rdfs:comment "The same id-less statement for another patient of the same clinic names another record." ;
+  bridge:namingRule cascade:RecordFromCcdaWithoutIdNamingRule ;
+  mf:action [ qt:query <RecordFromCcdaWithoutIdNamingRule.rq> ; bridge:nameInputs ( "2.16.840.1.113883.19.5" "CLINIC-1" "2.16.840.1.113883.19.5.99" "MRN-5678" "https://ns.cascadeprotocol.org/cascade#AllergyOrIntolerance" "31544120" "" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:6852d889-9d64-8416-be6e-75ef19220181> ] .
 
-<#repeated-id-second> a bridge:NamingTest ;
-  mf:name "repeated-id-second" ;
-  rdfs:comment "The second entry holding the id repeated in repeated-id-first's document is another record." ;
-  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "ni:///sha-256;tGm9FWfUKGlKI5ifQdPtjK86ZoCkfBTJr0IBDqbDSE8" "/entry/2" ) ] ;
-  mf:result [ bridge:expectedName <urn:uuid:dd96aec3-5cbe-8622-9c41-805ed1101df7> ] .
+<#record-from-ccda-without-id-members> a bridge:NamingTest ;
+  mf:name "record-from-ccda-without-id-members" ;
+  rdfs:comment "An id-less entry whose key fingerprint is absent or \"\": \"\" for the key, then its members fingerprint, so a key and a members fingerprint of one value name two records." ;
+  bridge:namingRule cascade:RecordFromCcdaWithoutIdNamingRule ;
+  mf:action [ qt:query <RecordFromCcdaWithoutIdNamingRule.rq> ; bridge:nameInputs ( "2.16.840.1.113883.19.5" "CLINIC-1" "2.16.840.1.113883.19.5.99" "MRN-1234" "https://ns.cascadeprotocol.org/cascade#AllergyOrIntolerance" "" "31544120" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:1ecaba18-53b4-8dc7-a139-a37458cc20de> ] .
 
-<#no-id> a bridge:NamingTest ;
-  mf:name "no-id" ;
-  rdfs:comment "A resource with no id and no urn:uuid fullUrl: the document's name and the record's JSON Pointer." ;
-  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "ni:///sha-256;tGm9FWfUKGlKI5ifQdPtjK86ZoCkfBTJr0IBDqbDSE8" "/entry/1" ) ] ;
-  mf:result [ bridge:expectedName <urn:uuid:d17f7793-d4df-8ecd-a46b-31599cc2b754> ] .
+<#record-from-ccda-without-id-or-fingerprint> a bridge:NamingTest ;
+  mf:name "record-from-ccda-without-id-or-fingerprint" ;
+  rdfs:comment "An id-less entry with neither fingerprint: its class alone inside the two scopes." ;
+  bridge:namingRule cascade:RecordFromCcdaWithoutIdNamingRule ;
+  mf:action [ qt:query <RecordFromCcdaWithoutIdNamingRule.rq> ; bridge:nameInputs ( "2.16.840.1.113883.19.5" "CLINIC-1" "2.16.840.1.113883.19.5.99" "MRN-1234" "https://ns.cascadeprotocol.org/cascade#AllergyOrIntolerance" "" "" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:0a7e03f4-d1b3-8b4f-af28-3e0100dc5be9> ] .
 
-<#no-server> a bridge:NamingTest ;
-  mf:name "no-server" ;
-  rdfs:comment "A bare resource with an id and no known server: the document's name and the record's JSON Pointer, the empty string for the whole document." ;
-  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "ni:///sha-256;xB0nSd3NEIv7JKSR3cDS7kcXb2swhmvDd51Of6iI-2c" "" ) ] ;
-  mf:result [ bridge:expectedName <urn:uuid:0fff036b-ebd4-85fe-84c4-edefdeb6d52b> ] .
+<#contained-record> a bridge:NamingTest ;
+  mf:name "contained-record" ;
+  rdfs:comment "A contained resource: its container's record name, the version id the source gives the container (meta.versionId), its id." ;
+  bridge:namingRule cascade:ContainedRecordNamingRule ;
+  mf:action [ qt:query <ContainedRecordNamingRule.rq> ; bridge:nameInputs ( "urn:uuid:7435b3b8-2d93-8912-9d48-940c5870dc81" "3" "r1" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:69f0ceda-f508-84a6-a393-9a2e67d62b11> ] .
 
-<#xml-address> a bridge:NamingTest ;
-  mf:name "xml-address" ;
-  rdfs:comment "A record without a usable id in an XML document: the document's name and the record's XPath." ;
-  mf:action [ qt:query <name.rq> ; bridge:nameInputs ( "ni:///sha-256;HIELGty0gmK9X2oIlPDlGm-xvWIXkMCrEPN-xoVoYYg" "/ExampleRecordSet/ExampleRecord[3]" ) ] ;
-  mf:result [ bridge:expectedName <urn:uuid:aff78e4f-1ced-8127-a900-e8ba06cd7b98> ] .
+<#contained-record-last-updated> a bridge:NamingTest ;
+  mf:name "contained-record-last-updated" ;
+  rdfs:comment "A container whose meta.versionId is absent or \"\" gives its meta.lastUpdated as written." ;
+  bridge:namingRule cascade:ContainedRecordNamingRule ;
+  mf:action [ qt:query <ContainedRecordNamingRule.rq> ; bridge:nameInputs ( "urn:uuid:7435b3b8-2d93-8912-9d48-940c5870dc81" "2026-03-01T10:00:00.000+00:00" "r1" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:e8e1e56b-adc0-89dd-bb4b-12a66c30100c> ] .
 
-<#base-url-scheme-and-host> a bridge:BaseUrlNormalisationTest ;
-  mf:name "base-url-scheme-and-host" ;
-  rdfs:comment "The scheme and the host are lower-cased and the trailing slash removed; the path keeps its case." ;
-  mf:action [ bridge:serverBaseUrl "HTTPS://FHIR.Example.ORG/api/FHIR/R4/" ] ;
-  mf:result [ bridge:serverBaseUrl "https://fhir.example.org/api/FHIR/R4" ] .
+<#contained-record-no-source-version> a bridge:NamingTest ;
+  mf:name "contained-record-no-source-version" ;
+  rdfs:comment "A container with neither meta.versionId nor meta.lastUpdated, as a document's or an export's, gives the empty string." ;
+  bridge:namingRule cascade:ContainedRecordNamingRule ;
+  mf:action [ qt:query <ContainedRecordNamingRule.rq> ; bridge:nameInputs ( "urn:uuid:7435b3b8-2d93-8912-9d48-940c5870dc81" "" "r1" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:8c53f9d3-783c-8a5b-a8a7-c303c43ffa40> ] .
 
-<#base-url-already-normal> a bridge:BaseUrlNormalisationTest ;
-  mf:name "base-url-already-normal" ;
-  rdfs:comment "A base URL already in its normal form is unchanged." ;
-  mf:action [ bridge:serverBaseUrl "https://fhir.example.org/api/FHIR/R4" ] ;
-  mf:result [ bridge:serverBaseUrl "https://fhir.example.org/api/FHIR/R4" ] .
+<#contained-record-bar-and-percent> a bridge:NamingTest ;
+  mf:name "contained-record-bar-and-percent" ;
+  rdfs:comment "A contained id holding | and % is escaped before the join." ;
+  bridge:namingRule cascade:ContainedRecordNamingRule ;
+  mf:action [ qt:query <ContainedRecordNamingRule.rq> ; bridge:nameInputs ( "urn:uuid:7435b3b8-2d93-8912-9d48-940c5870dc81" "3" "r|1%" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:d113c40a-3c47-891f-8772-ba63a909ae6c> ] .
+
+<#entered-record-first> a bridge:NamingTest ;
+  mf:name "entered-record-first" ;
+  rdfs:comment "An entered record: the entry session's IRI, then the draft's position in decimal." ;
+  bridge:namingRule cascade:EnteredRecordNamingRule ;
+  mf:action [ qt:query <EnteredRecordNamingRule.rq> ; bridge:nameInputs ( "urn:uuid:7c2d9e41-5a8b-4f36-b0e2-9d1a4c6f8e53" "0" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:ef2c1a75-6fe6-8519-9b8f-b28657bb9fd9> ] .
+
+<#entered-record-second> a bridge:NamingTest ;
+  mf:name "entered-record-second" ;
+  rdfs:comment "The session's next draft." ;
+  bridge:namingRule cascade:EnteredRecordNamingRule ;
+  mf:action [ qt:query <EnteredRecordNamingRule.rq> ; bridge:nameInputs ( "urn:uuid:7c2d9e41-5a8b-4f36-b0e2-9d1a4c6f8e53" "1" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:dc8440bd-3cd8-8104-b156-e1930256f127> ] .
+
+<#server> a bridge:NamingTest ;
+  mf:name "server" ;
+  rdfs:comment "A server: the normalised base URL the client used." ;
+  bridge:namingRule cascade:ServerNamingRule ;
+  mf:action [ qt:query <ServerNamingRule.rq> ; bridge:nameInputs ( "https://fhir.example.org/api/FHIR/R4" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:dd6eca6e-29ec-851d-95aa-7cf63bd63366> ] .
+
+<#server-another> a bridge:NamingTest ;
+  mf:name "server-another" ;
+  rdfs:comment "Another base URL names another server, even on the same host." ;
+  bridge:namingRule cascade:ServerNamingRule ;
+  mf:action [ qt:query <ServerNamingRule.rq> ; bridge:nameInputs ( "https://fhir.example.org/api/FHIR/R4/tenant-2" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:899a4a06-c93d-8352-b171-7b2a4a8cdcbb> ] .
+
+<#organization-from-server> a bridge:NamingTest ;
+  mf:name "organization-from-server" ;
+  rdfs:comment "An organization read from a server: the normalised base URL, Organization, the resource's id." ;
+  bridge:namingRule cascade:OrganizationNamingRule ;
+  mf:action [ qt:query <OrganizationNamingRule.rq> ; bridge:nameInputs ( "https://fhir.example.org/api/FHIR/R4" "Organization" "org-1" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:801785a3-066b-86fb-84c1-2119dc670fce> ] .
+
+<#organization-from-ccda-custodian> a bridge:NamingTest ;
+  mf:name "organization-from-ccda-custodian" ;
+  rdfs:comment "An organization a C-CDA document names: its custodian's id root and extension." ;
+  bridge:namingRule cascade:OrganizationNamingRule ;
+  mf:action [ qt:query <OrganizationNamingRule.rq> ; bridge:nameInputs ( "2.16.840.1.113883.4.6" "1234567893" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:f72b165e-be8b-81ab-a7f0-bc3bc6f5ed56> ] .
+
+<#organization-from-fhir-identifier> a bridge:NamingTest ;
+  mf:name "organization-from-fhir-identifier" ;
+  rdfs:comment "An organization a FHIR document names: its Organization.identifier's system and value, as the document writes them; the C-CDA custodian's NPI above names another organization record, joined by a judgment." ;
+  bridge:namingRule cascade:OrganizationNamingRule ;
+  mf:action [ qt:query <OrganizationNamingRule.rq> ; bridge:nameInputs ( "http://hl7.org/fhir/sid/us-npi" "1234567893" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:b272d9d2-08db-8fd9-9d33-eca1e48c75ba> ] .
+
+<#assertion> a bridge:NamingTest ;
+  mf:name "assertion" ;
+  rdfs:comment "An assertion: the rule list version, then the claim." ;
+  bridge:namingRule cascade:AssertionNamingRule ;
+  mf:action [ qt:query <AssertionNamingRule.rq> ; bridge:nameInputs ( "urn:uuid:9c1f5a73-2e48-4d6b-b8a0-3f7c1e9d5b24" "urn:uuid:5e4af5e8-b816-849e-9185-aed2981a566f" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:ea174059-aeb9-883e-bdfe-b786e4f582d5> ] .
+
+<#retraction> a bridge:NamingTest ;
+  mf:name "retraction" ;
+  rdfs:comment "A release's retraction: the release, the claim, the matcher rule it declares wrong." ;
+  bridge:namingRule cascade:RetractionNamingRule ;
+  mf:action [ qt:query <RetractionNamingRule.rq> ; bridge:nameInputs ( "urn:uuid:9c1f5a73-2e48-4d6b-b8a0-3f7c1e9d5b24" "urn:uuid:5e4af5e8-b816-849e-9185-aed2981a566f" "https://ns.cascadeprotocol.org/cascade#SameCodeRule" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:24926c43-98e2-8d66-a07d-81eedbfa8b07> ] .
+
+<#table-row-ndc-to-rxnorm> a bridge:NamingTest ;
+  mf:name "table-row-ndc-to-rxnorm" ;
+  rdfs:comment "A row: its owl:annotatedSource, owl:annotatedProperty and owl:annotatedTarget. An NDC 11-digit code and an RxNorm code under Cascade's stems." ;
+  bridge:namingRule cascade:TableRowNamingRule ;
+  mf:action [ qt:query <TableRowNamingRule.rq> ; bridge:nameInputs ( "https://ns.cascadeprotocol.org/codes/ndc11/00071015523" "http://www.w3.org/2004/02/skos/core#broadMatch" "https://ns.cascadeprotocol.org/codes/rxnorm/5640" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:1d208692-444b-8e7c-be81-147d714c5b5e> ] .
+
+<#table-row-rxnorm-to-medrt> a bridge:NamingTest ;
+  mf:name "table-row-rxnorm-to-medrt" ;
+  rdfs:comment "An RxNorm code and a MED-RT NUI." ;
+  bridge:namingRule cascade:TableRowNamingRule ;
+  mf:action [ qt:query <TableRowNamingRule.rq> ; bridge:nameInputs ( "https://ns.cascadeprotocol.org/codes/rxnorm/5640" "https://ns.cascadeprotocol.org/cascade#establishedPharmacologicClass" "https://ns.cascadeprotocol.org/codes/medrt/N0000175722" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:94fcd917-7e68-88a1-b253-b6ada856a5be> ] .
+
+<#table-row-rxnorm-to-unii> a bridge:NamingTest ;
+  mf:name "table-row-rxnorm-to-unii" ;
+  rdfs:comment "A UNII under identifiers.org." ;
+  bridge:namingRule cascade:TableRowNamingRule ;
+  mf:action [ qt:query <TableRowNamingRule.rq> ; bridge:nameInputs ( "https://ns.cascadeprotocol.org/codes/rxnorm/5640" "http://purl.obolibrary.org/obo/RO_0002248" "https://identifiers.org/unii:3G6A5W338E" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:acff5c61-b1be-83e1-926c-5e026ad7238d> ] .
+
+<#table-row-icd9-to-icd10> a bridge:NamingTest ;
+  mf:name "table-row-icd9-to-icd10" ;
+  rdfs:comment "ICD-9-CM and ICD-10-CM codes keep their dots." ;
+  bridge:namingRule cascade:TableRowNamingRule ;
+  mf:action [ qt:query <TableRowNamingRule.rq> ; bridge:nameInputs ( "https://ns.cascadeprotocol.org/codes/icd9cm/250.00" "http://www.w3.org/2004/02/skos/core#closeMatch" "https://ns.cascadeprotocol.org/codes/icd10cm/E11.65" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:e3d1bb75-25e6-81f3-bbb2-1609fdf2c82c> ] .
+
+<#table-row-snomed-to-icd10> a bridge:NamingTest ;
+  mf:name "table-row-snomed-to-icd10" ;
+  rdfs:comment "A SNOMED CT code under the owner's stem." ;
+  bridge:namingRule cascade:TableRowNamingRule ;
+  mf:action [ qt:query <TableRowNamingRule.rq> ; bridge:nameInputs ( "http://snomed.info/id/44054006" "http://www.w3.org/2004/02/skos/core#narrowMatch" "https://ns.cascadeprotocol.org/codes/icd10cm/E11.65" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:1b67afbc-4d91-8de6-82bf-f4534c60bd9d> ] .
+
+<#table-row-cpt-to-snomed> a bridge:NamingTest ;
+  mf:name "table-row-cpt-to-snomed" ;
+  rdfs:comment "A CPT code." ;
+  bridge:namingRule cascade:TableRowNamingRule ;
+  mf:action [ qt:query <TableRowNamingRule.rq> ; bridge:nameInputs ( "https://ns.cascadeprotocol.org/codes/cpt/99213" "http://www.w3.org/2004/02/skos/core#exactMatch" "http://snomed.info/id/44054006" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:4c96ea1c-6963-89b5-a95d-acb6617b2c51> ] .
+
+<#table-row-cvx-to-mesh> a bridge:NamingTest ;
+  mf:name "table-row-cvx-to-mesh" ;
+  rdfs:comment "A CVX code keeps its leading zero; a MeSH unique ID under THO's stem." ;
+  bridge:namingRule cascade:TableRowNamingRule ;
+  mf:action [ qt:query <TableRowNamingRule.rq> ; bridge:nameInputs ( "https://ns.cascadeprotocol.org/codes/cvx/08" "http://www.w3.org/2004/02/skos/core#relatedMatch" "http://id.nlm.nih.gov/mesh/D004095" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:4317e2a2-d322-8b76-bf53-236474ceef0a> ] .
+
+<#table-row-hgvs-to-clinvar> a bridge:NamingTest ;
+  mf:name "table-row-hgvs-to-clinvar" ;
+  rdfs:comment "An HGVS expression through ENCODE_FOR_URI, and a ClinVar Variation ID under identifiers.org." ;
+  bridge:namingRule cascade:TableRowNamingRule ;
+  mf:action [ qt:query <TableRowNamingRule.rq> ; bridge:nameInputs ( "https://ns.cascadeprotocol.org/codes/hgvs/NM_000249.4%3Ac.2042C%3ET" "http://www.w3.org/2004/02/skos/core#exactMatch" "https://identifiers.org/clinvar:90011" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:4df2ab51-6bd5-8741-aedd-51b32d1f4d54> ] .
+
+<#table-row-panel-member> a bridge:NamingTest ;
+  mf:name "table-row-panel-member" ;
+  rdfs:comment "A panel member row adds a fourth input, its panelSequence's canonical lexical form; a LOINC code with its check digit." ;
+  bridge:namingRule cascade:TableRowNamingRule ;
+  mf:action [ qt:query <TableRowNamingRule.rq> ; bridge:nameInputs ( "http://loinc.org/rdf/24331-1" "http://purl.obolibrary.org/obo/RO_0002351" "http://loinc.org/rdf/2823-3" "4" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:2e5fafcf-c8f0-8d13-99e5-5d321bbdbc65> ] .
+
+<#table-row-panel-member-again> a bridge:NamingTest ;
+  mf:name "table-row-panel-member-again" ;
+  rdfs:comment "The same member at another sequence is another row." ;
+  bridge:namingRule cascade:TableRowNamingRule ;
+  mf:action [ qt:query <TableRowNamingRule.rq> ; bridge:nameInputs ( "http://loinc.org/rdf/24331-1" "http://purl.obolibrary.org/obo/RO_0002351" "http://loinc.org/rdf/2823-3" "7" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:6e28a746-d2f9-8425-9ccb-e07e485185c4> ] .
+
+<#view-entry> a bridge:NamingTest ;
+  mf:name "view-entry" ;
+  rdfs:comment "A view entry: the view's path in the pod, #, and the lower-case hex SHA-256 of its least member's IRI." ;
+  bridge:namingRule cascade:ViewEntryNamingRule ;
+  mf:action [ qt:query <ViewEntryNamingRule.rq> ; bridge:nameInputs ( "clinical/allergies.ttl" "urn:uuid:7435b3b8-2d93-8912-9d48-940c5870dc81" ) ] ;
+  mf:result [ bridge:expectedName "clinical/allergies.ttl#f7e2d271f881267884f33508186278e064bb6b3621c3b568949bacd3a96a3584" ] .
+
+<#claim> a bridge:NamingTest ;
+  mf:name "claim" ;
+  rdfs:comment "A claim: the maker, the matcher rule, the justification, then the members and the versions used, each list written as its count and its items in code point order; listed here unsorted." ;
+  bridge:namingRule cascade:ClaimNamingRule ;
+  mf:action [ bridge:nameInputs ( "https://ns.cascadeprotocol.org/cascade#CascadeMatcher" "https://ns.cascadeprotocol.org/cascade#SameCodeRule" "https://ns.cascadeprotocol.org/cascade#SameCode" ("urn:uuid:f83d6a9d-1d0e-84bd-826c-e3f00989c291" "urn:uuid:7435b3b8-2d93-8912-9d48-940c5870dc81") ("ni:///sha-256;eplyjFwBziuuDGwAXYG-OsnSc_l9nZRWlgn28AA-riY" "ni:///sha-256;Q2zb2hq5EC43OWgfnQ-uPPQDVO6_EFXtdyhjpb_8PnQ") ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:35ee949a-9a6f-8cbb-81ef-378e145711f0> ] .
+
+<#claim-star-with-a-table> a bridge:NamingTest ;
+  mf:name "claim-star-with-a-table" ;
+  rdfs:comment "A star of three members, and used holding the table version the rule read." ;
+  bridge:namingRule cascade:ClaimNamingRule ;
+  mf:action [ bridge:nameInputs ( "https://ns.cascadeprotocol.org/cascade#CascadeMatcher" "https://ns.cascadeprotocol.org/cascade#SameMappedCodeAndDateRule" "https://ns.cascadeprotocol.org/cascade#SameMappedCodeAndDate" ("urn:uuid:351ccd8a-d25c-83d4-8025-988b8769088e" "urn:uuid:7435b3b8-2d93-8912-9d48-940c5870dc81" "urn:uuid:f83d6a9d-1d0e-84bd-826c-e3f00989c291") ("ni:///sha-256;7UF52nyQz5_3t_7QQn6dXsLuxB5n3HfJcDLlONA8eN4" "ni:///sha-256;Q2zb2hq5EC43OWgfnQ-uPPQDVO6_EFXtdyhjpb_8PnQ" "ni:///sha-256;AowVyYvDuw_s7SL5fEFIF0Sy5DmeBCX3aiqrEebgB6w" "ni:///sha-256;eplyjFwBziuuDGwAXYG-OsnSc_l9nZRWlgn28AA-riY") ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:a92032b7-b56c-874e-8787-0cf9266e2309> ] .
+
+<#claim-repeated-member-and-used> a bridge:NamingTest ;
+  mf:name "claim-repeated-member-and-used" ;
+  rdfs:comment "The first claim's inputs with a member and a used version listed twice: lists are sets, so it is the first claim's name." ;
+  bridge:namingRule cascade:ClaimNamingRule ;
+  mf:action [ bridge:nameInputs ( "https://ns.cascadeprotocol.org/cascade#CascadeMatcher" "https://ns.cascadeprotocol.org/cascade#SameCodeRule" "https://ns.cascadeprotocol.org/cascade#SameCode" ("urn:uuid:f83d6a9d-1d0e-84bd-826c-e3f00989c291" "urn:uuid:7435b3b8-2d93-8912-9d48-940c5870dc81" "urn:uuid:f83d6a9d-1d0e-84bd-826c-e3f00989c291") ("ni:///sha-256;eplyjFwBziuuDGwAXYG-OsnSc_l9nZRWlgn28AA-riY" "ni:///sha-256;Q2zb2hq5EC43OWgfnQ-uPPQDVO6_EFXtdyhjpb_8PnQ" "ni:///sha-256;Q2zb2hq5EC43OWgfnQ-uPPQDVO6_EFXtdyhjpb_8PnQ") ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:35ee949a-9a6f-8cbb-81ef-378e145711f0> ] .
+
+<#snapshot-first> a bridge:NamingTest ;
+  mf:name "snapshot-first" ;
+  rdfs:comment "A writer's first snapshot: the act it is the snapshot of, no first parent and no merged parent, each an empty list written as 0, then the set hash as given." ;
+  bridge:namingRule cascade:SnapshotNamingRule ;
+  mf:action [ bridge:nameInputs ( "urn:uuid:2b7d4e61-9c3a-4f85-a1d0-6e8b3c5f7a92" () () "a1f0c3d5e7b9a2c4d6e8f0a1b3c5d7e9f1a3b5c7d9e1f3a5b7c9d1e3f5a7b9c1" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:80f74e0e-9e93-8fa5-848a-66e1cf1bd5c3> ] .
+
+<#snapshot-next> a bridge:NamingTest ;
+  mf:name "snapshot-next" ;
+  rdfs:comment "The writer's next snapshot: its act and its first parent." ;
+  bridge:namingRule cascade:SnapshotNamingRule ;
+  mf:action [ bridge:nameInputs ( "urn:uuid:8e3c5a17-4d2b-4f69-9a0e-7b1d6c3f5e28" ("urn:uuid:0d6c1a52-3b7e-8f41-9a2c-5e8b7d4f1c30") () "b2e1d4c6f8a0b3d5e7f9a1c2e4d6f8b0a2c4e6f8b1d3f5a7c9e1b3d5f7a9c1e3" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:6e770e37-0a96-8bdb-a134-afc26cbd883a> ] .
+
+<#snapshot-merge> a bridge:NamingTest ;
+  mf:name "snapshot-merge" ;
+  rdfs:comment "A sync's snapshot: its act, its first parent and the two heads that arrived, listed here unsorted." ;
+  bridge:namingRule cascade:SnapshotNamingRule ;
+  mf:action [ bridge:nameInputs ( "urn:uuid:c5f1a8d3-2e7b-4c94-8d06-3a9e5b2f7c41" ("urn:uuid:0d6c1a52-3b7e-8f41-9a2c-5e8b7d4f1c30") ("urn:uuid:a3b8c5d2-7e1f-8946-8c0b-1f4e6d9a2c57" "urn:uuid:4e9f2b71-6c3d-8a05-b1e7-2d9c8f6a3b14") "c3f2e5d7a9b1c4e6f8a0b2d3f5e7a9c1b3d5f7e9a2c4e6b8d0f2a4c6e8b1d3f5" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:01767588-66a0-826e-8d2a-8e35a9576899> ] .
+
+<#snapshot-merge-by-another-writer> a bridge:NamingTest ;
+  mf:name "snapshot-merge-by-another-writer" ;
+  rdfs:comment "Another writer's sync over the same heads reaching the same set: another act, so another snapshot." ;
+  bridge:namingRule cascade:SnapshotNamingRule ;
+  mf:action [ bridge:nameInputs ( "urn:uuid:51d9e2b4-8a6c-4e37-b2f0-9c4a7e1d3b65" ("urn:uuid:0d6c1a52-3b7e-8f41-9a2c-5e8b7d4f1c30") ("urn:uuid:a3b8c5d2-7e1f-8946-8c0b-1f4e6d9a2c57" "urn:uuid:4e9f2b71-6c3d-8a05-b1e7-2d9c8f6a3b14") "c3f2e5d7a9b1c4e6f8a0b2d3f5e7a9c1b3d5f7e9a2c4e6b8d0f2a4c6e8b1d3f5" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:9bc7e3ff-35f2-878b-981a-b03f32617c28> ] .
+
+<#version> a bridge:NamingTest ;
+  mf:name "version" ;
+  rdfs:comment "A version: the SHA-256 of the RDFC-1.0 canonical N-Quads of its triples, its subject urn:cascade:this-version, prov:specializationOf its record among them." ;
+  bridge:namingRule cascade:VersionNamingRule ;
+  mf:action [ bridge:input <content/version.nt> ] ;
+  mf:result [ bridge:expectedName <ni:///sha-256;79qujwwA5pwIANwZGiRTK0GbMw0kE6P9xu3Rl0qg6ZE> ; bridge:canonicalContent <content/version.nq> ] .
+
+<#version-nested-identifiers> a bridge:NamingTest ;
+  mf:name "version-nested-identifiers" ;
+  rdfs:comment "Business identifiers nested on fragments of the placeholder, inside the version's content." ;
+  bridge:namingRule cascade:VersionNamingRule ;
+  mf:action [ bridge:input <content/version-nested-identifiers.nt> ] ;
+  mf:result [ bridge:expectedName <ni:///sha-256;uv1iTouwACLUN_Gn8j72BJbFAOtaSb5E2TpQYrPflPc> ; bridge:canonicalContent <content/version-nested-identifiers.nq> ] .
+
+<#version-literal-forms> a bridge:NamingTest ;
+  mf:name "version-literal-forms" ;
+  rdfs:comment "Literals as RDFC-1.0 writes them: a language tag, a typed literal's lexical form kept as written, an escaped quotation mark, backslash, tab, line feed, carriage return, backspace and form feed, the other control characters as \\u and four upper-case hex digits, and non-ASCII characters as themselves." ;
+  bridge:namingRule cascade:VersionNamingRule ;
+  mf:action [ bridge:input <content/version-literal-forms.nt> ] ;
+  mf:result [ bridge:expectedName <ni:///sha-256;eoolDtMrrpjtrkxLiqo0g1hSYTMNYYSw2oGeTuhVZ5w> ; bridge:canonicalContent <content/version-literal-forms.nq> ] .
+
+<#version-language-tag-case> a bridge:NamingTest ;
+  mf:name "version-language-tag-case" ;
+  rdfs:comment "A language tag written in mixed case is hashed in lower case, as Oxigraph's RDFC-1.0 writes it: BCP 47 tags are case-insensitive." ;
+  bridge:namingRule cascade:VersionNamingRule ;
+  mf:action [ bridge:input <content/version-language-tag-case.nt> ] ;
+  mf:result [ bridge:expectedName <ni:///sha-256;YZvBMln2ccupi06IT5zkjwmaSa6hbU_wHF5VC2w2yAk> ; bridge:canonicalContent <content/version-language-tag-case.nq> ] .
+
+<#version-code-point-order> a bridge:NamingTest ;
+  mf:name "version-code-point-order" ;
+  rdfs:comment "Canonical lines are in code point order: U+FF5E (a UTF-16 unit of 0xFF5E) before U+1F600 (a surrogate pair starting 0xD83D), which a UTF-16 sort would put the other way round." ;
+  bridge:namingRule cascade:VersionNamingRule ;
+  mf:action [ bridge:input <content/version-code-point-order.nt> ] ;
+  mf:result [ bridge:expectedName <ni:///sha-256;K8Z4H3UpO4nZMzq3OyssdbKrQmaL1mp_7TuYvUTrceA> ; bridge:canonicalContent <content/version-code-point-order.nq> ] .
+
+<#version-repeated-triple> a bridge:NamingTest ;
+  mf:name "version-repeated-triple" ;
+  rdfs:comment "A triple written twice is one triple: a graph is a set, so its canonical form holds one line for it." ;
+  bridge:namingRule cascade:VersionNamingRule ;
+  mf:action [ bridge:input <content/version-repeated-triple.nt> ] ;
+  mf:result [ bridge:expectedName <ni:///sha-256;wozFEeN9darCg3lk8CQBiPSn3eDcKBQ5mGYYTo0xagw> ; bridge:canonicalContent <content/version-repeated-triple.nq> ] .
+
+<#revision> a bridge:NamingTest ;
+  mf:name "revision" ;
+  rdfs:comment "A revision: the same hash over its triples, its subject urn:cascade:this-revision." ;
+  bridge:namingRule cascade:RevisionNamingRule ;
+  mf:action [ bridge:input <content/revision.nt> ] ;
+  mf:result [ bridge:expectedName <ni:///sha-256;HTiLmGhUF1bggRnXC4kHY5LvWcHPWGCixV9yDxSO8NQ> ; bridge:canonicalContent <content/revision.nq> ] .
+
+<#revision-with-selector> a bridge:NamingTest ;
+  mf:name "revision-with-selector" ;
+  rdfs:comment "A revision of a record named by its document: the arrival's oa:hasSource and prov:wasDerivedFrom are kept, and its selector is the revision's own node, urn:cascade:this-revision#selector, hashed under the placeholder." ;
+  bridge:namingRule cascade:RevisionNamingRule ;
+  mf:action [ bridge:input <content/revision-with-selector.nt> ] ;
+  mf:result [ bridge:expectedName <ni:///sha-256;w3JLCnjHuRIR5yzsamDfTnL4qjNb8ksy0orBhJUyoWQ> ; bridge:canonicalContent <content/revision-with-selector.nq> ] .
+
+<#finding> a bridge:NamingTest ;
+  mf:name "finding" ;
+  rdfs:comment "A finding: the same hash over its triples, its subject urn:cascade:this-finding." ;
+  bridge:namingRule cascade:FindingNamingRule ;
+  mf:action [ bridge:input <content/finding.nt> ] ;
+  mf:result [ bridge:expectedName <ni:///sha-256;bqnyRwmKdjmRhV0qt5Xl0YAuCsHQ-c3tRyF1ubbci08> ; bridge:canonicalContent <content/finding.nq> ] .
+
+<#table-version-first> a bridge:NamingTest ;
+  mf:name "table-version-first" ;
+  rdfs:comment "A table version: the same hash over prov:specializationOf its series and its rows; the first of its series revises none." ;
+  bridge:namingRule cascade:TableVersionNamingRule ;
+  mf:action [ bridge:input <content/table-version-first.nt> ] ;
+  mf:result [ bridge:expectedName <ni:///sha-256;CNCAFjR0KWVCB_N9Zs2tG2LxZpjaNHQICfzX0njWSDk> ; bridge:canonicalContent <content/table-version-first.nq> ] .
+
+<#table-version-revising> a bridge:NamingTest ;
+  mf:name "table-version-revising" ;
+  rdfs:comment "A later version adds prov:wasRevisionOf the version it revises." ;
+  bridge:namingRule cascade:TableVersionNamingRule ;
+  mf:action [ bridge:input <content/table-version-revising.nt> ] ;
+  mf:result [ bridge:expectedName <ni:///sha-256;-m1e_MMhJrP2F1_gpDEx-f89god5jvK6RUPJ_5znO1c> ; bridge:canonicalContent <content/table-version-revising.nq> ] .
+
+<#document-empty> a bridge:NamingTest ;
+  mf:name "document-empty" ;
+  rdfs:comment "A document of no bytes." ;
+  bridge:namingRule cascade:DocumentNamingRule ;
+  mf:action [ bridge:input <documents/empty.txt> ] ;
+  mf:result [ bridge:expectedName <ni:///sha-256;47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU> ] .
+
+<#document-json> a bridge:NamingTest ;
+  mf:name "document-json" ;
+  rdfs:comment "A document is named by its bytes as stored: here UTF-8 JSON holding non-ASCII text." ;
+  bridge:namingRule cascade:DocumentNamingRule ;
+  mf:action [ bridge:input <documents/bundle.json> ] ;
+  mf:result [ bridge:expectedName <ni:///sha-256;YQegEpoI2h-HsDrlPr9eY5CfRQaXO6w7NxaRd_LlRz8> ] .
+
+<#document-xml> a bridge:NamingTest ;
+  mf:name "document-xml" ;
+  rdfs:comment "A C-CDA document's bytes." ;
+  bridge:namingRule cascade:DocumentNamingRule ;
+  mf:action [ bridge:input <documents/ccda.xml> ] ;
+  mf:result [ bridge:expectedName <ni:///sha-256;rI8RvPLLLr0GOayilGaTaGrcFv0NGQVl_ui-3zczOFY> ] .
+
+<#document-crlf> a bridge:NamingTest ;
+  mf:name "document-crlf" ;
+  rdfs:comment "A document's line endings are its bytes: the same XML with CR LF names another document." ;
+  bridge:namingRule cascade:DocumentNamingRule ;
+  mf:action [ bridge:input <documents/ccda-crlf.xml> ] ;
+  mf:result [ bridge:expectedName <ni:///sha-256;7E93HjzUpIsj03U1no7aBRe915k0-usXDikwTJNdyuM> ] .
+
+<#base-url-case> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-case" ;
+  rdfs:comment "The scheme and host in lower case; the path as written." ;
+  mf:action [ cascade:serverBaseUrl "HTTPS://FHIR.Example.ORG/api/FHIR/R4" ] ;
+  mf:result [ cascade:serverBaseUrl "https://fhir.example.org/api/FHIR/R4" ] .
+
+<#base-url-default-port-and-slashes> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-default-port-and-slashes" ;
+  rdfs:comment "The scheme's default port dropped, and every trailing / removed." ;
+  mf:action [ cascade:serverBaseUrl "https://fhir.example.org:443/r4//" ] ;
+  mf:result [ cascade:serverBaseUrl "https://fhir.example.org/r4" ] .
+
+<#base-url-http-default-port> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-http-default-port" ;
+  rdfs:comment "http's default port is 80." ;
+  mf:action [ cascade:serverBaseUrl "http://fhir.example.org:80/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "http://fhir.example.org/r4" ] .
+
+<#base-url-other-port> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-other-port" ;
+  rdfs:comment "Any other port is kept." ;
+  mf:action [ cascade:serverBaseUrl "https://fhir.example.org:8443/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "https://fhir.example.org:8443/r4" ] .
+
+<#base-url-empty-port> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-empty-port" ;
+  rdfs:comment "An empty port is dropped." ;
+  mf:action [ cascade:serverBaseUrl "https://fhir.example.org:/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "https://fhir.example.org/r4" ] .
+
+<#base-url-dot-segments> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-dot-segments" ;
+  rdfs:comment "Dot segments removed, RFC 3986 §5.2.4." ;
+  mf:action [ cascade:serverBaseUrl "https://fhir.example.org/a/./b/../r4" ] ;
+  mf:result [ cascade:serverBaseUrl "https://fhir.example.org/a/r4" ] .
+
+<#base-url-percent-encoding> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-percent-encoding" ;
+  rdfs:comment "A percent-encoded unreserved character decoded, any other's hex digits in upper case." ;
+  mf:action [ cascade:serverBaseUrl "https://fhir.example.org/%7e%41pi/a%7cb" ] ;
+  mf:result [ cascade:serverBaseUrl "https://fhir.example.org/~Api/a%7Cb" ] .
 
 <#base-url-host-alone> a bridge:BaseUrlNormalisationTest ;
   mf:name "base-url-host-alone" ;
-  rdfs:comment "A base URL that is a host alone loses its slash." ;
-  mf:action [ bridge:serverBaseUrl "https://Fhir.Example.org/" ] ;
-  mf:result [ bridge:serverBaseUrl "https://fhir.example.org" ] .
+  rdfs:comment "A host alone, its trailing / removed." ;
+  mf:action [ cascade:serverBaseUrl "https://fhir.example.org/" ] ;
+  mf:result [ cascade:serverBaseUrl "https://fhir.example.org" ] .
 
-<#base-url-port-and-slashes> a bridge:BaseUrlNormalisationTest ;
-  mf:name "base-url-port-and-slashes" ;
-  rdfs:comment "A port is kept, and every trailing slash is removed." ;
-  mf:action [ bridge:serverBaseUrl "http://FHIR.example.org:8080/R4//" ] ;
-  mf:result [ bridge:serverBaseUrl "http://fhir.example.org:8080/R4" ] .
+<#base-url-percent-encoded-host> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-percent-encoded-host" ;
+  rdfs:comment "A host in lower case but for a percent-encoding's hex digits, which are upper case (RFC 3986 §6.2.2.1); an encoded unreserved character decoded, then lower-cased with the host." ;
+  mf:action [ cascade:serverBaseUrl "https://%41PI.%c3%a9xample.ORG/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "https://api.%C3%A9xample.org/r4" ] .
 
-<#fingerprint-one> a bridge:FingerprintTest ;
-  mf:name "fingerprint-one" ;
-  rdfs:comment "One string: the integer the first twelve hexadecimal digits of its SHA-256 write." ;
-  mf:action [ qt:query <fingerprint.rq> ; bridge:fingerprintMembers ( "code=91936005" ) ] ;
-  mf:result [ bridge:expectedFingerprint "259087979045763" ] .
+<#base-url-ipv6> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-ipv6" ;
+  rdfs:comment "A bracketed IPv6 address in lower case, and the scheme's default port dropped after it." ;
+  mf:action [ cascade:serverBaseUrl "HTTPS://[2001:DB8::1]:443/r4/" ] ;
+  mf:result [ cascade:serverBaseUrl "https://[2001:db8::1]/r4" ] .
 
-<#fingerprint-key-active> a bridge:FingerprintTest ;
-  mf:name "fingerprint-key-active" ;
-  rdfs:comment "Three strings: the sum of each one's integer." ;
-  mf:action [ qt:query <fingerprint.rq> ; bridge:fingerprintMembers ( "code=91936005" "effectiveTime=20250327120000+0000" "status=active" ) ] ;
-  mf:result [ bridge:expectedFingerprint "506034893686827" ] .
+<#base-url-ipv6-port> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-ipv6-port" ;
+  rdfs:comment "A bracketed IPv6 address keeps any other port." ;
+  mf:action [ cascade:serverBaseUrl "https://[::1]:8443/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "https://[::1]:8443/r4" ] .
 
-<#fingerprint-key-active-reordered> a bridge:FingerprintTest ;
-  mf:name "fingerprint-key-active-reordered" ;
-  rdfs:comment "fingerprint-key-active's strings in another order have its fingerprint." ;
-  mf:action [ qt:query <fingerprint.rq> ; bridge:fingerprintMembers ( "status=active" "effectiveTime=20250327120000+0000" "code=91936005" ) ] ;
-  mf:result [ bridge:expectedFingerprint "506034893686827" ] .
+<#base-url-ipvfuture> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-ipvfuture" ;
+  rdfs:comment "An IPvFuture literal (RFC 3986 §3.2.2) is kept, in lower case." ;
+  mf:action [ cascade:serverBaseUrl "https://[V1.Fe]/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "https://[v1.fe]/r4" ] .
 
-<#fingerprint-key-active-repeated> a bridge:FingerprintTest ;
-  mf:name "fingerprint-key-active-repeated" ;
-  rdfs:comment "A string given twice counts once: fingerprint-key-active's fingerprint." ;
-  mf:action [ qt:query <fingerprint.rq> ; bridge:fingerprintMembers ( "code=91936005" "effectiveTime=20250327120000+0000" "status=active" "code=91936005" ) ] ;
-  mf:result [ bridge:expectedFingerprint "506034893686827" ] .
+<#base-url-port-leading-zeros-default> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-port-leading-zeros-default" ;
+  rdfs:comment "A port is an integer (RFC 3986 section 3.2.3): 0443 is 443, https's default, so it is dropped." ;
+  mf:action [ cascade:serverBaseUrl "https://fhir.example.org:0443/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "https://fhir.example.org/r4" ] .
 
-<#fingerprint-key-resolved> a bridge:FingerprintTest ;
-  mf:name "fingerprint-key-resolved" ;
-  rdfs:comment "fingerprint-key-active's set with another status has another fingerprint." ;
-  mf:action [ qt:query <fingerprint.rq> ; bridge:fingerprintMembers ( "code=91936005" "effectiveTime=20250327120000+0000" "status=resolved" ) ] ;
-  mf:result [ bridge:expectedFingerprint "485897515424792" ] .
+<#base-url-port-leading-zeros> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-port-leading-zeros" ;
+  rdfs:comment "Leading zeros are dropped from a port that is not the default." ;
+  mf:action [ cascade:serverBaseUrl "https://fhir.example.org:08080/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "https://fhir.example.org:8080/r4" ] .
 
-<#fingerprint-key-immunization> a bridge:FingerprintTest ;
-  mf:name "fingerprint-key-immunization" ;
-  rdfs:comment "An immunization's key." ;
-  mf:action [ qt:query <fingerprint.rq> ; bridge:fingerprintMembers ( "code=141" "effectiveTime=20241015" ) ] ;
-  mf:result [ bridge:expectedFingerprint "116633954584022" ] .
+<#base-url-port-highest> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-port-highest" ;
+  rdfs:comment "65535 is the highest port, and is kept." ;
+  mf:action [ cascade:serverBaseUrl "https://fhir.example.org:65535/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "https://fhir.example.org:65535/r4" ] .
 
-<#fingerprint-members> a bridge:FingerprintTest ;
-  mf:name "fingerprint-members" ;
-  rdfs:comment "An element's members." ;
-  mf:action [ qt:query <fingerprint.rq> ; bridge:fingerprintMembers ( "urn:hl7-org:v3code@http://sparql.xyz/facade-x/data/nullFlavor=UNK" "urn:hl7-org:v3originalText=left knee pain" ) ] ;
-  mf:result [ bridge:expectedFingerprint "334992598836920" ] .
+<#base-url-space> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-space" ;
+  rdfs:comment "A space is refused." ;
+  mf:action [ cascade:serverBaseUrl "https://fhir.example.org/r 4" ] .
 
-<#fingerprint-empty> a bridge:FingerprintTest ;
-  mf:name "fingerprint-empty" ;
-  rdfs:comment "The empty set's fingerprint is 0." ;
-  mf:action [ qt:query <fingerprint.rq> ; bridge:fingerprintMembers (  ) ] ;
-  mf:result [ bridge:expectedFingerprint "0" ] .
+<#base-url-nul> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-nul" ;
+  rdfs:comment "U+0000 is refused." ;
+  mf:action [ cascade:serverBaseUrl "https://fhir.example.org/r4\u0000" ] .
+
+<#base-url-del> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-del" ;
+  rdfs:comment "U+007F (DEL) is refused." ;
+  mf:action [ cascade:serverBaseUrl "https://fhir.example.org/r4\u007F" ] .
+
+<#base-url-query> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-query" ;
+  rdfs:comment "A query is refused: a server's base never has one, and a credential in it must never be a name input." ;
+  mf:action [ cascade:serverBaseUrl "https://fhir.example.org/r4?tok=abc" ] .
+
+<#base-url-empty-query> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-empty-query" ;
+  rdfs:comment "An empty query is refused too." ;
+  mf:action [ cascade:serverBaseUrl "https://fhir.example.org/r4?" ] .
+
+<#base-url-fragment> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-fragment" ;
+  rdfs:comment "A fragment is refused." ;
+  mf:action [ cascade:serverBaseUrl "https://fhir.example.org/r4#x" ] .
+
+<#base-url-empty-fragment> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-empty-fragment" ;
+  rdfs:comment "An empty fragment is refused too." ;
+  mf:action [ cascade:serverBaseUrl "https://fhir.example.org/r4#" ] .
+
+<#base-url-userinfo> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-userinfo" ;
+  rdfs:comment "A base URL carrying userinfo is refused: a credential is never a name input." ;
+  mf:action [ cascade:serverBaseUrl "https://user@fhir.example.org/r4" ] .
+
+<#base-url-port-not-digits> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-port-not-digits" ;
+  rdfs:comment "A port that is not digits is refused." ;
+  mf:action [ cascade:serverBaseUrl "https://fhir.example.org:https/r4" ] .
+
+<#base-url-no-scheme> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-no-scheme" ;
+  rdfs:comment "A base URL with no scheme is refused." ;
+  mf:action [ cascade:serverBaseUrl "//fhir.example.org/r4" ] .
+
+<#base-url-no-host> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-no-host" ;
+  rdfs:comment "A base URL with no host is refused." ;
+  mf:action [ cascade:serverBaseUrl "https:///r4" ] .
+
+<#base-url-tab> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-tab" ;
+  rdfs:comment "A tab is refused, not dropped as a URL parser drops it." ;
+  mf:action [ cascade:serverBaseUrl "https://fhir.example.org/r\t4" ] .
+
+<#base-url-line-feed> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-line-feed" ;
+  rdfs:comment "A line feed is refused, not dropped as a URL parser drops it." ;
+  mf:action [ cascade:serverBaseUrl "https://fhir.example.org/r4\n" ] .
+
+<#base-url-non-ascii-host> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-non-ascii-host" ;
+  rdfs:comment "A host holding a non-ASCII character is refused: a source sends an IDN punycoded." ;
+  mf:action [ cascade:serverBaseUrl "https://ΟΔΟΣ.example.org/r4" ] .
+
+<#base-url-non-ascii-compatibility-host> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-non-ascii-compatibility-host" ;
+  rdfs:comment "A host holding a compatibility character (U+2100) is refused, not folded." ;
+  mf:action [ cascade:serverBaseUrl "https://a℀b/r4" ] .
+
+<#base-url-bracket-unclosed> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-bracket-unclosed" ;
+  rdfs:comment "A host opening a bracket it never closes is refused." ;
+  mf:action [ cascade:serverBaseUrl "https://[abc/r4" ] .
+
+<#base-url-bracket-unopened> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-bracket-unopened" ;
+  rdfs:comment "A host closing a bracket it never opened is refused." ;
+  mf:action [ cascade:serverBaseUrl "https://abc]/r4" ] .
+
+<#base-url-bracket-not-ip> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-bracket-not-ip" ;
+  rdfs:comment "A bracketed host that is neither IPv6 nor IPvFuture is refused." ;
+  mf:action [ cascade:serverBaseUrl "https://[zzz]/r4" ] .
+
+<#base-url-bracket-empty> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-bracket-empty" ;
+  rdfs:comment "Empty brackets are refused." ;
+  mf:action [ cascade:serverBaseUrl "https://[]/r4" ] .
+
+<#base-url-ipv6-zone> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-ipv6-zone" ;
+  rdfs:comment "A zone id is refused: RFC 3986 section 3.2.2 has none." ;
+  mf:action [ cascade:serverBaseUrl "https://[fe80::1%25eth0]/r4" ] .
+
+<#base-url-bad-percent-in-host> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-bad-percent-in-host" ;
+  rdfs:comment "A host's % must open two hex digits." ;
+  mf:action [ cascade:serverBaseUrl "https://a%zz.example.org/r4" ] .
+
+<#base-url-port-non-ascii-digits> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-port-non-ascii-digits" ;
+  rdfs:comment "A port is ASCII digits: Arabic-Indic digits are refused." ;
+  mf:action [ cascade:serverBaseUrl "https://fhir.example.org:٤٤٣/r4" ] .
+
+<#base-url-port-too-high> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-port-too-high" ;
+  rdfs:comment "A port above 65535 is refused." ;
+  mf:action [ cascade:serverBaseUrl "https://fhir.example.org:65536/r4" ] .
+
+<#base-url-ipv6-zone-unencoded> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-ipv6-zone-unencoded" ;
+  rdfs:comment "A zone id written with a bare % is refused, as the encoded one is: RFC 3986 has no zone id." ;
+  mf:action [ cascade:serverBaseUrl "https://[fe80::1%eth0]/r4" ] .
+
+<#base-url-encoded-slash-kept> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-encoded-slash-kept" ;
+  rdfs:comment "An encoded reserved character is not decoded: %2F stays %2F, so a/b and a%2Fb are two bases." ;
+  mf:action [ cascade:serverBaseUrl "https://h.example/a%2Fb/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "https://h.example/a%2Fb/r4" ] .
+
+<#base-url-no-path> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-no-path" ;
+  rdfs:comment "A base with no path is kept as written." ;
+  mf:action [ cascade:serverBaseUrl "https://h.example" ] ;
+  mf:result [ cascade:serverBaseUrl "https://h.example" ] .
+
+<#base-url-port-zero> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-port-zero" ;
+  rdfs:comment "Port 0 is a port, not an empty one: its leading zeros are dropped and :0 kept." ;
+  mf:action [ cascade:serverBaseUrl "https://h.example:00000/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "https://h.example:0/r4" ] .
+
+<#base-url-port-many-leading-zeros> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-port-many-leading-zeros" ;
+  rdfs:comment "A port of more than five digits is read as an integer: :0000080 is :80, kept on https." ;
+  mf:action [ cascade:serverBaseUrl "https://h.example:0000080/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "https://h.example:80/r4" ] .
+
+<#base-url-encoded-dot-segments> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-encoded-dot-segments" ;
+  rdfs:comment "An encoded dot segment is decoded, then removed as a dot segment." ;
+  mf:action [ cascade:serverBaseUrl "https://h.example/a/%2e%2e/b/%2E/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "https://h.example/b/r4" ] .
+
+<#base-url-dot-segments-above-root> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-dot-segments-above-root" ;
+  rdfs:comment "A .. above the root is dropped." ;
+  mf:action [ cascade:serverBaseUrl "https://h.example/%2e%2e/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "https://h.example/r4" ] .
+
+<#base-url-percent-in-path-kept> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-percent-in-path-kept" ;
+  rdfs:comment "A % not opening two hex digits is left alone in a path; in a host it is refused (base-url-bad-percent-in-host)." ;
+  mf:action [ cascade:serverBaseUrl "https://h.example/a%zz/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "https://h.example/a%zz/r4" ] .
+
+<#base-url-non-ascii-path-kept> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-non-ascii-path-kept" ;
+  rdfs:comment "A path is not folded: a non-ASCII character in it is kept as written, beside its encoded form." ;
+  mf:action [ cascade:serverBaseUrl "https://h.example/r%C3%A9/é" ] ;
+  mf:result [ cascade:serverBaseUrl "https://h.example/r%C3%A9/é" ] .
+
+<#base-url-ipv4-in-ipv6> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-ipv4-in-ipv6" ;
+  rdfs:comment "An IPv6 address with an embedded IPv4 part is lower-cased and nothing else." ;
+  mf:action [ cascade:serverBaseUrl "https://[::FFFF:1.2.3.4]/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "https://[::ffff:1.2.3.4]/r4" ] .
+
+<#base-url-ipv6-http-default-port> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-ipv6-http-default-port" ;
+  rdfs:comment "The scheme's default port is dropped after an IP-literal too." ;
+  mf:action [ cascade:serverBaseUrl "http://[::1]:80/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "http://[::1]/r4" ] .
+
+<#base-url-underscore-host> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-underscore-host" ;
+  rdfs:comment "An underscore is an unreserved character, so a reg-name may hold one." ;
+  mf:action [ cascade:serverBaseUrl "https://h_x.example/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "https://h_x.example/r4" ] .
+
+<#base-url-trailing-dot-host> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-trailing-dot-host" ;
+  rdfs:comment "A host's trailing dot is kept: h.example. and h.example are two bases." ;
+  mf:action [ cascade:serverBaseUrl "https://h.example./r4" ] ;
+  mf:result [ cascade:serverBaseUrl "https://h.example./r4" ] .
+
+<#base-url-other-scheme> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-other-scheme" ;
+  rdfs:comment "A scheme other than http and https is lower-cased and has no default port to drop." ;
+  mf:action [ cascade:serverBaseUrl "ftp://h.example/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "ftp://h.example/r4" ] .
+
+<#base-url-no-slashes> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-no-slashes" ;
+  rdfs:comment "A URL with no // has no authority, so no host: refused." ;
+  mf:action [ cascade:serverBaseUrl "https:h.example/r4" ] .
+
+<#base-url-no-authority> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-no-authority" ;
+  rdfs:comment "A scheme and a path with no authority: refused." ;
+  mf:action [ cascade:serverBaseUrl "a:1:2" ] .
+
+<#base-url-bracket-trailing> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-bracket-trailing" ;
+  rdfs:comment "Text after a bracketed host that is not a port is refused." ;
+  mf:action [ cascade:serverBaseUrl "https://[::1]x/r4" ] .
+
+<#base-url-ipv6-too-many-groups> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-ipv6-too-many-groups" ;
+  rdfs:comment "A bracketed host that is not an IPv6 address is refused." ;
+  mf:action [ cascade:serverBaseUrl "https://[1:2:3:4:5:6:7:8:9]/r4" ] .
+
+<#base-url-port-percent-encoded> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-port-percent-encoded" ;
+  rdfs:comment "A percent-encoded port is not ASCII digits: refused." ;
+  mf:action [ cascade:serverBaseUrl "https://h.example:%34%34%33/r4" ] .
+
+<#base-url-angle-brackets-host> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-angle-brackets-host" ;
+  rdfs:comment "A host holding a character a reg-name does not allow is refused." ;
+  mf:action [ cascade:serverBaseUrl "https://<x>/r4" ] .
+
+<#base-url-two-port-colons> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-two-port-colons" ;
+  rdfs:comment "An authority with two colons after a host that is not bracketed is refused: 1:2 is no port." ;
+  mf:action [ cascade:serverBaseUrl "https://h.example:1:2/r4" ] .
+
+<#base-url-ipv6-port-not-digits> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-ipv6-port-not-digits" ;
+  rdfs:comment "A port after a bracketed host that is not digits is refused." ;
+  mf:action [ cascade:serverBaseUrl "https://[::1]:x/r4" ] .
+
+<#base-url-port-leading-zeros-too-high> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-port-leading-zeros-too-high" ;
+  rdfs:comment "A port above 65535 is refused once its leading zeros are dropped: 099999 is 99999." ;
+  mf:action [ cascade:serverBaseUrl "https://h.example:099999/r4" ] .
+
+<#base-url-ipv6-port-80-under-https> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-ipv6-port-80-under-https" ;
+  rdfs:comment "80 is http's default, not https's: under https it is kept after an IP-literal." ;
+  mf:action [ cascade:serverBaseUrl "https://[::1]:80/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "https://[::1]:80/r4" ] .

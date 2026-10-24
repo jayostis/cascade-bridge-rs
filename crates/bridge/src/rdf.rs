@@ -337,7 +337,7 @@ mod tests {
         for iri in [
             // Another scheme, which is every body a gap scheme declares.
             "urn:example:catalog#noteHasNoTerm",
-            "https://ns.cascadeprotocol.org/bridge/v1-draft#pathNotAccounted",
+            "https://ns.cascadeprotocol.org/cascade#SourcePathNotAccounted",
             // Another host: a relative reference cannot cross one.
             "file://elsewhere/checkout/fixtures/in/two.xml",
             // A fragment, which resolution would carry along with the path.

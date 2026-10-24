@@ -1,0 +1,3 @@
+SELECT ?input1 ?input2 ?name WHERE {
+  BIND (CONCAT(?input1, "#", SHA256(?input2)) AS ?name)
+}
