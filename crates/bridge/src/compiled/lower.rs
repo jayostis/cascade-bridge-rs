@@ -5,7 +5,7 @@ use super::scope::analysis as node;
 use super::scope::{analyze, Bound, Certain, Frame, Hidden, Names, Reads, Scope, Scoped};
 use super::{Aggregate, Expr, Group, Key, Kind, Note, Pattern, Place, Plan, Reach, Step};
 use oxigraph::model::vocab::xsd;
-use oxigraph::model::{BlankNode, Literal, Term};
+use oxigraph::model::{BlankNode, Literal, NamedNode, NamedNodeRef, Term};
 use oxiri::Iri;
 use spargebra::algebra::{
     AggregateExpression, AggregateFunction, Expression, GraphPattern, PropertyPathExpression,
@@ -320,6 +320,9 @@ impl Lowering {
     }
 
     fn walk(&mut self, path: &node::Path, out: &mut Built) -> Result<(), String> {
+        if let Some(edges) = &path.edges {
+            return self.choice(path, edges, out);
+        }
         let (skipped, from_itself) = walked(path.path)?;
         let (from, to) = (self.place(path.subject)?, self.place(path.object)?);
         path.starts?;
@@ -330,6 +333,29 @@ impl Lowering {
             from_itself,
         });
         out.push(step, &path.certain_after);
+        Ok(())
+    }
+
+    /// A path that takes one of some edges: a UNION of a triple pattern for each.
+    fn choice(
+        &mut self,
+        path: &node::Path,
+        edges: &[(&NamedNode, bool)],
+        out: &mut Built,
+    ) -> Result<(), String> {
+        let mut branches = Vec::new();
+        for &(edge, backwards) in edges {
+            let (mut subject, mut object) = (self.place(path.subject)?, self.place(path.object)?);
+            if backwards {
+                std::mem::swap(&mut subject, &mut object);
+            }
+            branches.push(vec![Step::Triple(Pattern {
+                subject,
+                predicate: Place::Const(Term::from(edge.clone())),
+                object,
+            })]);
+        }
+        out.push(Step::Union(branches), &path.certain_after);
         Ok(())
     }
 
@@ -348,7 +374,7 @@ impl Lowering {
             .iter()
             .any(|t| !exact(&t.subject) || !exact(&t.object))
         {
-            return Err("a typed literal in a pattern, which a store matches by value".to_owned());
+            return Err("a literal in a pattern of a datatype a store matches by value".to_owned());
         }
         Ok(pending)
     }
@@ -542,7 +568,7 @@ fn walked(path: &PropertyPathExpression) -> Result<(Vec<Term>, bool), String> {
     let (PropertyPathExpression::ZeroOrMore(edges) | PropertyPathExpression::OneOrMore(edges)) =
         path
     else {
-        return Err("a property path that is not a walk".to_owned());
+        return Err("a property path other than a choice of edges or a walk".to_owned());
     };
     let PropertyPathExpression::NegatedPropertySet(skipped) = &**edges else {
         return Err("a property path that is not a walk over all but some edges".to_owned());
@@ -559,17 +585,51 @@ fn value(cell: &Option<GroundTerm>) -> Result<Option<Term>, String> {
         Some(GroundTerm::NamedNode(n)) => Ok(Some(Term::from(n.clone()))),
         Some(GroundTerm::Literal(l)) if by_term(l) => Ok(Some(Term::from(l.clone()))),
         Some(GroundTerm::Literal(_)) => {
-            Err("a typed literal in VALUES, which a join matches by value".to_owned())
+            Err("a literal in VALUES of a datatype a join matches by value".to_owned())
         }
         Some(_) => Err("a quoted triple in VALUES".to_owned()),
     }
 }
 
-/// Whether a place is matched by its term: a typed literal is matched by its value.
+/// Whether a place is matched by its term.
 fn exact(place: &Place) -> bool {
     !matches!(place, Place::Const(Term::Literal(l)) if !by_term(l))
 }
 
+/// Oxigraph stores a literal of these datatypes as its value, so a pattern or a join
+/// matches it to another lexical form of that value, and to another of these types.
+const STORED_BY_VALUE: &[NamedNodeRef<'_>] = &[
+    xsd::BOOLEAN,
+    xsd::FLOAT,
+    xsd::DOUBLE,
+    xsd::INTEGER,
+    xsd::BYTE,
+    xsd::SHORT,
+    xsd::INT,
+    xsd::LONG,
+    xsd::UNSIGNED_BYTE,
+    xsd::UNSIGNED_SHORT,
+    xsd::UNSIGNED_INT,
+    xsd::UNSIGNED_LONG,
+    xsd::POSITIVE_INTEGER,
+    xsd::NEGATIVE_INTEGER,
+    xsd::NON_POSITIVE_INTEGER,
+    xsd::NON_NEGATIVE_INTEGER,
+    xsd::DECIMAL,
+    xsd::DATE_TIME,
+    xsd::DATE_TIME_STAMP,
+    xsd::TIME,
+    xsd::DATE,
+    xsd::G_YEAR_MONTH,
+    xsd::G_YEAR,
+    xsd::G_MONTH_DAY,
+    xsd::G_DAY,
+    xsd::G_MONTH,
+    xsd::DURATION,
+    xsd::YEAR_MONTH_DURATION,
+    xsd::DAY_TIME_DURATION,
+];
+
 fn by_term(literal: &Literal) -> bool {
-    literal.datatype() == xsd::STRING || literal.language().is_some()
+    !STORED_BY_VALUE.contains(&literal.datatype())
 }

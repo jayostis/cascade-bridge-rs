@@ -1,7 +1,7 @@
 use super::{Bound, Certain, Frame, Hidden, Maybe, Names, Reads, Scope, Slots};
 use oxigraph::model::Variable;
 use spargebra::algebra::{AggregateExpression, Expression, GraphPattern, PropertyPathExpression};
-use spargebra::term::{GroundTerm, NamedNodePattern, TermPattern, TriplePattern};
+use spargebra::term::{GroundTerm, NamedNode, NamedNodePattern, TermPattern, TriplePattern};
 use std::collections::HashMap;
 
 pub(crate) type Declined = &'static str;
@@ -118,7 +118,9 @@ pub(crate) struct Path<'q> {
     pub(crate) subject: &'q TermPattern,
     pub(crate) path: &'q PropertyPathExpression,
     pub(crate) object: &'q TermPattern,
-    /// It starts from a constant or from a node bound in every row.
+    /// The edges it may take, each with whether it is taken backwards, where it takes one.
+    pub(crate) edges: Option<Vec<(&'q NamedNode, bool)>>,
+    /// It starts from a constant or from a node bound in every row, or takes one edge.
     pub(crate) starts: Result<(), Declined>,
     pub(crate) certain_after: Certain,
 }
@@ -450,25 +452,48 @@ impl Analysis<'_> {
         object: &'q TermPattern,
         frame: &mut Frame,
     ) -> Scoped<'q> {
+        let edges = edges(path, false);
         let starts = match subject {
             TermPattern::Variable(variable)
-                if !frame.bound.certain.contains(self.names.slot(variable)) =>
+                if edges.is_none() && !frame.bound.certain.contains(self.names.slot(variable)) =>
             {
                 Err("a property path from a node not yet bound")
             }
             _ => Ok(()),
         };
-        if let TermPattern::Variable(variable) = object {
-            let slot = self.names.slot(variable);
-            frame.binds(slot, true);
+        let ends = if edges.is_some() {
+            vec![subject, object]
+        } else {
+            vec![object]
+        };
+        for end in ends {
+            if let TermPattern::Variable(variable) = end {
+                let slot = self.names.slot(variable);
+                frame.binds(slot, true);
+            }
         }
         Scoped::Path(Path {
             subject,
             path,
             object,
+            edges,
             starts,
             certain_after: frame.bound.certain.clone(),
         })
+    }
+}
+
+/// The edges a path that takes one edge may take, each with whether it is taken backwards.
+fn edges(path: &PropertyPathExpression, backwards: bool) -> Option<Vec<(&NamedNode, bool)>> {
+    match path {
+        PropertyPathExpression::NamedNode(edge) => Some(vec![(edge, backwards)]),
+        PropertyPathExpression::Reverse(inner) => edges(inner, !backwards),
+        PropertyPathExpression::Alternative(left, right) => {
+            let mut taken = edges(left, backwards)?;
+            taken.extend(edges(right, backwards)?);
+            Some(taken)
+        }
+        _ => None,
     }
 }
 

@@ -1,7 +1,7 @@
 use super::expr::{binary, boolean, eval_fn, text, unary};
 use super::{Eval, Expr, Fail};
 use oxigraph::model::vocab::xsd;
-use oxigraph::model::{Literal, NamedNode, Term};
+use oxigraph::model::{BlankNode, Literal, NamedNode, Term};
 use oxiri::Iri;
 use regex::{Regex, RegexBuilder};
 use sha2::{Digest, Sha256};
@@ -97,6 +97,7 @@ impl Builtin {
 pub(super) static BUILTINS: &[Builtin] = &[
     Builtin::one("STR", string_of),
     Builtin::special("IRI", 1, 1, iri),
+    Builtin::special("BNODE", 0, 0, fresh_blank_node),
     Builtin::special("CONCAT", 1, usize::MAX, concatenation),
     Builtin::special("SUBSTR", 2, 3, substring),
     Builtin::one("STRLEN", string_length),
@@ -172,6 +173,11 @@ fn iri(mut call: Call<'_>) -> Result<Expr, String> {
         }
         _ => Err(Fail::Error),
     }))
+}
+
+/// A blank node no other row and no tree holds, made each time it is evaluated.
+fn fresh_blank_node(_: Call<'_>) -> Result<Expr, String> {
+    Ok(eval_fn(|_, _| Ok(T::BlankNode(BlankNode::default()))))
 }
 
 fn concatenation(call: Call<'_>) -> Result<Expr, String> {
