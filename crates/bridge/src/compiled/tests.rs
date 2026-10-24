@@ -24,6 +24,9 @@ const DATA: &str = r#"
 :s1 :system "urn:x:s"^^xsd:anyURI .
 :s2 :system "urn:x:s" .
 :s3 :system "urn:x:s"^^xsd:token .
+:x1 :e :x2 ; :f :x2 .
+:x2 :e :x1 .
+:x3 :e :x3 .
 :a a :Item ; :id "1" ; :name "alpha" ; :size 3 ; rdf:_1 :a1 ; rdf:_2 :a2 .
 :b a :Item ; :id "2" ; :name "beta" ; :size 5 .
 :c a :Item ; :id "x" ; :size "many" .
@@ -221,6 +224,30 @@ const LOWERED: &[(&str, &str)] = &[
     (
         "an edge followed backwards from a choice",
         "CONSTRUCT { ?i :held ?r } WHERE { ?i a :Item . ?i ^(rdf:_1|rdf:_2) ?r }",
+    ),
+    (
+        "a choice of two edges that both link one pair, which it takes once",
+        "CONSTRUCT { :root :count ?c } WHERE { SELECT (COUNT(*) AS ?c) WHERE { ?s :e|:f ?o } }",
+    ),
+    (
+        "a choice of one edge twice, which it takes once",
+        "CONSTRUCT { :root :count ?c } WHERE { SELECT (COUNT(*) AS ?c) WHERE { ?s :e|:e ?o } }",
+    ),
+    (
+        "a choice of an edge and the same edge backwards, which links a pair both ways once",
+        "CONSTRUCT { :root :count ?c } WHERE { SELECT (COUNT(*) AS ?c) WHERE { ?s :e|^:e ?o } }",
+    ),
+    (
+        "a choice of two edges between ends already bound, which holds once",
+        "CONSTRUCT { :root :count ?c } WHERE { SELECT (COUNT(*) AS ?c) WHERE { :x1 :e|:f :x2 } }",
+    ),
+    (
+        "BNODE() in a BIND, a node for each row of the patterns before it",
+        "CONSTRUCT { :root :count ?c } WHERE { SELECT (COUNT(DISTINCT ?b) AS ?c) WHERE { ?s :e ?o BIND(BNODE() AS ?b) } }",
+    ),
+    (
+        "BNODE() under a condition bound before the last pattern, a node for each row",
+        "CONSTRUCT { :root :count ?c } WHERE { SELECT (COUNT(DISTINCT ?b) AS ?c) WHERE { ?s :e ?m . ?m ?edge ?o BIND(IF(BOUND(?s), BNODE(), 1/0) AS ?b) } }",
     ),
     (
         "BNODE() in a BIND, a node for each row where a condition holds",
