@@ -97,7 +97,7 @@ fn without_dot_segments(path: &str) -> String {
 
 /// RFC 3986 sections 6.2.2 and 6.2.3, then every trailing `/` removed. Refused: userinfo, a control
 /// character or space, a query or a fragment (empty ones too), no scheme, no host, a host that is
-/// not ASCII, a registered name or a bracketed IPv6 address or IPvFuture (lower-cased), and a port that
+/// not ASCII or not a registered name, bracketed IPv6 address or IPvFuture (lower-cased), and a port that
 /// is not ASCII digits or is above 65535 (leading zeros dropped). A refusal says which rule, never the URL: it may carry a credential.
 pub(crate) fn normalised_base_url(url: &str) -> Result<String> {
     let refused = |why: &str| Error::facts(format!("a server base URL {why}"));
