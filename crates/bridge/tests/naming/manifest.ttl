@@ -108,6 +108,30 @@
     <#base-url-bad-percent-in-host>
     <#base-url-port-non-ascii-digits>
     <#base-url-port-too-high>
+    <#base-url-ipv6-zone-unencoded>
+    <#base-url-encoded-slash-kept>
+    <#base-url-no-path>
+    <#base-url-port-zero>
+    <#base-url-port-many-leading-zeros>
+    <#base-url-encoded-dot-segments>
+    <#base-url-dot-segments-above-root>
+    <#base-url-percent-in-path-kept>
+    <#base-url-non-ascii-path-kept>
+    <#base-url-ipv4-in-ipv6>
+    <#base-url-ipv6-http-default-port>
+    <#base-url-underscore-host>
+    <#base-url-trailing-dot-host>
+    <#base-url-other-scheme>
+    <#base-url-no-slashes>
+    <#base-url-no-authority>
+    <#base-url-bracket-trailing>
+    <#base-url-ipv6-too-many-groups>
+    <#base-url-port-percent-encoded>
+    <#base-url-angle-brackets-host>
+    <#base-url-two-port-colons>
+    <#base-url-ipv6-port-not-digits>
+    <#base-url-port-leading-zeros-too-high>
+    <#base-url-ipv6-port-80-under-https>
   ) .
 
 <#record-from-server> a bridge:NamingTest ;
@@ -755,3 +779,137 @@
   mf:name "base-url-port-too-high" ;
   rdfs:comment "A port above 65535 is refused." ;
   mf:action [ cascade:serverBaseUrl "https://fhir.example.org:65536/r4" ] .
+
+<#base-url-ipv6-zone-unencoded> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-ipv6-zone-unencoded" ;
+  rdfs:comment "A zone id written with a bare % is refused, as the encoded one is: RFC 3986 has no zone id." ;
+  mf:action [ cascade:serverBaseUrl "https://[fe80::1%eth0]/r4" ] .
+
+<#base-url-encoded-slash-kept> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-encoded-slash-kept" ;
+  rdfs:comment "An encoded reserved character is not decoded: %2F stays %2F, so a/b and a%2Fb are two bases." ;
+  mf:action [ cascade:serverBaseUrl "https://h.example/a%2Fb/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "https://h.example/a%2Fb/r4" ] .
+
+<#base-url-no-path> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-no-path" ;
+  rdfs:comment "A base with no path is kept as written." ;
+  mf:action [ cascade:serverBaseUrl "https://h.example" ] ;
+  mf:result [ cascade:serverBaseUrl "https://h.example" ] .
+
+<#base-url-port-zero> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-port-zero" ;
+  rdfs:comment "Port 0 is a port, not an empty one: its leading zeros are dropped and :0 kept." ;
+  mf:action [ cascade:serverBaseUrl "https://h.example:00000/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "https://h.example:0/r4" ] .
+
+<#base-url-port-many-leading-zeros> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-port-many-leading-zeros" ;
+  rdfs:comment "A port of more than five digits is read as an integer: :0000080 is :80, kept on https." ;
+  mf:action [ cascade:serverBaseUrl "https://h.example:0000080/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "https://h.example:80/r4" ] .
+
+<#base-url-encoded-dot-segments> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-encoded-dot-segments" ;
+  rdfs:comment "An encoded dot segment is decoded, then removed as a dot segment." ;
+  mf:action [ cascade:serverBaseUrl "https://h.example/a/%2e%2e/b/%2E/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "https://h.example/b/r4" ] .
+
+<#base-url-dot-segments-above-root> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-dot-segments-above-root" ;
+  rdfs:comment "A .. above the root is dropped." ;
+  mf:action [ cascade:serverBaseUrl "https://h.example/%2e%2e/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "https://h.example/r4" ] .
+
+<#base-url-percent-in-path-kept> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-percent-in-path-kept" ;
+  rdfs:comment "A % not opening two hex digits is left alone in a path; in a host it is refused (base-url-bad-percent-in-host)." ;
+  mf:action [ cascade:serverBaseUrl "https://h.example/a%zz/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "https://h.example/a%zz/r4" ] .
+
+<#base-url-non-ascii-path-kept> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-non-ascii-path-kept" ;
+  rdfs:comment "A path is not folded: a non-ASCII character in it is kept as written, beside its encoded form." ;
+  mf:action [ cascade:serverBaseUrl "https://h.example/r%C3%A9/é" ] ;
+  mf:result [ cascade:serverBaseUrl "https://h.example/r%C3%A9/é" ] .
+
+<#base-url-ipv4-in-ipv6> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-ipv4-in-ipv6" ;
+  rdfs:comment "An IPv6 address with an embedded IPv4 part is lower-cased and nothing else." ;
+  mf:action [ cascade:serverBaseUrl "https://[::FFFF:1.2.3.4]/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "https://[::ffff:1.2.3.4]/r4" ] .
+
+<#base-url-ipv6-http-default-port> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-ipv6-http-default-port" ;
+  rdfs:comment "The scheme's default port is dropped after an IP-literal too." ;
+  mf:action [ cascade:serverBaseUrl "http://[::1]:80/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "http://[::1]/r4" ] .
+
+<#base-url-underscore-host> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-underscore-host" ;
+  rdfs:comment "An underscore is an unreserved character, so a reg-name may hold one." ;
+  mf:action [ cascade:serverBaseUrl "https://h_x.example/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "https://h_x.example/r4" ] .
+
+<#base-url-trailing-dot-host> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-trailing-dot-host" ;
+  rdfs:comment "A host's trailing dot is kept: h.example. and h.example are two bases." ;
+  mf:action [ cascade:serverBaseUrl "https://h.example./r4" ] ;
+  mf:result [ cascade:serverBaseUrl "https://h.example./r4" ] .
+
+<#base-url-other-scheme> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-other-scheme" ;
+  rdfs:comment "A scheme other than http and https is lower-cased and has no default port to drop." ;
+  mf:action [ cascade:serverBaseUrl "ftp://h.example/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "ftp://h.example/r4" ] .
+
+<#base-url-no-slashes> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-no-slashes" ;
+  rdfs:comment "A URL with no // has no authority, so no host: refused." ;
+  mf:action [ cascade:serverBaseUrl "https:h.example/r4" ] .
+
+<#base-url-no-authority> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-no-authority" ;
+  rdfs:comment "A scheme and a path with no authority: refused." ;
+  mf:action [ cascade:serverBaseUrl "a:1:2" ] .
+
+<#base-url-bracket-trailing> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-bracket-trailing" ;
+  rdfs:comment "Text after a bracketed host that is not a port is refused." ;
+  mf:action [ cascade:serverBaseUrl "https://[::1]x/r4" ] .
+
+<#base-url-ipv6-too-many-groups> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-ipv6-too-many-groups" ;
+  rdfs:comment "A bracketed host that is not an IPv6 address is refused." ;
+  mf:action [ cascade:serverBaseUrl "https://[1:2:3:4:5:6:7:8:9]/r4" ] .
+
+<#base-url-port-percent-encoded> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-port-percent-encoded" ;
+  rdfs:comment "A percent-encoded port is not ASCII digits: refused." ;
+  mf:action [ cascade:serverBaseUrl "https://h.example:%34%34%33/r4" ] .
+
+<#base-url-angle-brackets-host> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-angle-brackets-host" ;
+  rdfs:comment "A host holding a character a reg-name does not allow is refused." ;
+  mf:action [ cascade:serverBaseUrl "https://<x>/r4" ] .
+
+<#base-url-two-port-colons> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-two-port-colons" ;
+  rdfs:comment "An authority with two colons after a host that is not bracketed is refused: 1:2 is no port." ;
+  mf:action [ cascade:serverBaseUrl "https://h.example:1:2/r4" ] .
+
+<#base-url-ipv6-port-not-digits> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-ipv6-port-not-digits" ;
+  rdfs:comment "A port after a bracketed host that is not digits is refused." ;
+  mf:action [ cascade:serverBaseUrl "https://[::1]:x/r4" ] .
+
+<#base-url-port-leading-zeros-too-high> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-port-leading-zeros-too-high" ;
+  rdfs:comment "A port above 65535 is refused once its leading zeros are dropped: 099999 is 99999." ;
+  mf:action [ cascade:serverBaseUrl "https://h.example:099999/r4" ] .
+
+<#base-url-ipv6-port-80-under-https> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-ipv6-port-80-under-https" ;
+  rdfs:comment "80 is http's default, not https's: under https it is kept after an IP-literal." ;
+  mf:action [ cascade:serverBaseUrl "https://[::1]:80/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "https://[::1]:80/r4" ] .
