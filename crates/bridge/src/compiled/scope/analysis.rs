@@ -141,7 +141,16 @@ struct Analysis<'n> {
 }
 
 impl Analysis<'_> {
+    /// What follows a pattern other than an empty group may be reached by several rows.
     fn pattern<'q>(&mut self, pattern: &'q GraphPattern, frame: &mut Frame) -> Scoped<'q> {
+        let scoped = self.pattern_alone(pattern, frame);
+        if !matches!(pattern, GraphPattern::Bgp { patterns } if patterns.is_empty()) {
+            frame.several = true;
+        }
+        scoped
+    }
+
+    fn pattern_alone<'q>(&mut self, pattern: &'q GraphPattern, frame: &mut Frame) -> Scoped<'q> {
         match pattern {
             GraphPattern::Bgp { patterns } => self.triples(patterns, frame),
             GraphPattern::Join { left, right } => {
@@ -168,7 +177,7 @@ impl Analysis<'_> {
                 bindings,
             } => self.values(variables, bindings, frame),
             GraphPattern::Project { inner, .. } | GraphPattern::Distinct { inner }
-                if frame.bound.maybe.iter().next().is_some() && binds_blank_nodes(inner) =>
+                if frame.several && binds_blank_nodes(inner) =>
             {
                 Scoped::Declined("a subquery that makes blank nodes")
             }
@@ -542,7 +551,7 @@ pub(crate) fn makes_blank_nodes(expression: &Expression) -> bool {
 
 /// Whether a pattern binds a variable to an expression that calls BNODE. Stock
 /// Oxigraph evaluates a subquery once, so such a node is the same for every row it
-/// joins, where a plan runs the subquery again for each row before it.
+/// joins, where a plan runs the subquery again for each row that reaches it.
 fn binds_blank_nodes(pattern: &GraphPattern) -> bool {
     match pattern {
         GraphPattern::Extend {
