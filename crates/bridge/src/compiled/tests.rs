@@ -322,6 +322,16 @@ const DECLINED: &[(&str, &str, &str)] = &[
         "a subquery that makes blank nodes",
     ),
     (
+        "a subquery that makes blank nodes after a UNION of two empty groups, which yields two rows",
+        "CONSTRUCT { ?i :has ?b } WHERE { { } UNION { } { SELECT ?i ?b WHERE { ?i a :Item BIND(BNODE() AS ?b) } } }",
+        "a subquery that makes blank nodes",
+    ),
+    (
+        "a subquery that makes blank nodes after VALUES of two empty rows",
+        "CONSTRUCT { ?i :has ?b } WHERE { VALUES () { () () } { SELECT ?i ?b WHERE { ?i a :Item BIND(BNODE() AS ?b) } } }",
+        "a subquery that makes blank nodes",
+    ),
+    (
         "BNODE of a label",
         "CONSTRUCT { ?s :p ?o } WHERE { ?s a :Item . BIND(BNODE(\"x\") AS ?o) }",
         "the function BNODE",
