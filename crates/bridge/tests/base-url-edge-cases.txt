@@ -1,7 +1,7 @@
 # One base URL per line, a tab, then its normalised form or REFUSED.
 # Lines starting # are comments. In a URL, \xHH is the control character or space U+00HH and \\ a backslash.
-# Rules: naming.md and settlements.md (C0, C0b, C0c); reference: tests/naming.py normalised_base_url in
-# jayostis/cascade-vocabulary. The first block is every base-url vector of tests/vectors/naming/manifest.ttl;
+# Rules: decisions/naming.md and reference tests/naming.py normalised_base_url, both in jayostis/cascade-vocabulary.
+# The first block is every base-url vector of tests/vectors/naming/manifest.ttl;
 # the rest are reviewed edge cases that no vector pins yet or pins by another input.
 
 # vectors, normalised

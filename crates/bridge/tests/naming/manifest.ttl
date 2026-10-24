@@ -62,6 +62,7 @@
     <#version-code-point-order>
     <#version-repeated-triple>
     <#revision>
+    <#revision-with-selector>
     <#finding>
     <#table-version-first>
     <#table-version-revising>
@@ -493,6 +494,13 @@
   bridge:namingRule cascade:RevisionNamingRule ;
   mf:action [ bridge:input <content/revision.nt> ] ;
   mf:result [ bridge:expectedName <ni:///sha-256;HTiLmGhUF1bggRnXC4kHY5LvWcHPWGCixV9yDxSO8NQ> ; bridge:canonicalContent <content/revision.nq> ] .
+
+<#revision-with-selector> a bridge:NamingTest ;
+  mf:name "revision-with-selector" ;
+  rdfs:comment "A revision of a record named by its document: the arrival's oa:hasSource and prov:wasDerivedFrom are kept, and its selector is the revision's own node, urn:cascade:this-revision#selector, hashed under the placeholder." ;
+  bridge:namingRule cascade:RevisionNamingRule ;
+  mf:action [ bridge:input <content/revision-with-selector.nt> ] ;
+  mf:result [ bridge:expectedName <ni:///sha-256;w3JLCnjHuRIR5yzsamDfTnL4qjNb8ksy0orBhJUyoWQ> ; bridge:canonicalContent <content/revision-with-selector.nq> ] .
 
 <#finding> a bridge:NamingTest ;
   mf:name "finding" ;

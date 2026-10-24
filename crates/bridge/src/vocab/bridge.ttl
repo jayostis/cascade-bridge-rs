@@ -466,13 +466,13 @@ bridge:NamingTest a owl:Class ;
 bridge:BaseUrlNormalisationTest a owl:Class ;
   rdfs:subClassOf mf:ManifestEntry ;
   rdfs:label "Base URL normalisation test"@en ;
-  rdfs:comment "A test of a Bridge offering bridge:sparql-1.1: normalise the action's cascade:serverBaseUrl as a Bridge normalises a supplied one. It must equal the result's cascade:serverBaseUrl, character for character."@en ;
+  rdfs:comment "A test of a Bridge: normalise the action's cascade:serverBaseUrl as a Bridge normalises a supplied one. It must equal the result's cascade:serverBaseUrl, character for character."@en ;
   rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
 
 bridge:BaseUrlRefusalTest a owl:Class ;
   rdfs:subClassOf mf:ManifestEntry ;
   rdfs:label "Base URL refusal test"@en ;
-  rdfs:comment "A test of a Bridge offering bridge:sparql-1.1: normalise the action's cascade:serverBaseUrl as a Bridge normalises a supplied one. It must be refused."@en ;
+  rdfs:comment "A test of a Bridge: normalise the action's cascade:serverBaseUrl as a Bridge normalises a supplied one. It must be refused."@en ;
   rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
 
 bridge:VersioningTest a owl:Class ;
