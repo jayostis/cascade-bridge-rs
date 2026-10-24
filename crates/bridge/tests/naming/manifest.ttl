@@ -33,7 +33,8 @@
     <#server>
     <#server-another>
     <#organization-from-server>
-    <#organization-from-ccda-custodian>
+    <#organization-from-ccda-root-and-extension>
+    <#organization-from-ccda-root-alone>
     <#organization-from-fhir-identifier>
     <#assertion>
     <#retraction>
@@ -316,12 +317,19 @@
   mf:action [ qt:query <OrganizationNamingRule.rq> ; bridge:nameInputs ( "https://fhir.example.org/api/FHIR/R4" "Organization" "org-1" ) ] ;
   mf:result [ bridge:expectedName <urn:uuid:801785a3-066b-86fb-84c1-2119dc670fce> ] .
 
-<#organization-from-ccda-custodian> a bridge:NamingTest ;
-  mf:name "organization-from-ccda-custodian" ;
-  rdfs:comment "An organization a C-CDA document names: its custodian's id root and extension." ;
+<#organization-from-ccda-root-and-extension> a bridge:NamingTest ;
+  mf:name "organization-from-ccda-root-and-extension" ;
+  rdfs:comment "An organization a C-CDA document names by an id with a root and an extension: the identifier's datatype, urn:oid: and the root, and the extension as its value." ;
   bridge:namingRule cascade:OrganizationNamingRule ;
-  mf:action [ qt:query <OrganizationNamingRule.rq> ; bridge:nameInputs ( "2.16.840.1.113883.4.6" "1234567893" ) ] ;
-  mf:result [ bridge:expectedName <urn:uuid:f72b165e-be8b-81ab-a7f0-bc3bc6f5ed56> ] .
+  mf:action [ qt:query <OrganizationNamingRule.rq> ; bridge:nameInputs ( "urn:oid:2.16.840.1.113883.4.6" "1234567893" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:9a4843df-0c99-8bde-aee8-08c99722348d> ] .
+
+<#organization-from-ccda-root-alone> a bridge:NamingTest ;
+  mf:name "organization-from-ccda-root-alone" ;
+  rdfs:comment "An organization a C-CDA document names by an id with a root alone: the datatype urn:ietf:rfc:3986, and the root's urn:oid: IRI as its value." ;
+  bridge:namingRule cascade:OrganizationNamingRule ;
+  mf:action [ qt:query <OrganizationNamingRule.rq> ; bridge:nameInputs ( "urn:ietf:rfc:3986" "urn:oid:2.16.840.1.113883.19.5" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:c0e61172-3e58-8807-b15f-225d46d1a0a7> ] .
 
 <#organization-from-fhir-identifier> a bridge:NamingTest ;
   mf:name "organization-from-fhir-identifier" ;
