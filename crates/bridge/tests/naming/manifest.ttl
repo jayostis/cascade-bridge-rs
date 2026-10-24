@@ -128,6 +128,10 @@
     <#base-url-ipv6-too-many-groups>
     <#base-url-port-percent-encoded>
     <#base-url-angle-brackets-host>
+    <#base-url-two-port-colons>
+    <#base-url-ipv6-port-not-digits>
+    <#base-url-port-leading-zeros-too-high>
+    <#base-url-ipv6-port-80-under-https>
   ) .
 
 <#record-from-server> a bridge:NamingTest ;
@@ -888,3 +892,24 @@
   mf:name "base-url-angle-brackets-host" ;
   rdfs:comment "A host holding a character a reg-name does not allow is refused." ;
   mf:action [ cascade:serverBaseUrl "https://<x>/r4" ] .
+
+<#base-url-two-port-colons> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-two-port-colons" ;
+  rdfs:comment "An authority with two colons after a host that is not bracketed is refused: 1:2 is no port." ;
+  mf:action [ cascade:serverBaseUrl "https://h.example:1:2/r4" ] .
+
+<#base-url-ipv6-port-not-digits> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-ipv6-port-not-digits" ;
+  rdfs:comment "A port after a bracketed host that is not digits is refused." ;
+  mf:action [ cascade:serverBaseUrl "https://[::1]:x/r4" ] .
+
+<#base-url-port-leading-zeros-too-high> a bridge:BaseUrlRefusalTest ;
+  mf:name "base-url-port-leading-zeros-too-high" ;
+  rdfs:comment "A port above 65535 is refused once its leading zeros are dropped: 099999 is 99999." ;
+  mf:action [ cascade:serverBaseUrl "https://h.example:099999/r4" ] .
+
+<#base-url-ipv6-port-80-under-https> a bridge:BaseUrlNormalisationTest ;
+  mf:name "base-url-ipv6-port-80-under-https" ;
+  rdfs:comment "80 is http's default, not https's: under https it is kept after an IP-literal." ;
+  mf:action [ cascade:serverBaseUrl "https://[::1]:80/r4" ] ;
+  mf:result [ cascade:serverBaseUrl "https://[::1]:80/r4" ] .
