@@ -35,7 +35,7 @@
     <#organization-from-server>
     <#organization-from-ccda-root-and-extension>
     <#organization-from-ccda-root-alone>
-    <#organization-from-fhir-identifier>
+    <#organization-from-npi>
     <#assertion>
     <#retraction>
     <#table-row-ndc-to-rxnorm>
@@ -319,10 +319,10 @@
 
 <#organization-from-ccda-root-and-extension> a bridge:NamingTest ;
   mf:name "organization-from-ccda-root-and-extension" ;
-  rdfs:comment "An organization a C-CDA document names by an id with a root and an extension: the identifier's datatype, urn:oid: and the root, and the extension as its value." ;
+  rdfs:comment "An organization a C-CDA document names by an id with a root no identifier system registers and an extension: the identifier's datatype, urn:oid: and the root, and the extension as its value." ;
   bridge:namingRule cascade:OrganizationNamingRule ;
-  mf:action [ qt:query <OrganizationNamingRule.rq> ; bridge:nameInputs ( "urn:oid:2.16.840.1.113883.4.6" "1234567893" ) ] ;
-  mf:result [ bridge:expectedName <urn:uuid:9a4843df-0c99-8bde-aee8-08c99722348d> ] .
+  mf:action [ qt:query <OrganizationNamingRule.rq> ; bridge:nameInputs ( "urn:oid:2.16.840.1.113883.19.5.99999.5" "RCH-1" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:c76983dc-7b63-8c11-91c0-5de6118e1a17> ] .
 
 <#organization-from-ccda-root-alone> a bridge:NamingTest ;
   mf:name "organization-from-ccda-root-alone" ;
@@ -331,9 +331,9 @@
   mf:action [ qt:query <OrganizationNamingRule.rq> ; bridge:nameInputs ( "urn:ietf:rfc:3986" "urn:oid:2.16.840.1.113883.19.5" ) ] ;
   mf:result [ bridge:expectedName <urn:uuid:c0e61172-3e58-8807-b15f-225d46d1a0a7> ] .
 
-<#organization-from-fhir-identifier> a bridge:NamingTest ;
-  mf:name "organization-from-fhir-identifier" ;
-  rdfs:comment "An organization a FHIR document names: its Organization.identifier's system and value, as the document writes them; the C-CDA custodian's NPI above names another organization record, joined by a judgment." ;
+<#organization-from-npi> a bridge:NamingTest ;
+  mf:name "organization-from-npi" ;
+  rdfs:comment "An organization a document names by its NPI, in either format: a FHIR Organization.identifier whose system is http://hl7.org/fhir/sid/us-npi or urn:oid:2.16.840.1.113883.4.6, or a C-CDA id whose root is 2.16.840.1.113883.4.6 and whose extension is the NPI, since HL7's identifier mapping writes a registered root as its URI; one NPI names one organization record." ;
   bridge:namingRule cascade:OrganizationNamingRule ;
   mf:action [ qt:query <OrganizationNamingRule.rq> ; bridge:nameInputs ( "http://hl7.org/fhir/sid/us-npi" "1234567893" ) ] ;
   mf:result [ bridge:expectedName <urn:uuid:b272d9d2-08db-8fd9-9d33-eca1e48c75ba> ] .
