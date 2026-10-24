@@ -203,8 +203,60 @@ fn says_which_rule_refused_a_base_url_and_never_the_url() {
         assert_eq!(refusal.kind(), &ErrorKind::Facts, "{name}");
         let said = refusal.to_string();
         assert!(said.starts_with("a server base URL "), "{name}: {said}");
-        assert!(given.is_empty() || !said.contains(&given), "{name}: {said}");
+        for part in std::iter::once(given.as_str()).chain(secret_parts(&given)) {
+            assert!(!echoes(&said, part), "{name} echoes {part:?}: {said}");
+        }
     }
+}
+
+/// A URL's userinfo, host, query and fragment, each where present, split as RFC 3986's appendix B does.
+fn secret_parts(url: &str) -> Vec<&str> {
+    let (rest, fragment) = url
+        .split_once('#')
+        .map_or((url, None), |(a, b)| (a, Some(b)));
+    let (rest, query) = rest
+        .split_once('?')
+        .map_or((rest, None), |(a, b)| (a, Some(b)));
+    let scheme_end = rest
+        .find([':', '/'])
+        .filter(|&at| rest[at..].starts_with(':') && at > 0);
+    let after_scheme = scheme_end.map_or(rest, |at| &rest[at + 1..]);
+    let authority = after_scheme
+        .strip_prefix("//")
+        .map(|tail| &tail[..tail.find('/').unwrap_or(tail.len())]);
+    let (userinfo, host_and_port) = match authority {
+        Some(authority) => match authority.rfind('@') {
+            Some(at) => (Some(&authority[..at]), &authority[at + 1..]),
+            None => (None, authority),
+        },
+        None => (None, ""),
+    };
+    let host = if host_and_port.starts_with('[') {
+        &host_and_port[..host_and_port
+            .find(']')
+            .map_or(host_and_port.len(), |at| at + 1)]
+    } else {
+        &host_and_port[..host_and_port.find(':').unwrap_or(host_and_port.len())]
+    };
+    [userinfo, Some(host), query, fragment]
+        .into_iter()
+        .flatten()
+        .filter(|part| !part.is_empty())
+        .collect()
+}
+
+/// Whether the text holds the part as written, not inside a longer run of letters and digits: "userinfo" does not
+/// echo "user".
+fn echoes(text: &str, part: &str) -> bool {
+    !part.is_empty()
+        && text.match_indices(part).any(|(at, _)| {
+            let before = text[..at].chars().next_back();
+            let after = text[at + part.len()..].chars().next();
+            ![before, after]
+                .into_iter()
+                .flatten()
+                .any(|c| c.is_ascii_alphanumeric())
+        })
 }
 
 fn ntriples(bytes: &[u8]) -> Vec<Quad> {
