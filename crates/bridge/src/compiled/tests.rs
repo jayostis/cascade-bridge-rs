@@ -19,7 +19,11 @@ const PREFIXES: &str =
 const DATA: &str = r#"
 @prefix : <urn:t#> .
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 :root a :Root ; rdf:_1 :a ; rdf:_2 :b ; rdf:_3 :c .
+:s1 :system "urn:x:s"^^xsd:anyURI .
+:s2 :system "urn:x:s" .
+:s3 :system "urn:x:s"^^xsd:token .
 :a a :Item ; :id "1" ; :name "alpha" ; :size 3 ; rdf:_1 :a1 ; rdf:_2 :a2 .
 :b a :Item ; :id "2" ; :name "beta" ; :size 5 .
 :c a :Item ; :id "x" ; :size "many" .
@@ -194,6 +198,34 @@ const LOWERED: &[(&str, &str)] = &[
         "a language-tagged literal in a pattern",
         "CONSTRUCT { ?i :seen :yes } WHERE { ?i :v \"naïve café\"@fr }",
     ),
+    (
+        "a literal in a pattern of a datatype a store keeps as written",
+        "CONSTRUCT { ?s :seen :yes } WHERE { ?s :system \"urn:x:s\"^^xsd:anyURI }",
+    ),
+    (
+        "a literal in VALUES of a datatype a store keeps as written",
+        "CONSTRUCT { ?s :seen :yes } WHERE { ?s :system ?u . VALUES ?u { \"urn:x:s\"^^xsd:anyURI } }",
+    ),
+    (
+        "a choice of two edges",
+        "CONSTRUCT { ?i :named ?n } WHERE { ?i a :Item ; :name|:id ?n }",
+    ),
+    (
+        "a choice of edges from a node not yet bound",
+        "CONSTRUCT { ?i :named ?n } WHERE { :one :key ?n . ?i :name|:id ?n }",
+    ),
+    (
+        "a choice of an edge and an edge followed backwards",
+        "CONSTRUCT { ?i :near ?n } WHERE { ?i a :Item . ?i rdf:_1|^rdf:_2 ?n }",
+    ),
+    (
+        "an edge followed backwards from a choice",
+        "CONSTRUCT { ?i :held ?r } WHERE { ?i a :Item . ?i ^(rdf:_1|rdf:_2) ?r }",
+    ),
+    (
+        "BNODE() in a BIND, a node for each row where a condition holds",
+        "CONSTRUCT { ?i :has ?b . ?b :named ?n } WHERE { ?i a :Item . OPTIONAL { ?i :name ?n } BIND(IF(BOUND(?n), BNODE(), 1/0) AS ?b) }",
+    ),
 ];
 
 const DECLINED: &[(&str, &str, &str)] = &[
@@ -238,9 +270,14 @@ const DECLINED: &[(&str, &str, &str)] = &[
         "REDUCED",
     ),
     (
-        "a property path that is an alternative",
-        "CONSTRUCT { ?s :p ?o } WHERE { ?s rdf:_1|rdf:_2 ?o }",
-        "a property path that is not a walk",
+        "a property path that is an edge or none",
+        "CONSTRUCT { ?s :p ?o } WHERE { ?s a :Item ; rdf:_1? ?o }",
+        "a property path other than a choice of edges or a walk",
+    ),
+    (
+        "a choice of a walk and an edge",
+        "CONSTRUCT { ?s :p ?o } WHERE { ?s a :Item ; (!rdf:type)*|rdf:_1 ?o }",
+        "a property path other than a choice of edges or a walk",
     ),
     (
         "a property path that walks one edge",
@@ -253,8 +290,8 @@ const DECLINED: &[(&str, &str, &str)] = &[
         "a property path from a node not yet bound",
     ),
     (
-        "BNODE()",
-        "CONSTRUCT { ?s :p ?o } WHERE { ?s a :Item . BIND(BNODE() AS ?o) }",
+        "BNODE of a label",
+        "CONSTRUCT { ?s :p ?o } WHERE { ?s a :Item . BIND(BNODE(\"x\") AS ?o) }",
         "the function BNODE",
     ),
     (
@@ -333,14 +370,19 @@ const DECLINED: &[(&str, &str, &str)] = &[
         "a group reads a variable only the groups around it bind",
     ),
     (
-        "a typed literal in a pattern",
+        "an integer in a pattern",
         "CONSTRUCT { ?s :p ?o } WHERE { ?s :id ?o . ?s :size 07 }",
-        "a typed literal in a pattern, which a store matches by value",
+        "a literal in a pattern of a datatype a store matches by value",
     ),
     (
-        "a typed literal in VALUES",
+        "a date in a pattern",
+        "CONSTRUCT { ?s :p ?o } WHERE { ?s :id ?o . ?s :size \"2020-01-01\"^^xsd:date }",
+        "a literal in a pattern of a datatype a store matches by value",
+    ),
+    (
+        "an integer in VALUES",
         "CONSTRUCT { ?s :p ?o } WHERE { ?s :id ?o . VALUES ?o { 07 } }",
-        "a typed literal in VALUES, which a join matches by value",
+        "a literal in VALUES of a datatype a join matches by value",
     ),
 ];
 
