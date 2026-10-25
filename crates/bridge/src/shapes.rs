@@ -1,4 +1,4 @@
-// Nothing here opens a file or starts a thread, so the browser export stays reachable.
+// Nothing here opens a file, and only a native build starts a thread, so the browser export stays reachable.
 use crate::error::{Error, Result};
 use crate::terms::{SH_INFO, SH_SEVERITY, SH_VIOLATION, SH_WARNING};
 use oxrdf::{Graph, NamedNodeRef, Quad, TermRef};
@@ -62,7 +62,7 @@ impl Shapes {
             )
             .map_err(|e| Error::bridge(format!("the produced graph: {e}")))?;
         }
-        let report = on_this_thread(|| {
+        let report = on_one_thread(|| {
             GraphValidation::new(data.into()).validate(
                 &self.schema,
                 &ShaclValidationMode::Native,
@@ -88,11 +88,10 @@ impl Shapes {
 }
 
 #[cfg(not(target_family = "wasm"))]
-fn on_this_thread<T: Send>(validate: impl FnOnce() -> T + Send) -> T {
+fn on_one_thread<T: Send>(validate: impl FnOnce() -> T + Send) -> T {
     thread_local! {
         static ALONE: Option<rayon::ThreadPool> = rayon::ThreadPoolBuilder::new()
             .num_threads(1)
-            .use_current_thread()
             .build()
             .ok();
     }
@@ -103,7 +102,7 @@ fn on_this_thread<T: Send>(validate: impl FnOnce() -> T + Send) -> T {
 }
 
 #[cfg(target_family = "wasm")]
-fn on_this_thread<T>(validate: impl FnOnce() -> T) -> T {
+fn on_one_thread<T>(validate: impl FnOnce() -> T) -> T {
     validate()
 }
 
