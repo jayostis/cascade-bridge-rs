@@ -1,68 +1,172 @@
 use super::Fail;
 use crate::budget::Watch;
 use crate::error::Result;
-use oxigraph::model::{GraphName, Term};
+use oxigraph::model::{GraphName, Quad, Term};
+#[cfg(test)]
 use oxigraph::store::Store;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::cell::RefCell;
 use std::rc::Rc;
 
 pub(super) type Id = u32;
 
-pub(crate) struct Tree {
+/// The triples every record of a document is given beside its own: indexed once
+/// per document, not once per record.
+pub(crate) struct Layer {
+    first: Id,
     terms: Vec<Rc<Term>>,
     ids: FxHashMap<Rc<Term>, Id>,
-    outgoing: Vec<Vec<(Id, Id)>>,
-    incoming: Vec<Vec<(Id, Id)>>,
-    by_predicate: Vec<Vec<(Id, Id)>>,
+    outgoing: FxHashMap<Id, Vec<(Id, Id)>>,
+    incoming: FxHashMap<Id, Vec<(Id, Id)>>,
+    by_predicate: FxHashMap<Id, Vec<(Id, Id)>>,
     by_predicate_object: FxHashMap<(Id, Id), Vec<Id>>,
+    triples: FxHashSet<(Id, Id, Id)>,
+}
+
+impl Layer {
+    pub(crate) fn of(quads: &[Quad]) -> Self {
+        Self::over(None, quads.iter().cloned().map(Ok))
+            .expect("triples from memory are read without error")
+    }
+
+    fn over(under: Option<&Layer>, quads: impl Iterator<Item = Result<Quad>>) -> Result<Self> {
+        let first = under.map_or(0, |under| {
+            under.first + Id::try_from(under.terms.len()).expect("fewer than 2^32 terms")
+        });
+        let mut layer = Self {
+            first,
+            terms: Vec::new(),
+            ids: FxHashMap::default(),
+            outgoing: FxHashMap::default(),
+            incoming: FxHashMap::default(),
+            by_predicate: FxHashMap::default(),
+            by_predicate_object: FxHashMap::default(),
+            triples: FxHashSet::default(),
+        };
+        for quad in quads {
+            let quad = quad?;
+            if quad.graph_name != GraphName::DefaultGraph {
+                continue;
+            }
+            let triple = (
+                layer.intern(under, quad.subject.into()),
+                layer.intern(under, quad.predicate.into()),
+                layer.intern(under, quad.object),
+            );
+            let held_under = under.is_some_and(|under| under.holds(triple));
+            if !held_under && layer.triples.insert(triple) {
+                layer.add(triple);
+            }
+        }
+        Ok(layer)
+    }
+
+    fn intern(&mut self, under: Option<&Layer>, term: Term) -> Id {
+        if let Some(id) = under.and_then(|under| under.ids.get(&term)) {
+            return *id;
+        }
+        if let Some(&id) = self.ids.get(&term) {
+            return id;
+        }
+        let id = self.first + Id::try_from(self.terms.len()).expect("fewer than 2^32 terms");
+        let term = Rc::new(term);
+        self.terms.push(Rc::clone(&term));
+        self.ids.insert(term, id);
+        id
+    }
+
+    fn add(&mut self, (subject, predicate, object): (Id, Id, Id)) {
+        self.outgoing
+            .entry(subject)
+            .or_default()
+            .push((predicate, object));
+        self.incoming
+            .entry(object)
+            .or_default()
+            .push((subject, predicate));
+        self.by_predicate
+            .entry(predicate)
+            .or_default()
+            .push((subject, object));
+        self.by_predicate_object
+            .entry((predicate, object))
+            .or_default()
+            .push(subject);
+    }
+
+    fn holds(&self, triple: (Id, Id, Id)) -> bool {
+        self.triples.contains(&triple)
+    }
+
+    fn scan<E>(
+        &self,
+        subject: Option<Id>,
+        predicate: Option<Id>,
+        object: Option<Id>,
+        each: &mut dyn FnMut(Id, Id, Id) -> std::result::Result<(), E>,
+    ) -> std::result::Result<(), E> {
+        match (subject, predicate, object) {
+            (Some(s), p, o) => {
+                for &(pp, oo) in self.outgoing.get(&s).into_iter().flatten() {
+                    if p.is_none_or(|p| p == pp) && o.is_none_or(|o| o == oo) {
+                        each(s, pp, oo)?;
+                    }
+                }
+            }
+            (None, Some(p), Some(o)) => {
+                for &s in self.by_predicate_object.get(&(p, o)).into_iter().flatten() {
+                    each(s, p, o)?;
+                }
+            }
+            (None, p, Some(o)) => {
+                for &(s, pp) in self.incoming.get(&o).into_iter().flatten() {
+                    if p.is_none_or(|p| p == pp) {
+                        each(s, pp, o)?;
+                    }
+                }
+            }
+            (None, Some(p), None) => {
+                for &(s, o) in self.by_predicate.get(&p).into_iter().flatten() {
+                    each(s, p, o)?;
+                }
+            }
+            (None, None, None) => {}
+        }
+        Ok(())
+    }
+}
+
+/// A record's triples over the document's shared ones, a triple in exactly one of them.
+pub(crate) struct Tree {
+    shared: Option<Rc<Layer>>,
+    own: Layer,
     answers: RefCell<FxHashMap<usize, bool>>,
     watch: Watch,
 }
 
 impl Tree {
+    #[cfg(test)]
     pub(crate) fn of(store: &Store, watch: Watch) -> Result<Self> {
-        let mut terms: Vec<Rc<Term>> = Vec::new();
-        let mut ids: FxHashMap<Rc<Term>, Id> = FxHashMap::default();
-        let mut intern = |term: Term| -> Id {
-            if let Some(&id) = ids.get(&term) {
-                return id;
-            }
-            let id = Id::try_from(terms.len()).expect("fewer than 2^32 terms");
-            let term = Rc::new(term);
-            terms.push(Rc::clone(&term));
-            ids.insert(term, id);
-            id
-        };
-        let mut triples = Vec::new();
-        for quad in store.iter() {
-            let quad = quad?;
-            if quad.graph_name == GraphName::DefaultGraph {
-                let subject = intern(quad.subject.into());
-                let predicate = intern(quad.predicate.into());
-                triples.push((subject, predicate, intern(quad.object)));
-            }
-        }
-        let mut tree = Self {
-            outgoing: vec![Vec::new(); terms.len()],
-            incoming: vec![Vec::new(); terms.len()],
-            by_predicate: vec![Vec::new(); terms.len()],
-            by_predicate_object: FxHashMap::default(),
+        Self::over(None, store.iter().map(|quad| Ok(quad?)), watch)
+    }
+
+    pub(crate) fn over(
+        shared: Option<Rc<Layer>>,
+        quads: impl Iterator<Item = Result<Quad>>,
+        watch: Watch,
+    ) -> Result<Self> {
+        let own = Layer::over(shared.as_deref(), quads)?;
+        Ok(Self {
+            shared,
+            own,
             answers: RefCell::default(),
-            terms,
-            ids,
             watch,
-        };
-        for (subject, predicate, object) in triples {
-            tree.outgoing[subject as usize].push((predicate, object));
-            tree.incoming[object as usize].push((subject, predicate));
-            tree.by_predicate[predicate as usize].push((subject, object));
-            tree.by_predicate_object
-                .entry((predicate, object))
-                .or_default()
-                .push(subject);
-        }
-        Ok(tree)
+        })
+    }
+
+    #[cfg(test)]
+    pub(super) fn own_triples(&self) -> usize {
+        self.own.triples.len()
     }
 
     pub(super) fn stopped(&self) -> bool {
@@ -70,11 +174,18 @@ impl Tree {
     }
 
     pub(super) fn id(&self, term: &Term) -> Option<Id> {
-        self.ids.get(term).copied()
+        self.own
+            .ids
+            .get(term)
+            .or_else(|| self.shared.as_ref()?.ids.get(term))
+            .copied()
     }
 
     pub(super) fn term(&self, id: Id) -> &Rc<Term> {
-        &self.terms[id as usize]
+        match &self.shared {
+            Some(shared) if id < self.own.first => &shared.terms[id as usize],
+            _ => &self.own.terms[(id - self.own.first) as usize],
+        }
     }
 
     pub(super) fn forget_answers(&self) {
@@ -104,33 +215,9 @@ impl Tree {
         object: Option<Id>,
         each: &mut dyn FnMut(Id, Id, Id) -> std::result::Result<(), E>,
     ) -> std::result::Result<(), E> {
-        match (subject, predicate, object) {
-            (Some(s), p, o) => {
-                for &(pp, oo) in &self.outgoing[s as usize] {
-                    if p.is_none_or(|p| p == pp) && o.is_none_or(|o| o == oo) {
-                        each(s, pp, oo)?;
-                    }
-                }
-            }
-            (None, Some(p), Some(o)) => {
-                for &s in self.by_predicate_object.get(&(p, o)).into_iter().flatten() {
-                    each(s, p, o)?;
-                }
-            }
-            (None, p, Some(o)) => {
-                for &(s, pp) in &self.incoming[o as usize] {
-                    if p.is_none_or(|p| p == pp) {
-                        each(s, pp, o)?;
-                    }
-                }
-            }
-            (None, Some(p), None) => {
-                for &(s, o) in &self.by_predicate[p as usize] {
-                    each(s, p, o)?;
-                }
-            }
-            (None, None, None) => {}
+        if let Some(shared) = &self.shared {
+            shared.scan(subject, predicate, object, each)?;
         }
-        Ok(())
+        self.own.scan(subject, predicate, object, each)
     }
 }

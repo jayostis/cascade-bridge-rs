@@ -1,5 +1,5 @@
 use super::builtin::BUILTINS;
-use super::{agree, compile, compile_explained, Dataset, Executor, Fail, Tree};
+use super::{agree, compile, compile_explained, Dataset, Executor, Fail, Shared, Tree};
 use crate::budget::{Budgets, Watch};
 use crate::error::Result;
 use crate::fixtures::{conversion_under, profiled_under, tiny, tiny_json, Variant};
@@ -581,7 +581,52 @@ fn answers_alike(query: &str) -> bool {
     let store = graph();
     let theirs = evaluated(query, &store);
     assert_eq!(compiled(query, &store), Ok(theirs.clone()), "{query}");
+    let (own, shared) = split(&store);
+    let data = Dataset::over(&own, &shared);
+    let plan = compile(&parse(query)).expect("a query the compiler reads");
+    let over_shared = plan
+        .construct(data.tree(&Watch::default()).expect("a tree"))
+        .map(|quads| canonical_parts(quads).expect("canonical"));
+    assert_eq!(over_shared, Ok(theirs.clone()), "{query} over shared quads");
+    assert_eq!(
+        evaluated(query, data.store().expect("filled")),
+        theirs,
+        "{query} evaluated over shared quads"
+    );
+    let (own, shared) = split(&store);
+    let held = own.len().expect("a count");
+    let data = Dataset::over(&own, &shared);
+    data.store().expect("filled");
+    let tree = data.tree(&Watch::default()).expect("a tree");
+    assert_eq!(
+        tree.own_triples(),
+        held - 1,
+        "{query}: the filled store's shared quads re-indexed"
+    );
+    let over_filled = plan
+        .construct(tree)
+        .map(|quads| canonical_parts(quads).expect("canonical"));
+    assert_eq!(
+        over_filled,
+        Ok(theirs.clone()),
+        "{query} over a filled store"
+    );
     !theirs.is_empty()
+}
+
+/// A store's quads split between a record's own and a document's shared, one quad in both.
+fn split(store: &Store) -> (Store, Shared) {
+    let quads: Vec<Quad> = store.iter().map(|quad| quad.expect("a quad")).collect();
+    let own = Store::new().expect("a store");
+    let mut shared = vec![quads[0].clone()];
+    for (at, quad) in quads.iter().enumerate() {
+        if at % 2 == 0 {
+            own.insert(quad).expect("inserted");
+        } else {
+            shared.push(quad.clone());
+        }
+    }
+    (own, Shared::new(shared))
 }
 
 #[test]

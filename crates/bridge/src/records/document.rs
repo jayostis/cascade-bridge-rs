@@ -1,5 +1,6 @@
 use super::{ni_name, normalised_base_url, Versioned};
 use crate::annotation::SelectorType;
+use crate::compiled::Dataset;
 use crate::error::{Error, Result};
 use crate::terms::{
     BRIDGE_ARRIVED_AS, BRIDGE_SELECTOR, BRIDGE_SHA256, BRIDGE_THIS_DOCUMENT, BRIDGE_THIS_IMPORT,
@@ -8,7 +9,6 @@ use crate::terms::{
     PROV_PLAN, PROV_QUALIFIED_ASSOCIATION, PROV_SOFTWARE_AGENT, PROV_USED, PROV_WAS_DERIVED_FROM,
     PROV_WAS_GENERATED_BY, RDFS_LABEL, RDF_TYPE,
 };
-use oxigraph::store::Store;
 use oxrdf::vocab::xsd;
 use oxrdf::{BlankNode, GraphName, Literal, NamedNode, NamedOrBlankNode, Quad, Term};
 use oxrdfio::{RdfFormat, RdfParser};
@@ -90,7 +90,7 @@ fn supplied(facts: Option<Supplied<'_>>, document: &str) -> Result<Vec<Quad>> {
 fn last_updates_as_the_source_wrote(
     graph: &mut [Quad],
     arrivals: &HashSet<NamedOrBlankNode>,
-    source: &Store,
+    source: &Dataset<'_>,
 ) -> Result<()> {
     let date_time = |quad: &Quad| match &quad.object {
         Term::Literal(literal)
@@ -106,7 +106,7 @@ fn last_updates_as_the_source_wrote(
         return Ok(());
     }
     let mut written: HashMap<String, String> = HashMap::new();
-    for quad in source.quads_for_pattern(None, None, None, None) {
+    for quad in source.quads() {
         if let Term::Literal(literal) = quad?.object {
             if literal.datatype() != xsd::STRING {
                 continue;
@@ -141,8 +141,8 @@ impl Document {
         Self { table, ..self }
     }
 
-    /// Loaded into a record's dataset beside its lift and the adapter's tables.
-    pub(crate) fn dataset(&self, selector: &str) -> Vec<Quad> {
+    /// Loaded into every record's dataset beside its lift and the adapter's tables.
+    pub(crate) fn dataset(&self) -> Vec<Quad> {
         let mut dataset = self.supplied.clone();
         dataset.extend(self.table.iter().cloned());
         dataset.push(quad(
@@ -150,12 +150,16 @@ impl Document {
             BRIDGE_SHA256,
             Literal::new_simple_literal(self.name.as_str()),
         ));
-        dataset.push(quad(
+        dataset
+    }
+
+    /// Loaded into one record's dataset beside the document's.
+    pub(crate) fn record(selector: &str) -> Quad {
+        quad(
             named(BRIDGE_THIS_RECORD),
             BRIDGE_SELECTOR,
             Literal::new_simple_literal(selector),
-        ));
-        dataset
+        )
     }
 
     /// The record's graph with an arrival for each of its versions.
@@ -164,7 +168,7 @@ impl Document {
         versioned: Versioned,
         selector: &str,
         selector_type: SelectorType,
-        source: &Store,
+        source: &Dataset<'_>,
     ) -> Result<Vec<Quad>> {
         let arrivals: HashMap<&str, BlankNode> = versioned
             .versions

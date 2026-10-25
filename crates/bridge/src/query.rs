@@ -253,12 +253,12 @@ impl Query {
         let (executor, watch) = (profile.executor, &profile.watch);
         let plan = match (&self.compiled, executor) {
             (Ok(plan), Executor::Compiled | Executor::Both) => plan,
-            _ => return Ok((self.evaluated(data.store, watch)?, false)),
+            _ => return Ok((self.evaluated(data.store()?, watch)?, false)),
         };
         let tree = profile.during(Stage::Index, || data.tree(watch))?;
         match (plan.construct(tree), executor) {
             (Ok(quads), Executor::Both) => {
-                let evaluated = self.evaluated(data.store, watch)?;
+                let evaluated = self.evaluated(data.store()?, watch)?;
                 compiled::agree(&self.iri, &quads, &evaluated)?;
                 Ok((evaluated, false))
             }
@@ -266,7 +266,7 @@ impl Query {
             (Err(Fail::Stopped), _) => Err(watch
                 .outgrown(&self.iri)
                 .unwrap_or_else(|| Error::outgrown(format!("{} was stopped", self.iri)))),
-            (Err(_), _) => Ok((self.evaluated(data.store, watch)?, true)),
+            (Err(_), _) => Ok((self.evaluated(data.store()?, watch)?, true)),
         }
     }
 
