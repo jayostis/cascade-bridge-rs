@@ -2,6 +2,7 @@ use super::Fail;
 use crate::budget::Watch;
 use crate::error::Result;
 use oxigraph::model::{GraphName, Quad, Term};
+#[cfg(test)]
 use oxigraph::store::Store;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::cell::RefCell;
@@ -19,6 +20,7 @@ pub(crate) struct Layer {
     incoming: FxHashMap<Id, Vec<(Id, Id)>>,
     by_predicate: FxHashMap<Id, Vec<(Id, Id)>>,
     by_predicate_object: FxHashMap<(Id, Id), Vec<Id>>,
+    triples: FxHashSet<(Id, Id, Id)>,
 }
 
 impl Layer {
@@ -39,8 +41,8 @@ impl Layer {
             incoming: FxHashMap::default(),
             by_predicate: FxHashMap::default(),
             by_predicate_object: FxHashMap::default(),
+            triples: FxHashSet::default(),
         };
-        let mut seen = FxHashSet::default();
         for quad in quads {
             let quad = quad?;
             if quad.graph_name != GraphName::DefaultGraph {
@@ -52,7 +54,7 @@ impl Layer {
                 layer.intern(under, quad.object),
             );
             let held_under = under.is_some_and(|under| under.holds(triple));
-            if !held_under && seen.insert(triple) {
+            if !held_under && layer.triples.insert(triple) {
                 layer.add(triple);
             }
         }
@@ -92,10 +94,8 @@ impl Layer {
             .push(subject);
     }
 
-    fn holds(&self, (subject, predicate, object): (Id, Id, Id)) -> bool {
-        self.outgoing
-            .get(&subject)
-            .is_some_and(|edges| edges.contains(&(predicate, object)))
+    fn holds(&self, triple: (Id, Id, Id)) -> bool {
+        self.triples.contains(&triple)
     }
 
     fn scan<E>(
@@ -147,17 +147,26 @@ pub(crate) struct Tree {
 impl Tree {
     #[cfg(test)]
     pub(crate) fn of(store: &Store, watch: Watch) -> Result<Self> {
-        Self::over(None, store, watch)
+        Self::over(None, store.iter().map(|quad| Ok(quad?)), watch)
     }
 
-    pub(crate) fn over(shared: Option<Rc<Layer>>, store: &Store, watch: Watch) -> Result<Self> {
-        let own = Layer::over(shared.as_deref(), store.iter().map(|quad| Ok(quad?)))?;
+    pub(crate) fn over(
+        shared: Option<Rc<Layer>>,
+        quads: impl Iterator<Item = Result<Quad>>,
+        watch: Watch,
+    ) -> Result<Self> {
+        let own = Layer::over(shared.as_deref(), quads)?;
         Ok(Self {
             shared,
             own,
             answers: RefCell::default(),
             watch,
         })
+    }
+
+    #[cfg(test)]
+    pub(super) fn own_triples(&self) -> usize {
+        self.own.triples.len()
     }
 
     pub(super) fn stopped(&self) -> bool {

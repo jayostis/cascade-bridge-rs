@@ -593,6 +593,24 @@ fn answers_alike(query: &str) -> bool {
         theirs,
         "{query} evaluated over shared quads"
     );
+    let (own, shared) = split(&store);
+    let held = own.len().expect("a count");
+    let data = Dataset::over(&own, &shared);
+    data.store().expect("filled");
+    let tree = data.tree(&Watch::default()).expect("a tree");
+    assert_eq!(
+        tree.own_triples(),
+        held - 1,
+        "{query}: the filled store's shared quads re-indexed"
+    );
+    let over_filled = plan
+        .construct(tree)
+        .map(|quads| canonical_parts(quads).expect("canonical"));
+    assert_eq!(
+        over_filled,
+        Ok(theirs.clone()),
+        "{query} over a filled store"
+    );
     !theirs.is_empty()
 }
 

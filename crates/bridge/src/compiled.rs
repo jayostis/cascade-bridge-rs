@@ -5,7 +5,7 @@ use oxigraph::model::{Quad, Term};
 use oxigraph::store::Store;
 use rustc_hash::FxHashMap;
 use spareval::ExpressionTerm;
-use std::cell::{Cell, OnceCell};
+use std::cell::OnceCell;
 use std::rc::Rc;
 
 mod builtin;
@@ -68,11 +68,12 @@ impl Shared {
 }
 
 /// A record's store, and the document's shared quads, put into the store only
-/// when the general evaluator asks for it.
+/// when the general evaluator asks for it. `unfilled` holds the record's own quads
+/// from then on, so its tree indexes them alone.
 pub(crate) struct Dataset<'a> {
     own: &'a Store,
     shared: Option<&'a Shared>,
-    filled: Cell<bool>,
+    unfilled: OnceCell<Vec<Quad>>,
     tree: OnceCell<Tree>,
 }
 
@@ -81,7 +82,7 @@ impl<'a> Dataset<'a> {
         Self {
             own: store,
             shared: None,
-            filled: Cell::new(false),
+            unfilled: OnceCell::new(),
             tree: OnceCell::new(),
         }
     }
@@ -95,7 +96,12 @@ impl<'a> Dataset<'a> {
 
     pub(crate) fn store(&self) -> Result<&'a Store> {
         if let Some(shared) = self.shared {
-            if !self.filled.replace(true) {
+            if self.unfilled.get().is_none() {
+                let own = self
+                    .own
+                    .iter()
+                    .collect::<std::result::Result<Vec<_>, _>>()?;
+                let _ = self.unfilled.set(own);
                 self.own.extend(shared.quads.iter().cloned())?;
             }
         }
@@ -106,7 +112,7 @@ impl<'a> Dataset<'a> {
     pub(crate) fn quads(&self) -> impl Iterator<Item = Result<Quad>> + '_ {
         let shared = self
             .shared
-            .filter(|_| !self.filled.get())
+            .filter(|_| self.unfilled.get().is_none())
             .map(Shared::quads)
             .unwrap_or_default();
         self.own
@@ -118,7 +124,11 @@ impl<'a> Dataset<'a> {
     pub(crate) fn tree(&self, watch: &Watch) -> Result<&Tree> {
         if self.tree.get().is_none() {
             let shared = self.shared.map(Shared::layer);
-            let _ = self.tree.set(Tree::over(shared, self.own, watch.clone())?);
+            let tree = match self.unfilled.get() {
+                Some(own) => Tree::over(shared, own.iter().cloned().map(Ok), watch.clone()),
+                None => Tree::over(shared, self.own.iter().map(|quad| Ok(quad?)), watch.clone()),
+            };
+            let _ = self.tree.set(tree?);
         }
         Ok(self.tree.get().expect("the tree was just set"))
     }
