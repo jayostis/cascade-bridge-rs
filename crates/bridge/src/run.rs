@@ -1,6 +1,6 @@
 use crate::accounting::{gap_scheme, Accounting};
 use crate::annotation::{self, Record};
-use crate::compiled::Dataset;
+use crate::compiled::{Dataset, Shared};
 use crate::error::{Error, ErrorKind, Explained, Result};
 use crate::lift::{admitting, Admission, Lift, Paths, Reading, Unit};
 use crate::load::{subject, value, Adapter};
@@ -420,6 +420,7 @@ pub(crate) fn convert_with(
     let table = document_table(prepared, &text, &reading, &arrived_in, profile)
         .explained_by(ErrorKind::Document)?;
     let arrived_in = arrived_in.with_table(table);
+    let shared = shared(prepared, &arrived_in);
     let mut lift =
         lifting(prepared, &text, &reading, paths, profile).explained_by(ErrorKind::Document)?;
     let followed = syntax.addresses();
@@ -445,6 +446,7 @@ pub(crate) fn convert_with(
             &unit,
             followed.as_ref(),
             &arrived_in,
+            &shared,
             profile,
         )?;
         conversion.quads.extend(produced);
@@ -496,6 +498,7 @@ fn unit_converted(
     unit: &Unit,
     followed: &dyn Addresses,
     arrived_in: &Document,
+    shared: &Shared,
     profile: &Profile,
 ) -> Result<(Vec<Quad>, Vec<Quad>)> {
     let selector = unit.selector();
@@ -509,8 +512,8 @@ fn unit_converted(
     if let Some(accounting) = &prepared.accounting {
         findings.extend(profile.during(Stage::Accounting, || accounting.findings(&record, unit))?);
     }
-    fill(unit, &selector, prepared, arrived_in, profile)?;
-    let data = Dataset::new(&unit.store);
+    fill(unit, &selector, profile)?;
+    let data = Dataset::over(&unit.store, shared);
     let versioned = profile.during(Stage::Records, || {
         records::versioned(mapped(prepared, &data, profile)?)
     })?;
@@ -522,7 +525,7 @@ fn unit_converted(
         )?);
     }
     let produced = profile.during(Stage::Records, || {
-        arrived_in.arrived(versioned, &selector, selector_type, &unit.store)
+        arrived_in.arrived(versioned, &selector, selector_type, &data)
     })?;
     if let Some(vocabulary) = &prepared.vocabulary {
         findings.extend(profile.during(Stage::OutputValidation, || {
@@ -565,16 +568,15 @@ fn validated(
     })
 }
 
-fn fill(
-    unit: &Unit,
-    selector: &str,
-    prepared: &Prepared,
-    arrived_in: &Document,
-    profile: &Profile,
-) -> Result<()> {
+fn shared(prepared: &Prepared, arrived_in: &Document) -> Shared {
+    let mut quads = arrived_in.dataset();
+    quads.extend(prepared.tables.iter().cloned());
+    Shared::new(quads)
+}
+
+fn fill(unit: &Unit, selector: &str, profile: &Profile) -> Result<()> {
     profile.during(Stage::Dataset, || {
-        unit.store.extend(arrived_in.dataset(selector))?;
-        unit.store.extend(prepared.tables.iter().cloned())?;
+        unit.store.insert(&Document::record(selector))?;
         Ok(())
     })
 }
@@ -600,11 +602,12 @@ fn document_table(
     if prepared.document_table_queries.is_empty() {
         return Ok(table);
     }
+    let shared = shared(prepared, arrived_in);
     profile.during(Stage::DocumentTable, || {
         let mut lift = lifting(prepared, text, reading, Paths::Dropped, profile)?;
         while let Some(unit) = profile.during(Stage::Lift, || lift.next_unit())? {
-            fill(&unit, &unit.selector(), prepared, arrived_in, profile)?;
-            let data = Dataset::new(&unit.store);
+            fill(&unit, &unit.selector(), profile)?;
+            let data = Dataset::over(&unit.store, &shared);
             for query in &prepared.document_table_queries {
                 table.extend(query.graph(&data, profile)?);
             }
