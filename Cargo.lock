@@ -166,6 +166,7 @@ dependencies = [
  "oxrdfio",
  "oxsdatatypes",
  "quick-xml 0.37.5",
+ "rayon",
  "regex",
  "regress",
  "rudof_rdf",

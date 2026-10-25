@@ -62,13 +62,14 @@ impl Shapes {
             )
             .map_err(|e| Error::bridge(format!("the produced graph: {e}")))?;
         }
-        let report = GraphValidation::new(data.into())
-            .validate(
+        let report = on_this_thread(|| {
+            GraphValidation::new(data.into()).validate(
                 &self.schema,
                 &ShaclValidationMode::Native,
                 &ShaclConfig::new(),
             )
-            .map_err(|e| Error::bridge(format!("the produced graph: {e}")))?;
+        })
+        .map_err(|e| Error::bridge(format!("the produced graph: {e}")))?;
         let mut drawn = Vec::new();
         for result in report.results() {
             drawn.push(Drawn {
@@ -84,6 +85,26 @@ impl Shapes {
         drawn.sort();
         Ok(drawn)
     }
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn on_this_thread<T: Send>(validate: impl FnOnce() -> T + Send) -> T {
+    thread_local! {
+        static ALONE: Option<rayon::ThreadPool> = rayon::ThreadPoolBuilder::new()
+            .num_threads(1)
+            .use_current_thread()
+            .build()
+            .ok();
+    }
+    ALONE.with(|alone| match alone {
+        Some(pool) => pool.install(validate),
+        None => validate(),
+    })
+}
+
+#[cfg(target_family = "wasm")]
+fn on_this_thread<T>(validate: impl FnOnce() -> T) -> T {
+    validate()
 }
 
 const REPORTED: [&str; 3] = [SH_INFO, SH_WARNING, SH_VIOLATION];
