@@ -437,11 +437,15 @@ pub(crate) fn tokens_at(root: &Node, positions: &[usize]) -> Vec<String> {
     let mut tokens = Vec::with_capacity(positions.len());
     let mut node = root;
     for &position in positions {
-        let (token, child) = node
-            .children()
-            .nth(position)
-            .expect("a position below the root");
-        tokens.push(token.into_owned());
+        let (token, child) = match &node.value {
+            Value::Object(members) => members
+                .get(position)
+                .map(|(name, member)| (name.clone(), member)),
+            Value::Array(items) => items.get(position).map(|item| (position.to_string(), item)),
+            _ => None,
+        }
+        .expect("a position below the root");
+        tokens.push(token);
         node = child;
     }
     tokens
