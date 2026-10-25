@@ -13,7 +13,8 @@ import { at, iriOf, Refusal } from "./host.mjs";
 const USAGE = `usage: node hosts/node/bench.mjs --inputs <bench/manifest.json> [--only <glob>] [--pull-requests] [options]
        node hosts/node/bench.mjs <adapter-dir> <document>... [--envelope <iri>] [options]
 options: [--vocabularies <directory>] [--samples <n>] [--timeout <seconds>] [--package <directory>]
-         [--executor compiled|spareval|both] [--out <file.json>] [--baseline <directory> [--baseline-out <file.json>]]`;
+         [--executor compiled|spareval|both] [--out <file.json>] [--baseline <directory> [--baseline-out <file.json>]]
+         [--allow-fallbacks]`;
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SAMPLE = join(HERE, "bench-sample.mjs");
@@ -48,6 +49,7 @@ function parse(argv) {
     else if (argument === "--inputs") parsed.manifest = next();
     else if (argument === "--only") parsed.only = next();
     else if (argument === "--pull-requests") parsed.pullRequests = true;
+    else if (argument === "--allow-fallbacks") parsed.allowFallbacks = true;
     else if (argument.startsWith("--")) throw new Refusal(USAGE);
     else if (parsed.adapter === undefined) parsed.adapter = argument;
     else parsed.documents.push(argument);
@@ -255,6 +257,14 @@ function queryNames(queries, adapterIri) {
   );
 }
 
+// Each execution for a record that the general evaluator answered: every one of a query the
+// compiler did not take, and each one a compiled plan gave up on. The detect query runs once.
+function fallbacksOf(queries) {
+  return (queries ?? [])
+    .filter(({ stage }) => stage !== "detect")
+    .reduce((count, { fallback, executions, giveUps }) => count + (fallback === undefined ? giveUps : executions), 0);
+}
+
 function inputResults(input, outcomes, adapterIri) {
   const failed = outcomes.find((outcome) => outcome.sample === undefined);
   if (failed?.timeout !== undefined) return [one(`${input.id}/timeout/${failed.timeout}`, "s", failed.seconds)];
@@ -308,6 +318,9 @@ function inputResults(input, outcomes, adapterIri) {
     one(`${input.id}/output-bytes/findings`, "By", first.findingsBytes, "turtle"),
   );
   if (first.queries !== undefined) {
+    results.push(
+      one(`${input.id}/fallbacks`, "{count}", fallbacksOf(first.queries), "record executions the general evaluator answered"),
+    );
     const names = queryNames(first.queries, adapterIri);
     for (const query of first.queries) {
       const seconds = samples.map(
@@ -462,7 +475,17 @@ async function run(parsed) {
       at(path, () => writeFileSync(path, `${JSON.stringify(file, null, 2)}\n`));
   }
   process.stdout.write(table(inputs, files, sides));
-  return 0;
+  const head = sides.at(-1);
+  const fellBack =
+    parsed.executor === "spareval" || parsed.allowFallbacks
+      ? []
+      : inputs
+          .map(({ id }) => [id, fallbacksOf(head.outcomes.get(id).find(({ sample }) => sample)?.sample.converts[0].queries)])
+          .filter(([, count]) => count > 0);
+  for (const [id, count] of fellBack)
+    process.stderr.write(`bench: ${id}/fallbacks: ${count} record executions fell back to the general evaluator (--allow-fallbacks to measure anyway)
+`);
+  return fellBack.length === 0 ? 0 : 1;
 }
 
 try {

@@ -890,6 +890,7 @@ fn benched_with(given: &[&str]) -> BTreeMap<String, serde_json::Value> {
     arguments.extend([
         "--vocabularies",
         vocabularies.to_str().expect("a path"),
+        "--allow-fallbacks",
         "--samples",
         "1",
         "--out",
@@ -938,6 +939,7 @@ fn the_bench_writes_each_measure_of_both_converts_and_the_package_it_measured() 
         ("two/triples", "output"),
         ("two/findings", "output"),
         ("two/index-built", "output"),
+        ("two/fallbacks", "output"),
         ("two/output-bytes/graph", "output"),
         ("two/output-bytes/findings", "output"),
         ("two/query-time/item.rq", "clock"),
@@ -974,6 +976,35 @@ fn the_bench_writes_each_measure_of_both_converts_and_the_package_it_measured() 
         .expect("the engine's commit");
     let built_commit = built["cascadeBridge"]["commit"].as_str().expect("a commit");
     assert!(commit.starts_with(built_commit), "{commit}");
+}
+
+#[test]
+fn the_bench_fails_where_a_record_s_query_falls_back_to_the_general_evaluator() {
+    let scratch = scratch();
+    let adapter = scratch.path().join("adapter");
+    copied_to(&tiny(), &adapter);
+    replaced_once(
+        &adapter,
+        "mapping/item.rq",
+        "rdf:_1 ?title",
+        "rdf:_1/rdf:_1* ?title",
+    );
+    let two = tiny().join("fixtures/in/two.xml");
+    let vocabularies = vocabularies();
+    let run = bench(&[
+        adapter.to_str().expect("a path"),
+        two.to_str().expect("a path"),
+        "--vocabularies",
+        vocabularies.to_str().expect("a path"),
+        "--samples",
+        "1",
+    ]);
+    let said = String::from_utf8_lossy(&run.stderr);
+    assert_eq!(run.status.code(), Some(1), "{said}");
+    assert!(
+        said.contains("two/fallbacks: ") && said.contains("fell back to the general evaluator"),
+        "{said}"
+    );
 }
 
 #[test]
