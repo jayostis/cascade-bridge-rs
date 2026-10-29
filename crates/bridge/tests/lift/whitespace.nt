@@ -8,3 +8,6 @@ _:one <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "one" .
 _:blank <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/item> .
 _:two <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/item> .
 _:two <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> " two " .
+_:list <https://dom.spec.whatwg.org/#dom-node-textcontent> "\n  one\n     \n   two \n" .
+_:one <https://dom.spec.whatwg.org/#dom-node-textcontent> "one" .
+_:two <https://dom.spec.whatwg.org/#dom-node-textcontent> " two " .

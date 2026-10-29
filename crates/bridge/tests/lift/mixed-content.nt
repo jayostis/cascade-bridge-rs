@@ -5,3 +5,5 @@ _:p <http://www.w3.org/1999/02/22-rdf-syntax-ns#_2> _:b .
 _:p <http://www.w3.org/1999/02/22-rdf-syntax-ns#_3> " world" .
 _:b <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/b> .
 _:b <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "bold" .
+_:p <https://dom.spec.whatwg.org/#dom-node-textcontent> "Hello bold world" .
+_:b <https://dom.spec.whatwg.org/#dom-node-textcontent> "bold" .

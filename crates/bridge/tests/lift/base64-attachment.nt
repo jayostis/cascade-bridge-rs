@@ -1,0 +1,24 @@
+_:doc <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/ns/root> .
+_:doc <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/doc> .
+_:doc <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> _:plain .
+_:doc <http://www.w3.org/1999/02/22-rdf-syntax-ns#_2> _:untyped .
+_:doc <http://www.w3.org/1999/02/22-rdf-syntax-ns#_3> _:html .
+_:doc <https://dom.spec.whatwg.org/#dom-node-textcontent> "bGlzaW5vcHJp\nbCAxMCBtZyB0YWJsZXQ=dGFrZW4gZGFpbHk=PGI+aGVsZDwvYj4=" .
+_:plain <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/text> .
+_:plain <http://sparql.xyz/facade-x/data/mediaType> "text/plain" .
+_:plain <http://sparql.xyz/facade-x/data/representation> "B64" .
+_:plain <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "bGlzaW5vcHJp\nbCAxMCBtZyB0YWJsZXQ=" .
+_:plain <https://dom.spec.whatwg.org/#dom-node-textcontent> "bGlzaW5vcHJp\nbCAxMCBtZyB0YWJsZXQ=" .
+_:plain <https://ns.cascadeprotocol.org/bridge/v1-draft#textDecodedFromBase64> "lisinopril 10 mg tablet" .
+_:untyped <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/text> .
+_:untyped <http://sparql.xyz/facade-x/data/representation> "B64" .
+_:untyped <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "dGFrZW4gZGFpbHk=" .
+_:untyped <https://dom.spec.whatwg.org/#dom-node-textcontent> "dGFrZW4gZGFpbHk=" .
+_:untyped <https://ns.cascadeprotocol.org/bridge/v1-draft#textDecodedFromBase64> "taken daily" .
+_:html <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/text> .
+_:html <http://sparql.xyz/facade-x/data/mediaType> "Text/HTML" .
+_:html <http://sparql.xyz/facade-x/data/charset> "utf-8" .
+_:html <http://sparql.xyz/facade-x/data/representation> "B64" .
+_:html <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "PGI+aGVsZDwvYj4=" .
+_:html <https://dom.spec.whatwg.org/#dom-node-textcontent> "PGI+aGVsZDwvYj4=" .
+_:html <https://ns.cascadeprotocol.org/bridge/v1-draft#textDecodedFromBase64> "<b>held</b>" .

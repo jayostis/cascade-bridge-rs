@@ -43,13 +43,24 @@ fn parsed(ntriples: &[u8]) -> BTreeSet<String> {
     )
 }
 
+fn document_element(xml: &[u8]) -> String {
+    let mut reader = quick_xml::Reader::from_reader(xml);
+    let mut buffer = Vec::new();
+    loop {
+        match reader.read_event_into(&mut buffer).expect("an event") {
+            quick_xml::events::Event::Start(start) | quick_xml::events::Event::Empty(start) => {
+                return String::from_utf8(start.local_name().as_ref().to_vec()).expect("utf-8")
+            }
+            quick_xml::events::Event::Eof => panic!("no document element"),
+            _ => buffer.clear(),
+        }
+    }
+}
+
 fn lift_whole(xml: &[u8]) -> BTreeSet<String> {
-    lines(
-        &lift_slice(xml, None)
-            .expect("lift")
-            .into_skeleton()
-            .expect("skeleton"),
-    )
+    let mut lift = lift_slice(xml, Some(&document_element(xml))).expect("lift");
+    let unit = lift.next_unit().expect("unit").expect("the document element");
+    lines(&unit.store)
 }
 
 fn assert_graph(what: &str, produced: BTreeSet<String>, expected: BTreeSet<String>) {
@@ -106,6 +117,8 @@ _:item <http://sparql.xyz/facade-x/data/id> "1" .
 _:item <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> _:t .
 _:t <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/t> .
 _:t <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "x" .
+_:item <https://dom.spec.whatwg.org/#dom-node-textcontent> "x" .
+_:t <https://dom.spec.whatwg.org/#dom-node-textcontent> "x" .
 "#;
 
 const SECOND_UNIT: &str = r#"
