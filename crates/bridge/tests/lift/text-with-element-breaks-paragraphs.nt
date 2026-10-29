@@ -1,0 +1,17 @@
+_:text1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/ns/root> .
+_:text1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/text> .
+_:text1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> _:paragraph1 .
+_:text1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_2> _:paragraph2 .
+_:text1 <https://dom.spec.whatwg.org/#dom-node-textcontent> "Seen for\n    follow-up.Feels well.Plan: recheck A1c in\n    3 months." .
+_:text1 <https://ns.cascadeprotocol.org/bridge/v1-draft#textWithElementBreaks> "Seen for follow-up.\nFeels well.\nPlan: recheck A1c in 3 months." .
+_:paragraph1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/paragraph> .
+_:paragraph1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "Seen for\n    follow-up." .
+_:paragraph1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_2> _:br1 .
+_:paragraph1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_3> "Feels well." .
+_:paragraph1 <https://dom.spec.whatwg.org/#dom-node-textcontent> "Seen for\n    follow-up.Feels well." .
+_:paragraph1 <https://ns.cascadeprotocol.org/bridge/v1-draft#textWithElementBreaks> "Seen for follow-up.\nFeels well." .
+_:br1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/br> .
+_:paragraph2 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/paragraph> .
+_:paragraph2 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "Plan: recheck A1c in\n    3 months." .
+_:paragraph2 <https://dom.spec.whatwg.org/#dom-node-textcontent> "Plan: recheck A1c in\n    3 months." .
+_:paragraph2 <https://ns.cascadeprotocol.org/bridge/v1-draft#textWithElementBreaks> "Plan: recheck A1c in 3 months." .

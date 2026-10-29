@@ -3,7 +3,8 @@ _:doc <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facad
 _:doc <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> _:plain .
 _:doc <http://www.w3.org/1999/02/22-rdf-syntax-ns#_2> _:untyped .
 _:doc <http://www.w3.org/1999/02/22-rdf-syntax-ns#_3> _:html .
-_:doc <https://dom.spec.whatwg.org/#dom-node-textcontent> "bGlzaW5vcHJp\nbCAxMCBtZyB0YWJsZXQ=dGFrZW4gZGFpbHk=PGI+aGVsZDwvYj4=" .
+_:doc <http://www.w3.org/1999/02/22-rdf-syntax-ns#_4> _:thumbnailed .
+_:doc <https://dom.spec.whatwg.org/#dom-node-textcontent> "bGlzaW5vcHJp\nbCAxMCBtZyB0YWJsZXQ=dGFrZW4gZGFpbHk=PGI+aGVsZDwvYj4=iVBORw==aGk=" .
 _:plain <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/text> .
 _:plain <http://sparql.xyz/facade-x/data/mediaType> "text/plain" .
 _:plain <http://sparql.xyz/facade-x/data/representation> "B64" .
@@ -22,3 +23,15 @@ _:html <http://sparql.xyz/facade-x/data/representation> "B64" .
 _:html <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "PGI+aGVsZDwvYj4=" .
 _:html <https://dom.spec.whatwg.org/#dom-node-textcontent> "PGI+aGVsZDwvYj4=" .
 _:html <https://ns.cascadeprotocol.org/bridge/v1-draft#textDecodedFromBase64> "<b>held</b>" .
+_:thumbnailed <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/text> .
+_:thumbnailed <http://sparql.xyz/facade-x/data/mediaType> "text/plain; charset=UTF-8" .
+_:thumbnailed <http://sparql.xyz/facade-x/data/representation> "B64" .
+_:thumbnailed <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> _:thumbnail .
+_:thumbnailed <http://www.w3.org/1999/02/22-rdf-syntax-ns#_2> "aGk=" .
+_:thumbnailed <https://dom.spec.whatwg.org/#dom-node-textcontent> "iVBORw==aGk=" .
+_:thumbnailed <https://ns.cascadeprotocol.org/bridge/v1-draft#textDecodedFromBase64> "hi" .
+_:thumbnail <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/thumbnail> .
+_:thumbnail <http://sparql.xyz/facade-x/data/mediaType> "image/png" .
+_:thumbnail <http://sparql.xyz/facade-x/data/representation> "B64" .
+_:thumbnail <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "iVBORw==" .
+_:thumbnail <https://dom.spec.whatwg.org/#dom-node-textcontent> "iVBORw==" .
