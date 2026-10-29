@@ -43,6 +43,7 @@ pub(super) fn skeleton(text: &str, path: &str) -> BTreeSet<String> {
     };
     let reading = Reading {
         element: None,
+        breaking: &[],
         envelopes: vec![&admission],
         named: Some(0),
     };

@@ -93,6 +93,7 @@ impl Syntax {
             Self::Xml => Ok(Box::new(xml::lift_text(
                 Cow::Borrowed(text),
                 reading.element,
+                reading.breaking,
                 paths,
             )?)),
             Self::Json => Ok(Box::new(lift::json::lift(text, reading, paths)?)),

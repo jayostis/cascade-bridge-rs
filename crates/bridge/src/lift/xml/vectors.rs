@@ -1,5 +1,5 @@
 // tests/lift/ is a copy of fixtures/lift/ in jayostis/cascade-bridge-spec, the authority.
-use super::lift_slice;
+use super::{lift_slice, lift_slice_breaking};
 use crate::fixtures::{fixture, fixture_names};
 use crate::rdf::canonical_lines;
 use oxigraph::store::Store;
@@ -10,6 +10,14 @@ use std::collections::BTreeSet;
 /// Every other vector in the directory is run as a lift vector.
 const SKELETON_VECTORS: [(&str, &str); 2] =
     [("skeleton", "Unit"), ("skeleton-record-root", "Unit")];
+
+/// Each vector whose manifest entry names elements breaking text.
+const BREAKING_VECTORS: [&str; 3] = [
+    "text-with-element-breaks-inline",
+    "text-with-element-breaks-paragraphs",
+    "text-with-element-breaks-table",
+];
+const BREAKING: [&str; 5] = ["br", "paragraph", "td", "th", "tr"];
 
 const VECTORS: &str = "tests/lift";
 
@@ -57,8 +65,8 @@ fn document_element(xml: &[u8]) -> String {
     }
 }
 
-fn lift_whole(xml: &[u8]) -> BTreeSet<String> {
-    let mut lift = lift_slice(xml, Some(&document_element(xml))).expect("lift");
+fn lift_whole(xml: &[u8], breaking: &[String]) -> BTreeSet<String> {
+    let mut lift = lift_slice_breaking(xml, Some(&document_element(xml)), breaking).expect("lift");
     let unit = lift
         .next_unit()
         .expect("unit")
@@ -96,7 +104,11 @@ fn reproduces_every_lift_vector_of_the_specification() {
         .collect();
     assert!(lifts.len() >= 8, "{lifts:?}");
     for name in lifts {
-        assert_vector(&name, lift_whole(&vector(&name, "xml")));
+        let breaking: Vec<String> = match BREAKING_VECTORS.contains(&name.as_str()) {
+            true => BREAKING.map(str::to_owned).to_vec(),
+            false => Vec::new(),
+        };
+        assert_vector(&name, lift_whole(&vector(&name, "xml"), &breaking));
     }
 }
 

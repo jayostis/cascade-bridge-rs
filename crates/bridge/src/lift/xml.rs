@@ -1,6 +1,8 @@
-use super::attachment::{decoded, is_utf_8, names_text, TEXT_CONTENT, TEXT_DECODED_FROM_BASE64};
+use super::attachment::{
+    decoded, names_text, TEXT_CONTENT, TEXT_DECODED_FROM_BASE64, TEXT_WITH_ELEMENT_BREAKS,
+};
 use super::{member, name, store_of, triple, Occurrence, Paths, Unit, Valued, FX, RDF, XYZ};
-use crate::decode::{is_xml_space, normalise_attribute_value, normalise_line_endings};
+use crate::decode::{is_xml_space, normalise_attribute_value, normalise_line_endings, XML_SPACE};
 use crate::error::{Error, Result};
 use oxigraph::model::{BlankNode, Literal, NamedNode, Quad};
 use oxigraph::store::Store;
@@ -192,7 +194,31 @@ fn is_text_attachment(attributes: &[Attribute]) -> bool {
     value("representation") == Some("B64")
         && value("mediaType").is_none_or(names_text)
         && value("compression").is_none()
-        && value("charset").is_none_or(is_utf_8)
+        && value("charset").is_none_or(|charset| charset.eq_ignore_ascii_case("UTF-8"))
+}
+
+/// The text from `from` on, cut into runs at each break, each run's whitespace
+/// normalised, the runs left joined by line feeds.
+fn text_with_element_breaks(text: &str, from: usize, breaks: &[usize]) -> String {
+    let mut lines = String::new();
+    let mut start = from;
+    for end in breaks.iter().copied().chain([text.len()]) {
+        let mut words = text[start..end]
+            .split(XML_SPACE)
+            .filter(|word| !word.is_empty());
+        if let Some(first) = words.next() {
+            if !lines.is_empty() {
+                lines.push('\n');
+            }
+            lines.push_str(first);
+            for word in words {
+                lines.push(' ');
+                lines.push_str(word);
+            }
+        }
+        start = end;
+    }
+    lines
 }
 
 impl Attribute {
@@ -217,7 +243,11 @@ struct Frame {
     kept: Option<Vec<Quad>>,
     /// Where this element's text content starts in its unit's text.
     text_from: usize,
-    text_attachment: bool,
+    /// Where this element's breaks start among its unit's.
+    breaks_from: usize,
+    breaks_text: bool,
+    /// An attachment's own text children, joined; none where this is no attachment.
+    attachment_text: Option<String>,
 }
 
 fn start_tag(
@@ -240,6 +270,10 @@ struct Builder {
     text: String,
     /// Every text of the unit being lifted, whitespace included, in document order.
     unit_text: String,
+    /// Where in `unit_text` a start or end tag of an element named in `breaking` stands.
+    unit_breaks: Vec<usize>,
+    breaking: HashSet<String>,
+    text_with_element_breaks: NamedNode,
     next: usize,
     unit: Vec<Quad>,
     skeleton: Vec<Quad>,
@@ -256,13 +290,16 @@ struct Builder {
 }
 
 impl Builder {
-    fn new(unit_name: Option<String>, paths: Paths) -> Result<Self> {
+    fn new(unit_name: Option<String>, breaking: &[String], paths: Paths) -> Result<Self> {
         Ok(Self {
             unit_name,
             paths,
             stack: Vec::new(),
             text: String::new(),
             unit_text: String::new(),
+            unit_breaks: Vec::new(),
+            breaking: breaking.iter().cloned().collect(),
+            text_with_element_breaks: NamedNode::new(TEXT_WITH_ELEMENT_BREAKS)?,
             next: 0,
             unit: Vec::new(),
             skeleton: Vec::new(),
@@ -318,6 +355,9 @@ impl Builder {
             if top.unit {
                 self.unit_text.push_str(&self.text);
             }
+            if let Some(own) = &mut top.attachment_text {
+                own.push_str(&self.text);
+            }
             if !is_xml_space(&self.text) {
                 top.members += 1;
                 top.kept = None;
@@ -354,7 +394,9 @@ impl Builder {
             skeleton: None,
             kept: None,
             text_from: 0,
-            text_attachment: false,
+            breaks_from: 0,
+            breaks_text: false,
+            attachment_text: None,
         };
 
         let name = (
@@ -408,10 +450,16 @@ impl Builder {
             self.unit.push(triple(&id, rdf_type, element.type_iri));
             self.unit
                 .extend(attribute_triples(&id, &element.attributes));
+            let breaks_text = self.breaking.contains(element.local);
+            if breaks_text {
+                self.unit_breaks.push(self.unit_text.len());
+            }
             self.stack.push(Frame {
                 kept,
                 text_from: self.unit_text.len(),
-                text_attachment: is_text_attachment(&element.attributes),
+                breaks_from: self.unit_breaks.len(),
+                breaks_text,
+                attachment_text: is_text_attachment(&element.attributes).then(String::new),
                 ..frame(id, true, Some(step))
             });
             return Ok(());
@@ -462,10 +510,11 @@ impl Builder {
             self.unit
                 .extend(attribute_triples(&unit_id, &element.attributes));
             self.unit_text.clear();
-            let text_attachment = is_text_attachment(&element.attributes);
+            self.unit_breaks.clear();
+            let attachment_text = is_text_attachment(&element.attributes).then(String::new);
             self.stack.push(Frame {
                 skeleton: Some(id),
-                text_attachment,
+                attachment_text,
                 ..frame(unit_id, true, Some(step))
             });
             return Ok(());
@@ -483,8 +532,20 @@ impl Builder {
                 self.text_content.clone(),
                 Literal::new_simple_literal(content),
             ));
+            if !self.breaking.is_empty() {
+                let broken = text_with_element_breaks(
+                    &self.unit_text,
+                    frame.text_from,
+                    &self.unit_breaks[frame.breaks_from..],
+                );
+                self.unit.push(triple(
+                    &frame.id,
+                    self.text_with_element_breaks.clone(),
+                    Literal::new_simple_literal(broken),
+                ));
+            }
         }
-        if let Some(text) = frame.text_attachment.then(|| decoded(content)).flatten() {
+        if let Some(text) = frame.attachment_text.as_deref().and_then(decoded) {
             self.unit.push(triple(
                 &frame.id,
                 self.text_decoded_from_base64.clone(),
@@ -509,6 +570,9 @@ impl Builder {
         }
         if frame.unit {
             self.raw.push_str(&format!("</{}>", frame.qname));
+            if frame.breaks_text {
+                self.unit_breaks.push(self.unit_text.len());
+            }
             self.lift_text_content(&frame);
             if let Some(census) = &mut self.census {
                 census.close(value.as_deref());
@@ -532,29 +596,50 @@ pub(crate) fn lift_slice<'a>(
     bytes: &'a [u8],
     unit: Option<&str>,
 ) -> Result<Lift<Box<dyn BufRead + 'a>>> {
-    lift_text(crate::decode::decode(bytes)?, unit, Paths::Dropped)
+    lift_slice_breaking(bytes, unit, &[])
+}
+
+/// As `lift_slice`, each element named in `breaking` breaking text.
+#[cfg(test)]
+pub(crate) fn lift_slice_breaking<'a>(
+    bytes: &'a [u8],
+    unit: Option<&str>,
+    breaking: &[String],
+) -> Result<Lift<Box<dyn BufRead + 'a>>> {
+    lift_text(
+        crate::decode::decode(bytes)?,
+        unit,
+        breaking,
+        Paths::Dropped,
+    )
 }
 
 pub(crate) fn lift_text<'a>(
     text: Cow<'a, str>,
     unit: Option<&str>,
+    breaking: &[String],
     paths: Paths,
 ) -> Result<Lift<Box<dyn BufRead + 'a>>> {
     let reader: Box<dyn BufRead + 'a> = match text {
         Cow::Borrowed(text) => Box::new(Cursor::new(text.as_bytes())),
         Cow::Owned(text) => Box::new(Cursor::new(text.into_bytes())),
     };
-    Lift::new(reader, unit, paths)
+    Lift::new(reader, unit, breaking, paths)
 }
 
 impl<R: BufRead> Lift<R> {
-    pub(crate) fn new(reader: R, unit: Option<&str>, paths: Paths) -> Result<Self> {
+    pub(crate) fn new(
+        reader: R,
+        unit: Option<&str>,
+        breaking: &[String],
+        paths: Paths,
+    ) -> Result<Self> {
         let mut reader = NsReader::from_reader(reader);
         reader.config_mut().expand_empty_elements = true;
         Ok(Self {
             reader,
             buffer: Vec::new(),
-            builder: Builder::new(unit.map(str::to_owned), paths)?,
+            builder: Builder::new(unit.map(str::to_owned), breaking, paths)?,
             done: false,
         })
     }

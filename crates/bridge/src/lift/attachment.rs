@@ -5,8 +5,10 @@ use base64::Engine;
 pub(crate) const TEXT_CONTENT: &str = "https://dom.spec.whatwg.org/#dom-node-textcontent";
 pub(crate) const TEXT_DECODED_FROM_BASE64: &str =
     "https://ns.cascadeprotocol.org/bridge/v1-draft#textDecodedFromBase64";
+pub(crate) const TEXT_WITH_ELEMENT_BREAKS: &str =
+    "https://ns.cascadeprotocol.org/bridge/v1-draft#textWithElementBreaks";
 
-pub(crate) fn is_utf_8(charset: &str) -> bool {
+fn is_utf_8(charset: &str) -> bool {
     charset
         .trim_matches(XML_SPACE)
         .trim_matches('"')

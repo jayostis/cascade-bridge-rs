@@ -23,6 +23,7 @@ fn units(text: &str, reading: &Reading<'_>, paths: Paths) -> Vec<Unit> {
 fn refuses_a_document_whose_value_is_neither_an_object_nor_an_array() {
     let reading = Reading {
         element: None,
+        breaking: &[],
         envelopes: Vec::new(),
         named: None,
     };
@@ -38,6 +39,7 @@ fn reads_a_document_in_an_envelope_naming_its_member_s_value_before_one_naming_n
     let other = envelope("kind", Some("other"), "$.other[*]");
     let reading = Reading {
         element: None,
+        breaking: &[],
         envelopes: vec![&any, &other, &set],
         named: None,
     };
@@ -57,6 +59,7 @@ fn reads_a_document_in_the_envelope_named_whether_or_not_it_admits_it() {
     let whole = envelope("absent", None, "$");
     let reading = Reading {
         element: None,
+        breaking: &[],
         envelopes: vec![&set, &whole],
         named: Some(1),
     };
@@ -72,6 +75,7 @@ fn splits_nothing_where_no_envelope_admits_the_document() {
     let set = envelope("kind", Some("set"), "$.records[*]");
     let reading = Reading {
         element: None,
+        breaking: &[],
         envelopes: vec![&set],
         named: None,
     };
@@ -88,6 +92,7 @@ fn counts_an_array_s_items_at_its_path_and_addresses_the_first() {
     let whole = envelope("id", None, "$");
     let reading = Reading {
         element: None,
+        breaking: &[],
         envelopes: vec![&whole],
         named: None,
     };

@@ -27,6 +27,7 @@ struct Envelope {
 pub(crate) struct Prepared {
     pub(crate) syntax: Syntax,
     unit: Option<String>,
+    breaking: Vec<String>,
     mappings: Vec<Query>,
     findings_queries: Vec<Query>,
     document_table_queries: Vec<Query>,
@@ -253,6 +254,7 @@ fn prepared(
     Ok(Prepared {
         syntax,
         unit,
+        breaking: adapter.element_names_breaking_text.clone(),
         mappings: queries.mappings,
         findings_queries: queries.findings,
         document_table_queries: queries.document_table,
@@ -359,6 +361,7 @@ fn findings_prefixes(gap_prefixes: Vec<(String, String)>) -> Vec<(String, String
 fn reading<'a>(prepared: &'a Prepared, named: Option<usize>) -> Reading<'a> {
     Reading {
         element: prepared.unit.as_deref(),
+        breaking: &prepared.breaking,
         envelopes: prepared
             .envelopes
             .iter()
