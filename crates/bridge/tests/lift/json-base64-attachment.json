@@ -4,5 +4,7 @@
   {"attachment": {"contentType": "application/pdf", "data": "JVBERi0="}},
   {"attachment": {"contentType": "text/plain; charset=ISO-8859-1", "data": "aGk="}},
   {"attachment": {"contentType": "text/plain", "data": "//4="}},
-  {"attachment": {"data": "aGk="}}
+  {"attachment": {"data": "aGk="}},
+  {"attachment": {"contentType": "text/plain", "data": ""}},
+  {"attachment": {"contentType": "text/plain", "data": " \n "}}
 ]}

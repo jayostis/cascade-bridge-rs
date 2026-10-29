@@ -25,3 +25,11 @@ _:notUtf8 <http://sparql.xyz/facade-x/data/data> "//4=" .
 _:content <http://www.w3.org/1999/02/22-rdf-syntax-ns#_6> _:c6 .
 _:c6 <http://sparql.xyz/facade-x/data/attachment> _:untyped .
 _:untyped <http://sparql.xyz/facade-x/data/data> "aGk=" .
+_:content <http://www.w3.org/1999/02/22-rdf-syntax-ns#_7> _:c7 .
+_:c7 <http://sparql.xyz/facade-x/data/attachment> _:empty .
+_:empty <http://sparql.xyz/facade-x/data/contentType> "text/plain" .
+_:empty <http://sparql.xyz/facade-x/data/data> "" .
+_:content <http://www.w3.org/1999/02/22-rdf-syntax-ns#_8> _:c8 .
+_:c8 <http://sparql.xyz/facade-x/data/attachment> _:whitespaceOnly .
+_:whitespaceOnly <http://sparql.xyz/facade-x/data/contentType> "text/plain" .
+_:whitespaceOnly <http://sparql.xyz/facade-x/data/data> " \n " .
