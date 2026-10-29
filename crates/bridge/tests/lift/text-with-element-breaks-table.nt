@@ -1,0 +1,69 @@
+_:table1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/ns/root> .
+_:table1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/table> .
+_:table1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> _:thead1 .
+_:table1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_2> _:tbody1 .
+_:table1 <https://dom.spec.whatwg.org/#dom-node-textcontent> "\n  \n    TestResultCollected\n  \n  \n    Hemoglobin A1c6.6 %July 10, 2023 16:00 UTC\n    Hemoglobin A1c6.5 %October 9, 2023 16:00 UTC\n  \n" .
+_:table1 <https://ns.cascadeprotocol.org/bridge/v1-draft#textWithElementBreaks> "Test\nResult\nCollected\nHemoglobin A1c\n6.6 %\nJuly 10, 2023 16:00 UTC\nHemoglobin A1c\n6.5 %\nOctober 9, 2023 16:00 UTC" .
+_:thead1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/thead> .
+_:thead1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> _:tr1 .
+_:thead1 <https://dom.spec.whatwg.org/#dom-node-textcontent> "\n    TestResultCollected\n  " .
+_:thead1 <https://ns.cascadeprotocol.org/bridge/v1-draft#textWithElementBreaks> "Test\nResult\nCollected" .
+_:tr1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/tr> .
+_:tr1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> _:th1 .
+_:tr1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_2> _:th2 .
+_:tr1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_3> _:th3 .
+_:tr1 <https://dom.spec.whatwg.org/#dom-node-textcontent> "TestResultCollected" .
+_:tr1 <https://ns.cascadeprotocol.org/bridge/v1-draft#textWithElementBreaks> "Test\nResult\nCollected" .
+_:th1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/th> .
+_:th1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "Test" .
+_:th1 <https://dom.spec.whatwg.org/#dom-node-textcontent> "Test" .
+_:th1 <https://ns.cascadeprotocol.org/bridge/v1-draft#textWithElementBreaks> "Test" .
+_:th2 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/th> .
+_:th2 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "Result" .
+_:th2 <https://dom.spec.whatwg.org/#dom-node-textcontent> "Result" .
+_:th2 <https://ns.cascadeprotocol.org/bridge/v1-draft#textWithElementBreaks> "Result" .
+_:th3 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/th> .
+_:th3 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "Collected" .
+_:th3 <https://dom.spec.whatwg.org/#dom-node-textcontent> "Collected" .
+_:th3 <https://ns.cascadeprotocol.org/bridge/v1-draft#textWithElementBreaks> "Collected" .
+_:tbody1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/tbody> .
+_:tbody1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> _:tr2 .
+_:tbody1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_2> _:tr3 .
+_:tbody1 <https://dom.spec.whatwg.org/#dom-node-textcontent> "\n    Hemoglobin A1c6.6 %July 10, 2023 16:00 UTC\n    Hemoglobin A1c6.5 %October 9, 2023 16:00 UTC\n  " .
+_:tbody1 <https://ns.cascadeprotocol.org/bridge/v1-draft#textWithElementBreaks> "Hemoglobin A1c\n6.6 %\nJuly 10, 2023 16:00 UTC\nHemoglobin A1c\n6.5 %\nOctober 9, 2023 16:00 UTC" .
+_:tr2 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/tr> .
+_:tr2 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> _:td1 .
+_:tr2 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_2> _:td2 .
+_:tr2 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_3> _:td3 .
+_:tr2 <https://dom.spec.whatwg.org/#dom-node-textcontent> "Hemoglobin A1c6.6 %July 10, 2023 16:00 UTC" .
+_:tr2 <https://ns.cascadeprotocol.org/bridge/v1-draft#textWithElementBreaks> "Hemoglobin A1c\n6.6 %\nJuly 10, 2023 16:00 UTC" .
+_:td1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/td> .
+_:td1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "Hemoglobin A1c" .
+_:td1 <https://dom.spec.whatwg.org/#dom-node-textcontent> "Hemoglobin A1c" .
+_:td1 <https://ns.cascadeprotocol.org/bridge/v1-draft#textWithElementBreaks> "Hemoglobin A1c" .
+_:td2 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/td> .
+_:td2 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "6.6 %" .
+_:td2 <https://dom.spec.whatwg.org/#dom-node-textcontent> "6.6 %" .
+_:td2 <https://ns.cascadeprotocol.org/bridge/v1-draft#textWithElementBreaks> "6.6 %" .
+_:td3 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/td> .
+_:td3 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "July 10, 2023 16:00 UTC" .
+_:td3 <https://dom.spec.whatwg.org/#dom-node-textcontent> "July 10, 2023 16:00 UTC" .
+_:td3 <https://ns.cascadeprotocol.org/bridge/v1-draft#textWithElementBreaks> "July 10, 2023 16:00 UTC" .
+_:tr3 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/tr> .
+_:tr3 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> _:td4 .
+_:tr3 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_2> _:td5 .
+_:tr3 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_3> _:td6 .
+_:tr3 <https://dom.spec.whatwg.org/#dom-node-textcontent> "Hemoglobin A1c6.5 %October 9, 2023 16:00 UTC" .
+_:tr3 <https://ns.cascadeprotocol.org/bridge/v1-draft#textWithElementBreaks> "Hemoglobin A1c\n6.5 %\nOctober 9, 2023 16:00 UTC" .
+_:td4 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/td> .
+_:td4 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "Hemoglobin A1c" .
+_:td4 <https://dom.spec.whatwg.org/#dom-node-textcontent> "Hemoglobin A1c" .
+_:td4 <https://ns.cascadeprotocol.org/bridge/v1-draft#textWithElementBreaks> "Hemoglobin A1c" .
+_:td5 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/td> .
+_:td5 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "6.5 %" .
+_:td5 <https://dom.spec.whatwg.org/#dom-node-textcontent> "6.5 %" .
+_:td5 <https://ns.cascadeprotocol.org/bridge/v1-draft#textWithElementBreaks> "6.5 %" .
+_:td6 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/td> .
+_:td6 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "October 9, 2023 16:00 UTC" .
+_:td6 <https://dom.spec.whatwg.org/#dom-node-textcontent> "October 9, 2023 16:00 UTC" .
+_:td6 <https://ns.cascadeprotocol.org/bridge/v1-draft#textWithElementBreaks> "October 9, 2023 16:00 UTC" .

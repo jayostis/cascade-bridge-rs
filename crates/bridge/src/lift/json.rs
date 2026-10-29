@@ -1,5 +1,6 @@
 // The whole document is read before any record is handed over: which envelope admits
 // it, and so which path splits it, is said by its value's members.
+use super::attachment::{decoded, names_text, TEXT_DECODED_FROM_BASE64};
 use super::{
     admitting, member, name, store_of, triple, Admission, Occurrence, Paths, Reading, Unit, Valued,
     FX, RDF, XYZ,
@@ -47,9 +48,37 @@ pub(crate) fn lift<'a>(text: &'a str, reading: &Reading<'_>, paths: Paths) -> Re
 struct Written {
     quads: Vec<Quad>,
     next: usize,
+    /// Everywhere but in a skeleton.
+    decodes_attachments: bool,
+}
+
+/// FHIR's `Attachment` in base64, of a text media type and no other charset than UTF-8.
+fn text_of_attachment(node: &Node) -> Option<String> {
+    let Value::Object(members) = &node.value else {
+        return None;
+    };
+    let string = |name: &str| {
+        members
+            .iter()
+            .find(|(named, _)| named == name)
+            .and_then(|(_, member)| match &member.value {
+                Value::String(text) => Some(text.as_str()),
+                _ => None,
+            })
+    };
+    string("contentType")
+        .filter(|content_type| names_text(content_type))
+        .and_then(|_| decoded(string("data")?))
 }
 
 impl Written {
+    fn decoding_attachments() -> Self {
+        Self {
+            decodes_attachments: true,
+            ..Self::default()
+        }
+    }
+
     fn fresh(&mut self) -> BlankNode {
         self.next += 1;
         BlankNode::new_unchecked(format!("j{}", self.next))
@@ -81,6 +110,17 @@ impl Written {
             };
             self.quads.push(triple(&id, predicate, object));
         }
+        if let Some(text) = self
+            .decodes_attachments
+            .then(|| text_of_attachment(node))
+            .flatten()
+        {
+            self.quads.push(triple(
+                &id,
+                NamedNode::new(TEXT_DECODED_FROM_BASE64)?,
+                Literal::new_simple_literal(text),
+            ));
+        }
         Ok(id)
     }
 
@@ -98,7 +138,7 @@ impl Written {
 /// The lift of a whole document's value.
 #[cfg(test)]
 pub(crate) fn lifted(text: &str) -> Result<Vec<Quad>> {
-    Written::default().root(&json::parse(text)?, &HashSet::new())
+    Written::decoding_attachments().root(&json::parse(text)?, &HashSet::new())
 }
 
 impl super::Lift for Lift<'_> {
@@ -113,7 +153,7 @@ impl super::Lift for Lift<'_> {
             Paths::Dropped => (Vec::new(), Vec::new()),
         };
         Ok(Some(Unit {
-            store: store_of(Written::default().root(record, &HashSet::new())?)?,
+            store: store_of(Written::decoding_attachments().root(record, &HashSet::new())?)?,
             text: self.text[record.span.clone()].to_owned(),
             selector: json::pointer(&json::tokens_at(&self.root, positions)),
             occurrences,

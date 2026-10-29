@@ -3,6 +3,7 @@ use oxigraph::model::{BlankNode, GraphName, NamedNode, NamedOrBlankNode, Quad, T
 use oxigraph::store::Store;
 use std::collections::HashSet;
 
+mod attachment;
 pub(crate) mod json;
 pub(crate) mod xml;
 
@@ -65,6 +66,8 @@ pub(crate) struct Admission {
 /// the path of the envelope it is read in, `named` or the one that admits it.
 pub(crate) struct Reading<'a> {
     pub(crate) element: Option<&'a str>,
+    /// The adapter's `bridge:elementNameBreakingText`.
+    pub(crate) breaking: &'a [String],
     pub(crate) envelopes: Vec<&'a Admission>,
     pub(crate) named: Option<usize>,
 }

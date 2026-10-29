@@ -1,0 +1,35 @@
+_:doc <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/ns/root> .
+_:doc <http://sparql.xyz/facade-x/data/content> _:content .
+_:content <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> _:c1 .
+_:c1 <http://sparql.xyz/facade-x/data/attachment> _:plain .
+_:plain <http://sparql.xyz/facade-x/data/contentType> "text/plain; charset=UTF-8" .
+_:plain <http://sparql.xyz/facade-x/data/data> "bGlzaW5vcHJpbCAx\nMCBtZyB0YWJsZXQ=" .
+_:plain <https://ns.cascadeprotocol.org/bridge/v1-draft#textDecodedFromBase64> "lisinopril 10 mg tablet" .
+_:content <http://www.w3.org/1999/02/22-rdf-syntax-ns#_2> _:c2 .
+_:c2 <http://sparql.xyz/facade-x/data/attachment> _:html .
+_:html <http://sparql.xyz/facade-x/data/contentType> "TEXT/html" .
+_:html <http://sparql.xyz/facade-x/data/data> "PGI+aGVsZDwvYj4=" .
+_:html <https://ns.cascadeprotocol.org/bridge/v1-draft#textDecodedFromBase64> "<b>held</b>" .
+_:content <http://www.w3.org/1999/02/22-rdf-syntax-ns#_3> _:c3 .
+_:c3 <http://sparql.xyz/facade-x/data/attachment> _:pdf .
+_:pdf <http://sparql.xyz/facade-x/data/contentType> "application/pdf" .
+_:pdf <http://sparql.xyz/facade-x/data/data> "JVBERi0=" .
+_:content <http://www.w3.org/1999/02/22-rdf-syntax-ns#_4> _:c4 .
+_:c4 <http://sparql.xyz/facade-x/data/attachment> _:latin .
+_:latin <http://sparql.xyz/facade-x/data/contentType> "text/plain; charset=ISO-8859-1" .
+_:latin <http://sparql.xyz/facade-x/data/data> "aGk=" .
+_:content <http://www.w3.org/1999/02/22-rdf-syntax-ns#_5> _:c5 .
+_:c5 <http://sparql.xyz/facade-x/data/attachment> _:notUtf8 .
+_:notUtf8 <http://sparql.xyz/facade-x/data/contentType> "text/plain" .
+_:notUtf8 <http://sparql.xyz/facade-x/data/data> "//4=" .
+_:content <http://www.w3.org/1999/02/22-rdf-syntax-ns#_6> _:c6 .
+_:c6 <http://sparql.xyz/facade-x/data/attachment> _:untyped .
+_:untyped <http://sparql.xyz/facade-x/data/data> "aGk=" .
+_:content <http://www.w3.org/1999/02/22-rdf-syntax-ns#_7> _:c7 .
+_:c7 <http://sparql.xyz/facade-x/data/attachment> _:empty .
+_:empty <http://sparql.xyz/facade-x/data/contentType> "text/plain" .
+_:empty <http://sparql.xyz/facade-x/data/data> "" .
+_:content <http://www.w3.org/1999/02/22-rdf-syntax-ns#_8> _:c8 .
+_:c8 <http://sparql.xyz/facade-x/data/attachment> _:whitespaceOnly .
+_:whitespaceOnly <http://sparql.xyz/facade-x/data/contentType> "text/plain" .
+_:whitespaceOnly <http://sparql.xyz/facade-x/data/data> " \n " .

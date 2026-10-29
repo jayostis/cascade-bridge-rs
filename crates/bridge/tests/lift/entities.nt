@@ -1,0 +1,9 @@
+_:p1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/ns/root> .
+_:p1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/p> .
+_:p1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "salt & pepper, " .
+_:p1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_2> _:b1 .
+_:p1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_3> " \"daily\" 'as needed'" .
+_:p1 <https://dom.spec.whatwg.org/#dom-node-textcontent> "salt & pepper, <1 g> \"daily\" 'as needed'" .
+_:b1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/b> .
+_:b1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "<1 g>" .
+_:b1 <https://dom.spec.whatwg.org/#dom-node-textcontent> "<1 g>" .

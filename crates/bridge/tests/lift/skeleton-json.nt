@@ -3,6 +3,9 @@ _:doc <http://sparql.xyz/facade-x/data/kind> "set" .
 _:doc <http://sparql.xyz/facade-x/data/meta> _:meta .
 _:meta <http://sparql.xyz/facade-x/data/tag> _:tags .
 _:tags <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "kept" .
+_:meta <http://sparql.xyz/facade-x/data/security> _:security .
+_:security <http://sparql.xyz/facade-x/data/contentType> "text/plain" .
+_:security <http://sparql.xyz/facade-x/data/data> "aGk=" .
 _:doc <http://sparql.xyz/facade-x/data/entry> _:entry .
 _:entry <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> _:one .
 _:one <http://sparql.xyz/facade-x/data/fullUrl> "urn:one" .

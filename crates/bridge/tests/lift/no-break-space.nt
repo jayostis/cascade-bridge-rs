@@ -8,3 +8,6 @@ _:a <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> " " .
 _:b <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/b> .
 _:b <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "   " .
 _:c <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/c> .
+_:doc <https://dom.spec.whatwg.org/#dom-node-textcontent> "\u00A0 \u00A0 \n" .
+_:a <https://dom.spec.whatwg.org/#dom-node-textcontent> "\u00A0" .
+_:b <https://dom.spec.whatwg.org/#dom-node-textcontent> " \u00A0 " .

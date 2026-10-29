@@ -1,0 +1,23 @@
+_:table <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/ns/root> .
+_:table <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/table> .
+_:table <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> _:first .
+_:table <http://www.w3.org/1999/02/22-rdf-syntax-ns#_2> _:second .
+_:table <https://dom.spec.whatwg.org/#dom-node-textcontent> "lisinopril 10 mg tablet\ndaily  " .
+_:first <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/tr> .
+_:first <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> _:cell .
+_:first <http://www.w3.org/1999/02/22-rdf-syntax-ns#_2> _:daily .
+_:first <https://dom.spec.whatwg.org/#dom-node-textcontent> "lisinopril 10 mg tablet\ndaily" .
+_:cell <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/td> .
+_:cell <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "lisinopril " .
+_:cell <http://www.w3.org/1999/02/22-rdf-syntax-ns#_2> _:content .
+_:cell <http://www.w3.org/1999/02/22-rdf-syntax-ns#_3> " tablet" .
+_:cell <https://dom.spec.whatwg.org/#dom-node-textcontent> "lisinopril 10 mg tablet" .
+_:content <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/content> .
+_:content <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "10 mg" .
+_:content <https://dom.spec.whatwg.org/#dom-node-textcontent> "10 mg" .
+_:daily <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/td> .
+_:daily <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "daily" .
+_:daily <https://dom.spec.whatwg.org/#dom-node-textcontent> "daily" .
+_:second <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/tr> .
+_:second <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> _:empty .
+_:empty <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/td> .

@@ -1,0 +1,9 @@
+<table>
+  <thead>
+    <tr><th>Test</th><th>Result</th><th>Collected</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Hemoglobin A1c</td><td>6.6 %</td><td>July 10, 2023 16:00 UTC</td></tr>
+    <tr><td>Hemoglobin A1c</td><td>6.5 %</td><td>October 9, 2023 16:00 UTC</td></tr>
+  </tbody>
+</table>

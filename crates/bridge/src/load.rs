@@ -3,11 +3,12 @@ use crate::resolver::Resolver;
 use crate::terms::{
     BRIDGE_ADAPTER, BRIDGE_CASCADE_VOCABULARY_REPOSITORY, BRIDGE_DETECT_QUERY,
     BRIDGE_DOCUMENT_SCHEMA, BRIDGE_DOCUMENT_TABLE_QUERY, BRIDGE_DOC_ROOT_ELEMENT_NAME,
-    BRIDGE_DOC_ROOT_MEMBER_NAME, BRIDGE_DOC_ROOT_MEMBER_VALUE, BRIDGE_ELEMENT_NAME_OF_EACH_RECORD,
-    BRIDGE_ENVELOPE, BRIDGE_FINDINGS_QUERY, BRIDGE_GAP_SCHEME, BRIDGE_JSON_PATH_OF_EACH_RECORD,
-    BRIDGE_MAPPING, BRIDGE_REQUIRES_PROFILE, BRIDGE_SOURCE_ACCOUNTING, BRIDGE_SOURCE_MEDIA_TYPE,
-    BRIDGE_SOURCE_SCHEMA, BRIDGE_TABLE, BRIDGE_TEST_MANIFEST, BRIDGE_VOCABULARY_FILE, RDF_FIRST,
-    RDF_NIL, RDF_REST, RDF_TYPE, SCHEMA_ABOUT, SCHEMA_IDENTIFIER, SCHEMA_NAME, SCHEMA_VERSION,
+    BRIDGE_DOC_ROOT_MEMBER_NAME, BRIDGE_DOC_ROOT_MEMBER_VALUE, BRIDGE_ELEMENT_NAME_BREAKING_TEXT,
+    BRIDGE_ELEMENT_NAME_OF_EACH_RECORD, BRIDGE_ENVELOPE, BRIDGE_FINDINGS_QUERY, BRIDGE_GAP_SCHEME,
+    BRIDGE_JSON_PATH_OF_EACH_RECORD, BRIDGE_MAPPING, BRIDGE_REQUIRES_PROFILE,
+    BRIDGE_SOURCE_ACCOUNTING, BRIDGE_SOURCE_MEDIA_TYPE, BRIDGE_SOURCE_SCHEMA, BRIDGE_TABLE,
+    BRIDGE_TEST_MANIFEST, BRIDGE_VOCABULARY_FILE, RDF_FIRST, RDF_NIL, RDF_REST, RDF_TYPE,
+    SCHEMA_ABOUT, SCHEMA_IDENTIFIER, SCHEMA_NAME, SCHEMA_VERSION,
 };
 use oxrdf::{Graph, NamedNode, NamedOrBlankNode, Term, Triple};
 use oxrdfio::{JsonLdProfile, JsonLdProfileSet, LoadedDocument, RdfFormat, RdfParser};
@@ -53,6 +54,7 @@ pub(crate) struct Adapter {
     pub(crate) source_media_type: Option<String>,
     pub(crate) version: Option<String>,
     pub(crate) element_name_of_each_record: Option<String>,
+    pub(crate) element_names_breaking_text: Vec<String>,
     pub(crate) source_schema: Option<String>,
     /// Paths in the checkout the engine command is given, not files of the crate.
     pub(crate) vocabulary_files: Vec<String>,
@@ -260,6 +262,11 @@ fn crate_read(metadata: &[u8], root: &str) -> Result<Adapter> {
             &graph,
             &root_subject,
             BRIDGE_ELEMENT_NAME_OF_EACH_RECORD,
+        )?,
+        element_names_breaking_text: values(
+            &graph,
+            &root_subject,
+            BRIDGE_ELEMENT_NAME_BREAKING_TEXT,
         )?,
         source_media_type: one(&graph, &root_subject, BRIDGE_SOURCE_MEDIA_TYPE)?,
         source_schema: one(&graph, &root_subject, BRIDGE_SOURCE_SCHEMA)?,

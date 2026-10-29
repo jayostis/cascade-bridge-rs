@@ -1,0 +1,10 @@
+_:paragraph1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/ns/root> .
+_:paragraph1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/paragraph> .
+_:paragraph1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "Body surface area 1.9 m" .
+_:paragraph1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_2> _:sup1 .
+_:paragraph1 <https://dom.spec.whatwg.org/#dom-node-textcontent> "Body surface area 1.9 m2" .
+_:paragraph1 <https://ns.cascadeprotocol.org/bridge/v1-draft#textWithElementBreaks> "Body surface area 1.9 m2" .
+_:sup1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/sup> .
+_:sup1 <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "2" .
+_:sup1 <https://dom.spec.whatwg.org/#dom-node-textcontent> "2" .
+_:sup1 <https://ns.cascadeprotocol.org/bridge/v1-draft#textWithElementBreaks> "2" .
