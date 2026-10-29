@@ -1,3 +1,4 @@
+use super::attachment::{decoded, is_utf_8, names_text, TEXT_CONTENT, TEXT_DECODED_FROM_BASE64};
 use super::{member, name, store_of, triple, Occurrence, Paths, Unit, Valued, FX, RDF, XYZ};
 use crate::decode::{is_xml_space, normalise_attribute_value, normalise_line_endings};
 use crate::error::{Error, Result};
@@ -180,6 +181,20 @@ fn attribute_triples<'a>(
     })
 }
 
+/// HL7 V3's `ED` in base64, of a text media type and no other charset than UTF-8.
+fn is_text_attachment(attributes: &[Attribute]) -> bool {
+    let value = |local: &str| {
+        attributes
+            .iter()
+            .find(|attribute| attribute.predicate.as_str().strip_prefix(XYZ) == Some(local))
+            .map(|attribute| attribute.value.as_str())
+    };
+    value("representation") == Some("B64")
+        && value("mediaType").is_none_or(names_text)
+        && value("compression").is_none()
+        && value("charset").is_none_or(is_utf_8)
+}
+
 impl Attribute {
     fn named(&self) -> Option<(&Step, &str)> {
         Some((self.step.as_ref()?, self.value.as_str()))
@@ -200,6 +215,9 @@ struct Frame {
     skeleton: Option<BlankNode>,
     /// A unit's child as the skeleton keeps it, until a child of its own drops it.
     kept: Option<Vec<Quad>>,
+    /// Where this element's text content starts in its unit's text.
+    text_from: usize,
+    text_attachment: bool,
 }
 
 fn start_tag(
@@ -220,11 +238,15 @@ struct Builder {
     unit_name: Option<String>,
     stack: Vec<Frame>,
     text: String,
+    /// Every text of the unit being lifted, whitespace included, in document order.
+    unit_text: String,
     next: usize,
     unit: Vec<Quad>,
     skeleton: Vec<Quad>,
     rdf_type: NamedNode,
     fx_root: NamedNode,
+    text_content: NamedNode,
+    text_decoded_from_base64: NamedNode,
     document_element: Option<String>,
     document_step: Option<Step>,
     raw: String,
@@ -240,11 +262,14 @@ impl Builder {
             paths,
             stack: Vec::new(),
             text: String::new(),
+            unit_text: String::new(),
             next: 0,
             unit: Vec::new(),
             skeleton: Vec::new(),
             rdf_type: NamedNode::new(format!("{RDF}type"))?,
             fx_root: NamedNode::new(format!("{FX}root"))?,
+            text_content: NamedNode::new(TEXT_CONTENT)?,
+            text_decoded_from_base64: NamedNode::new(TEXT_DECODED_FROM_BASE64)?,
             document_element: None,
             document_step: None,
             raw: String::new(),
@@ -290,6 +315,9 @@ impl Builder {
 
     fn flush(&mut self) -> Result<()> {
         if let Some(top) = self.stack.last_mut() {
+            if top.unit {
+                self.unit_text.push_str(&self.text);
+            }
             if !is_xml_space(&self.text) {
                 top.members += 1;
                 top.kept = None;
@@ -325,6 +353,8 @@ impl Builder {
             siblings: HashMap::new(),
             skeleton: None,
             kept: None,
+            text_from: 0,
+            text_attachment: false,
         };
 
         let name = (
@@ -380,6 +410,8 @@ impl Builder {
                 .extend(attribute_triples(&id, &element.attributes));
             self.stack.push(Frame {
                 kept,
+                text_from: self.unit_text.len(),
+                text_attachment: is_text_attachment(&element.attributes),
                 ..frame(id, true, Some(step))
             });
             return Ok(());
@@ -429,8 +461,11 @@ impl Builder {
             self.unit.push(triple(&unit_id, rdf_type, element.type_iri));
             self.unit
                 .extend(attribute_triples(&unit_id, &element.attributes));
+            self.unit_text.clear();
+            let text_attachment = is_text_attachment(&element.attributes);
             self.stack.push(Frame {
                 skeleton: Some(id),
+                text_attachment,
                 ..frame(unit_id, true, Some(step))
             });
             return Ok(());
@@ -438,6 +473,24 @@ impl Builder {
 
         self.stack.push(frame(id, false, Some(step)));
         Ok(())
+    }
+
+    fn lift_text_content(&mut self, frame: &Frame) {
+        let content = &self.unit_text[frame.text_from..];
+        if !is_xml_space(content) {
+            self.unit.push(triple(
+                &frame.id,
+                self.text_content.clone(),
+                Literal::new_simple_literal(content),
+            ));
+        }
+        if let Some(text) = frame.text_attachment.then(|| decoded(content)).flatten() {
+            self.unit.push(triple(
+                &frame.id,
+                self.text_decoded_from_base64.clone(),
+                Literal::new_simple_literal(text),
+            ));
+        }
     }
 
     /// Whether the outermost unit ended here.
@@ -448,14 +501,15 @@ impl Builder {
             .is_some_and(Census::wants_value)
             .then(|| self.text.clone());
         self.flush()?;
-        let Some(frame) = self.stack.pop() else {
+        let Some(mut frame) = self.stack.pop() else {
             return Ok(false);
         };
-        if let Some(kept) = frame.kept {
+        if let Some(kept) = frame.kept.take() {
             self.skeleton.extend(kept);
         }
         if frame.unit {
             self.raw.push_str(&format!("</{}>", frame.qname));
+            self.lift_text_content(&frame);
             if let Some(census) = &mut self.census {
                 census.close(value.as_deref());
             }

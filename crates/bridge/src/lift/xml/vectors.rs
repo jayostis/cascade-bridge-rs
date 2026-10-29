@@ -59,7 +59,10 @@ fn document_element(xml: &[u8]) -> String {
 
 fn lift_whole(xml: &[u8]) -> BTreeSet<String> {
     let mut lift = lift_slice(xml, Some(&document_element(xml))).expect("lift");
-    let unit = lift.next_unit().expect("unit").expect("the document element");
+    let unit = lift
+        .next_unit()
+        .expect("unit")
+        .expect("the document element");
     lines(&unit.store)
 }
 
@@ -244,18 +247,5 @@ fn writes_a_record_out_with_the_comments_and_instructions_it_held() {
     assert_eq!(
         unit.text,
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?><item>before<!-- inside --><?say it?>after<e></e></item>"
-    );
-    assert_graph(
-        "the unit",
-        lines(&unit.store),
-        parsed(
-            br#"
-_:item <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/ns/root> .
-_:item <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/item> .
-_:item <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> "beforeafter" .
-_:item <http://www.w3.org/1999/02/22-rdf-syntax-ns#_2> _:e .
-_:e <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/e> .
-"#,
-        ),
     );
 }

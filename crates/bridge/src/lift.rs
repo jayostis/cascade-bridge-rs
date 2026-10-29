@@ -3,6 +3,7 @@ use oxigraph::model::{BlankNode, GraphName, NamedNode, NamedOrBlankNode, Quad, T
 use oxigraph::store::Store;
 use std::collections::HashSet;
 
+mod attachment;
 pub(crate) mod json;
 pub(crate) mod xml;
 
