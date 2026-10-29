@@ -90,6 +90,12 @@ bridge:elementNameOfEachRecord a owl:DatatypeProperty ;
   rdfs:range xsd:string ;
   rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
 
+bridge:elementNameBreakingText a owl:DatatypeProperty ;
+  rdfs:label "element name breaking text"@en ;
+  rdfs:comment "The local name of an XML element whose start and end tags break the text around it into lines in bridge:textWithElementBreaks."@en ;
+  rdfs:range xsd:string ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
 bridge:jsonPathOfEachRecord a owl:DatatypeProperty ;
   rdfs:label "JSON path of each record"@en ;
   rdfs:comment "The RFC 9535 JSONPath selecting the records of a JSON document read in the envelope. A Bridge hands each record to the mapping on its own."@en ;
@@ -326,6 +332,19 @@ bridge:documentSchema a owl:ObjectProperty ;
   rdfs:label "document schema"@en ;
   rdfs:comment "The schema a Bridge validates a whole document in this envelope against, in the source schema's language, where the source schema does not declare its root."@en ;
   rdfs:domain bridge:Envelope ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+# Terms the lift writes (engine/sparql.md)
+
+bridge:textWithElementBreaks a owl:DatatypeProperty ;
+  rdfs:label "text with element breaks"@en ;
+  rdfs:comment "An element's text in document order, a line feed at each start and end tag of an element the adapter's bridge:elementNameBreakingText names, each line's whitespace normalised and empty lines dropped."@en ;
+  rdfs:range xsd:string ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:textDecodedFromBase64 a owl:DatatypeProperty ;
+  rdfs:label "text decoded from base64"@en ;
+  rdfs:range xsd:string ;
   rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
 
 # Facts about a document, supplied with it or computed from it
