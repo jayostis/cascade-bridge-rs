@@ -1,4 +1,5 @@
 use super::builtin::BUILTINS;
+use super::once::Answer;
 use super::{agree, compile, compile_explained, Dataset, Executor, Fail, Shared, Tree};
 use crate::budget::{Budgets, Watch};
 use crate::error::Result;
@@ -6,11 +7,12 @@ use crate::fixtures::{conversion_under, profiled_under, tiny, tiny_json, Variant
 use crate::query::{Form, Profile, Query, QueryProfile};
 use crate::rdf::canonical_parts;
 use crate::resolver::Resolver;
-use oxigraph::model::{GraphName, Quad};
+use oxigraph::model::{GraphName, NamedNode, Quad, Term};
 use oxigraph::sparql::{QueryResults, SparqlEvaluator};
 use oxigraph::store::Store;
 use oxrdfio::{RdfFormat, RdfParser};
 use std::collections::HashSet;
+use std::rc::Rc;
 
 const PREFIXES: &str =
     "PREFIX : <urn:t#> PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> \
@@ -340,6 +342,18 @@ const LOWERED: &[(&str, &str)] = &[
     (
         "an aggregate that shares no variable with the rows it joins",
         "CONSTRUCT { ?i :of ?c } WHERE { ?i a :Item . { SELECT (COUNT(*) AS ?c) WHERE { ?x :name ?n } } }",
+    ),
+    (
+        "an aggregate that shares no variable with the rows it joins, over nothing",
+        "CONSTRUCT { ?i :of ?c } WHERE { ?i a :Item . { SELECT (COUNT(*) AS ?c) WHERE { ?x :absent ?n } } }",
+    ),
+    (
+        "a SELECT DISTINCT that names its key by a BIND, in an OPTIONAL after rows that do not bind the key",
+        "CONSTRUCT { :root :seen ?i } WHERE { :root a :Root . OPTIONAL { SELECT DISTINCT (?x AS ?i) WHERE { ?x :name ?n } } }",
+    ),
+    (
+        "a SELECT DISTINCT that names its key by a BIND, in an aggregate that scans the key",
+        "CONSTRUCT { ?i :of ?c } WHERE { SELECT ?i (COUNT(?m) AS ?c) WHERE { ?i a :Item OPTIONAL { SELECT DISTINCT (?w AS ?i) (true AS ?m) WHERE { ?w :name ?n } } } GROUP BY ?i }",
     ),
 ];
 
@@ -975,6 +989,27 @@ fn prints_the_same_plan_each_time_a_query_is_parsed_and_tells_shadowed_variables
             "  ?i <urn:t#seen> ?c\n",
         )
     );
+}
+
+#[test]
+fn offers_every_tuple_of_an_answer_where_one_leaves_a_key_the_row_binds_unbound() {
+    let term = |name: &str| {
+        Rc::new(Term::from(NamedNode::new_unchecked(format!(
+            "urn:t#{name}"
+        ))))
+    };
+    let (a, b) = (term("a"), term("b"));
+    let bound = [(0, Rc::clone(&a))];
+    let complete = Answer::of(vec![
+        vec![Some(Rc::clone(&a))],
+        vec![Some(Rc::clone(&b))],
+        vec![Some(Rc::clone(&a))],
+    ]);
+    assert_eq!(complete.agreeing(&bound), [0, 2]);
+    assert_eq!(complete.agreeing(&[(0, term("c"))]), Vec::<usize>::new());
+    assert_eq!(complete.agreeing(&[]), [0, 1, 2]);
+    let incomplete = Answer::of(vec![vec![Some(a)], vec![None]]);
+    assert_eq!(incomplete.agreeing(&bound), [0, 1]);
 }
 
 fn scans_of(query: &str, store: &Store) -> usize {
