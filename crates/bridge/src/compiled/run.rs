@@ -11,6 +11,7 @@ use oxigraph::model::{
 use oxsdatatypes::Integer;
 use spareval::ExpressionTerm;
 use std::cmp::Ordering;
+use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -501,11 +502,13 @@ fn sorted(term: &Option<Rc<Term>>) -> Result<Option<Sorted>, Fail> {
 /// before it.
 ///
 /// Where two rows tie on every key, the general evaluator's sort may put them in either order,
-/// so `differ` says whether the order of two tied rows could show in the answer, and if it
-/// could the query is given up.
+/// so `differ` says whether the order of two tied rows of one group, which `group` gives for
+/// a row, could show in the answer, and if it could the query is given up. Tied rows of
+/// different groups are put in either order alike.
 fn ordered(
     order: &[(usize, bool)],
     rows: Vec<Row>,
+    group: &dyn Fn(&Row) -> Vec<Option<Rc<Term>>>,
     differ: &dyn Fn(&Row, &Row) -> Result<bool, Fail>,
 ) -> Result<Vec<Row>, Fail> {
     let mut keyed = rows
@@ -527,9 +530,17 @@ fn ordered(
             .unwrap_or(Ordering::Equal)
     };
     keyed.sort_by(|(a, _), (b, _)| compare(a, b));
-    for pair in keyed.windows(2) {
-        if compare(&pair[0].0, &pair[1].0).is_eq() && differ(&pair[0].1, &pair[1].1)? {
-            return Err(Fail::GiveUp);
+    let mut tied: HashMap<Vec<Option<Rc<Term>>>, &Row> = HashMap::new();
+    for (at, (key, row)) in keyed.iter().enumerate() {
+        if at > 0 && !compare(&keyed[at - 1].0, key).is_eq() {
+            tied.clear();
+        }
+        match tied.entry(group(row)) {
+            Entry::Occupied(first) if differ(first.get(), row)? => return Err(Fail::GiveUp),
+            Entry::Occupied(_) => {}
+            Entry::Vacant(slot) => {
+                slot.insert(row);
+            }
         }
     }
     Ok(keyed.into_iter().map(|(_, row)| row).collect())
@@ -669,7 +680,10 @@ impl Group {
                 }
                 Ok(false)
             };
-            for inner in ordered(&self.order, rows, &differ)? {
+            let group = |row: &Row| -> Vec<Option<Rc<Term>>> {
+                self.keys.iter().map(|&slot| row[slot].clone()).collect()
+            };
+            for inner in ordered(&self.order, rows, &group, &differ)? {
                 add(&inner)?;
             }
         }

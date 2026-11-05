@@ -85,6 +85,10 @@ const GIVEN_UP: &[(&str, &str)] = &[
         "CONSTRUCT { :root :names ?c } WHERE { SELECT (GROUP_CONCAT(?n; separator=\"|\") AS ?c) WHERE { { SELECT ?g ?n WHERE { ?g :m ?n } ORDER BY ?g } } }",
     ),
     (
+        "a GROUP_CONCAT whose ORDER BY ties rows of two keys, one of which carries different values",
+        "CONSTRUCT { :root :names ?c } WHERE { SELECT ?k (GROUP_CONCAT(?n; separator=\"|\") AS ?c) WHERE { { SELECT ?k ?n WHERE { { ?g :m ?n BIND(1 AS ?k) } UNION { ?i :name ?n BIND(2 AS ?k) } BIND(\"t\" AS ?r) } ORDER BY ?r } } GROUP BY ?k }",
+    ),
+    (
         "a GROUP_CONCAT in the order of integers",
         "CONSTRUCT { :root :names ?c } WHERE { SELECT (GROUP_CONCAT(?n; separator=\"|\") AS ?c) WHERE { { SELECT ?n WHERE { ?m :name ?n ; :size ?s } ORDER BY ?s } } }",
     ),
@@ -210,6 +214,10 @@ const LOWERED: &[(&str, &str)] = &[
     (
         "a GROUP_CONCAT whose ORDER BY ties on rows that carry the same value",
         "CONSTRUCT { :root :names ?c } WHERE { SELECT (GROUP_CONCAT(?n; separator=\"|\") AS ?c) WHERE { { SELECT ?g ?n WHERE { ?g :m ?x . BIND(\"k\" AS ?n) } ORDER BY ?g } } }",
+    ),
+    (
+        "a GROUP_CONCAT for each key whose ORDER BY ties on rows of different keys that carry different values",
+        "CONSTRUCT { ?i :names ?c } WHERE { SELECT ?i (GROUP_CONCAT(?n; separator=\"|\") AS ?c) WHERE { { SELECT ?i ?n WHERE { ?i a :Item ; :name ?n . BIND(\"t\" AS ?r) } ORDER BY ?r } } GROUP BY ?i }",
     ),
     (
         "a GROUP_CONCAT for each key, in the order of two variables",
@@ -377,6 +385,18 @@ const ONCE: &[(&str, &str, &str, &str)] = &[
         "CONSTRUCT { ?i :under ?m } WHERE { ?i a :Item . OPTIONAL { SELECT DISTINCT (?node AS ?i) (true AS ?m) WHERE { :a (!rdf:type)* ?node } } }",
         "CONSTRUCT { ?i :under :no } WHERE { ?i a :Item }",
         "CONSTRUCT { ?i :under ?m } WHERE { SELECT DISTINCT (?node AS ?i) (true AS ?m) WHERE { :a (!rdf:type)* ?node } }",
+    ),
+    (
+        "a SELECT DISTINCT whose other key is a plain projected variable the rows do not bind",
+        "CONSTRUCT { ?i :named ?n } WHERE { ?i a :Item . OPTIONAL { SELECT DISTINCT (?x AS ?i) ?n WHERE { ?x :name ?n } } }",
+        "CONSTRUCT { ?i :named :no } WHERE { ?i a :Item }",
+        "CONSTRUCT { ?i :named ?n } WHERE { SELECT DISTINCT (?x AS ?i) ?n WHERE { ?x :name ?n } }",
+    ),
+    (
+        "an aggregate grouped by a plain variable the rows do not bind",
+        "CONSTRUCT { ?i :of ?c } WHERE { ?i a :Item . OPTIONAL { SELECT ?n (COUNT(?x) AS ?c) WHERE { ?x :name ?n } GROUP BY ?n } }",
+        "CONSTRUCT { ?i :of :no } WHERE { ?i a :Item }",
+        "CONSTRUCT { ?n :of ?c } WHERE { SELECT ?n (COUNT(?x) AS ?c) WHERE { ?x :name ?n } GROUP BY ?n }",
     ),
     (
         "an aggregate with no variable in common, in a join",
