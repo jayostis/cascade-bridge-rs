@@ -226,6 +226,30 @@ const LOWERED: &[(&str, &str)] = &[
         "CONSTRUCT { ?n :reaches ?m } WHERE { :p (!rdf:type)+ ?m . BIND(:p AS ?n) }",
     ),
     (
+        "a walk backwards over all but one edge, from the start",
+        "CONSTRUCT { ?n :reached ?m } WHERE { :p ^(!rdf:type)* ?m . BIND(:p AS ?n) }",
+    ),
+    (
+        "a walk backwards over all but one edge, not from the start",
+        "CONSTRUCT { ?n :reached ?m } WHERE { :r ^(!rdf:type)+ ?m . BIND(:r AS ?n) }",
+    ),
+    (
+        "a walk written forwards to a node that is known, which is taken backwards from it",
+        "CONSTRUCT { ?m :reaches :r } WHERE { ?m (!rdf:type)* :r }",
+    ),
+    (
+        "a walk written forwards to a node an earlier pattern bound",
+        "CONSTRUCT { ?m :above ?q } WHERE { ?q a :Node . ?m (!rdf:type)+ ?q }",
+    ),
+    (
+        "a choice of a walk and the same walk backwards, which takes the start once from each",
+        "CONSTRUCT { :root :count ?c } WHERE { SELECT (COUNT(*) AS ?c) WHERE { :p ((!rdf:type)*|^(!rdf:type)*) ?m } }",
+    ),
+    (
+        "a choice of a walk and the same walk backwards, to a node that is known",
+        "CONSTRUCT { ?m :related :q } WHERE { ?m ((!rdf:type)*|^(!rdf:type)*) :q }",
+    ),
+    (
         "a pattern with a constant object",
         "CONSTRUCT { ?i :seen :yes } WHERE { ?i a :Item ; :name \"alpha\" }",
     ),
