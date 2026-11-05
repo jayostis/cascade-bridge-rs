@@ -3,6 +3,7 @@ use super::tree::{Id, Tree};
 use super::{
     Aggregate, Edge, Expr, Fail, Group, Key, Kind, Pattern, Place, Plan, Reach, Row, Step,
 };
+use oxigraph::model::vocab::xsd;
 use oxigraph::model::{
     BlankNode, GraphName, Literal, NamedNode, NamedOrBlankNode, Quad, Term, Triple,
 };
@@ -239,28 +240,47 @@ fn reach(walk: &Reach, row: &mut Row, tree: &Tree, next: Sink<'_>) -> Result<(),
     Ok(())
 }
 
-fn reached(walk: &Reach, start: Term, tree: &Tree) -> Result<Vec<Rc<Term>>, Fail> {
-    let skipped: Vec<Id> = walk
-        .skipped
-        .iter()
-        .filter_map(|edge| tree.id(edge))
-        .collect();
+fn reached(reach: &Reach, start: Term, tree: &Tree) -> Result<Vec<Rc<Term>>, Fail> {
     let start_id = tree.id(&start);
-    let mut seen: HashSet<Id> = HashSet::new();
+    let start = Rc::new(start);
+    let mut found: HashSet<Id> = HashSet::new();
+    let mut start_found = false;
     let mut reached = Vec::new();
-    if walk.from_itself {
-        reached.push(Rc::new(start));
-        seen.extend(start_id);
-    }
-    let mut pending: Vec<Id> = start_id.into_iter().collect();
-    while let Some(node) = pending.pop() {
-        tree.scan(Some(node), None, None, &mut |_, edge, to| {
-            if !skipped.contains(&edge) && seen.insert(to) {
-                reached.push(Rc::clone(tree.term(to)));
-                pending.push(to);
+    for walk in &reach.walks {
+        let skipped: Vec<Id> = walk
+            .skipped
+            .iter()
+            .filter_map(|edge| tree.id(edge))
+            .collect();
+        let mut seen: HashSet<Id> = HashSet::new();
+        if walk.from_itself {
+            seen.extend(start_id);
+            let new = match start_id {
+                Some(id) => found.insert(id),
+                None => !std::mem::replace(&mut start_found, true),
+            };
+            if new {
+                reached.push(Rc::clone(&start));
             }
-            Ok::<(), Fail>(())
-        })?;
+        }
+        let mut pending: Vec<Id> = start_id.into_iter().collect();
+        while let Some(node) = pending.pop() {
+            let (subject, object) = if walk.backwards {
+                (None, Some(node))
+            } else {
+                (Some(node), None)
+            };
+            tree.scan(subject, None, object, &mut |from, edge, to| {
+                let next = if walk.backwards { from } else { to };
+                if !skipped.contains(&edge) && seen.insert(next) {
+                    if found.insert(next) {
+                        reached.push(Rc::clone(tree.term(next)));
+                    }
+                    pending.push(next);
+                }
+                Ok::<(), Fail>(())
+            })?;
+        }
     }
     Ok(reached)
 }
@@ -391,6 +411,8 @@ enum Accumulator {
     },
     /// Empty, or one value, or `Err` where an operand failed and the aggregate is unbound.
     Chosen(Picked),
+    /// The strings so far, none until the first.
+    Joined(Option<String>),
 }
 
 impl Accumulator {
@@ -400,6 +422,7 @@ impl Accumulator {
                 counted: 0,
                 seen: HashSet::new(),
             },
+            Kind::GroupConcat(..) => Self::Joined(None),
             Kind::Sum(_) => {
                 Self::Chosen(Some(Ok(ExpressionTerm::IntegerLiteral(Integer::default()))))
             }
@@ -421,6 +444,19 @@ impl Accumulator {
             (Self::Chosen(chosen), Kind::Max(expr)) => {
                 extreme(chosen, expr, Ordering::Greater, tree, row)
             }
+            (Self::Joined(joined), Kind::GroupConcat(expr, separator)) => match expr(tree, row) {
+                Ok(ExpressionTerm::StringLiteral(text)) => {
+                    if let Some(so_far) = joined.as_mut() {
+                        so_far.push_str(separator);
+                        so_far.push_str(&text);
+                    } else {
+                        *joined = Some(text);
+                    }
+                    Ok(())
+                }
+                Ok(_) | Err(Fail::Error) => Err(Fail::GiveUp),
+                Err(other) => Err(other),
+            },
             _ => unreachable!("an accumulator is made for its own kind"),
         }
     }
@@ -432,8 +468,70 @@ impl Accumulator {
             )))),
             Self::Chosen(Some(Ok(term))) => Some(Rc::new(Term::from(term))),
             Self::Chosen(_) => None,
+            Self::Joined(joined) => Some(Rc::new(Term::from(Literal::from(
+                joined.unwrap_or_default(),
+            )))),
         }
     }
+}
+
+/// What a row is ordered by in one variable: SPARQL's order of blank nodes, then IRIs,
+/// then strings, which is all the compiler sorts.
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+enum Sorted {
+    Blank(String),
+    Iri(String),
+    Text(String),
+}
+
+fn sorted(term: &Option<Rc<Term>>) -> Result<Option<Sorted>, Fail> {
+    match term.as_deref() {
+        None => Ok(None),
+        Some(Term::BlankNode(node)) => Ok(Some(Sorted::Blank(node.as_str().to_owned()))),
+        Some(Term::NamedNode(node)) => Ok(Some(Sorted::Iri(node.as_str().to_owned()))),
+        Some(Term::Literal(literal)) if literal.datatype() == xsd::STRING => {
+            Ok(Some(Sorted::Text(literal.value().to_owned())))
+        }
+        Some(_) => Err(Fail::GiveUp),
+    }
+}
+
+/// The rows in the order of the variables, each row after the rows equal to it that came
+/// before it.
+///
+/// Where two rows tie on every key, the general evaluator's sort may put them in either order,
+/// so `differ` says whether the order of two tied rows could show in the answer, and if it
+/// could the query is given up.
+fn ordered(
+    order: &[(usize, bool)],
+    rows: Vec<Row>,
+    differ: &dyn Fn(&Row, &Row) -> Result<bool, Fail>,
+) -> Result<Vec<Row>, Fail> {
+    let mut keyed = rows
+        .into_iter()
+        .map(|row| {
+            let key = order
+                .iter()
+                .map(|&(slot, _)| sorted(&row[slot]))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok((key, row))
+        })
+        .collect::<Result<Vec<_>, Fail>>()?;
+    let compare = |a: &Vec<Option<Sorted>>, b: &Vec<Option<Sorted>>| {
+        a.iter()
+            .zip(b)
+            .zip(order)
+            .map(|((a, b), &(_, descending))| if descending { b.cmp(a) } else { a.cmp(b) })
+            .find(|ordering| ordering.is_ne())
+            .unwrap_or(Ordering::Equal)
+    };
+    keyed.sort_by(|(a, _), (b, _)| compare(a, b));
+    for pair in keyed.windows(2) {
+        if compare(&pair[0].0, &pair[1].0).is_eq() && differ(&pair[0].1, &pair[1].1)? {
+            return Err(Fail::GiveUp);
+        }
+    }
+    Ok(keyed.into_iter().map(|(_, row)| row).collect())
 }
 
 fn counts(seen: &mut HashSet<Rc<Term>>, of: Option<usize>, distinct: bool, row: &Row) -> bool {
@@ -517,7 +615,7 @@ impl Group {
 
     fn collected(&self, row: &mut Row, tree: &Tree) -> Result<Groups, Fail> {
         let mut groups = Groups::new();
-        run(&self.inner, row, tree, &mut |inner| {
+        let mut add = |inner: &Row| -> Result<(), Fail> {
             let key = self.keys.iter().map(|&slot| inner[slot].clone()).collect();
             let accumulators = groups.entry(key).or_insert_with(|| self.fresh());
             for (accumulator, Aggregate { kind, .. }) in
@@ -526,7 +624,29 @@ impl Group {
                 accumulator.add(kind, tree, inner)?;
             }
             Ok(())
-        })?;
+        };
+        if self.order.is_empty() {
+            run(&self.inner, row, tree, &mut |inner| add(inner))?;
+        } else {
+            let mut rows = Vec::new();
+            run(&self.inner, row, tree, &mut |inner| {
+                rows.push(inner.clone());
+                Ok(())
+            })?;
+            let differ = |a: &Row, b: &Row| -> Result<bool, Fail> {
+                for Aggregate { kind, .. } in &self.aggregates {
+                    if let Kind::GroupConcat(expr, _) = kind {
+                        if expr(tree, a)? != expr(tree, b)? {
+                            return Ok(true);
+                        }
+                    }
+                }
+                Ok(false)
+            };
+            for inner in ordered(&self.order, rows, &differ)? {
+                add(&inner)?;
+            }
+        }
         Ok(groups)
     }
 
