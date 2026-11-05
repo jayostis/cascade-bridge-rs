@@ -3,6 +3,7 @@ use super::tree::{Id, Tree};
 use super::{
     Aggregate, Edge, Expr, Fail, Group, Key, Kind, Pattern, Place, Plan, Reach, Row, Step,
 };
+use oxigraph::model::vocab::xsd;
 use oxigraph::model::{
     BlankNode, GraphName, Literal, NamedNode, NamedOrBlankNode, Quad, Term, Triple,
 };
@@ -391,6 +392,8 @@ enum Accumulator {
     },
     /// Empty, or one value, or `Err` where an operand failed and the aggregate is unbound.
     Chosen(Picked),
+    /// The strings so far, none until the first.
+    Joined(Option<String>),
 }
 
 impl Accumulator {
@@ -400,6 +403,7 @@ impl Accumulator {
                 counted: 0,
                 seen: HashSet::new(),
             },
+            Kind::GroupConcat(..) => Self::Joined(None),
             Kind::Sum(_) => {
                 Self::Chosen(Some(Ok(ExpressionTerm::IntegerLiteral(Integer::default()))))
             }
@@ -421,6 +425,21 @@ impl Accumulator {
             (Self::Chosen(chosen), Kind::Max(expr)) => {
                 extreme(chosen, expr, Ordering::Greater, tree, row)
             }
+            (Self::Joined(joined), Kind::GroupConcat(expr, separator)) => {
+                match expr(tree, row) {
+                    Ok(ExpressionTerm::StringLiteral(text)) => {
+                        if let Some(so_far) = joined.as_mut() {
+                            so_far.push_str(separator);
+                            so_far.push_str(&text);
+                        } else {
+                            *joined = Some(text);
+                        }
+                        Ok(())
+                    }
+                    Ok(_) | Err(Fail::Error) => Err(Fail::GiveUp),
+                    Err(other) => Err(other),
+                }
+            }
             _ => unreachable!("an accumulator is made for its own kind"),
         }
     }
@@ -432,8 +451,56 @@ impl Accumulator {
             )))),
             Self::Chosen(Some(Ok(term))) => Some(Rc::new(Term::from(term))),
             Self::Chosen(_) => None,
+            Self::Joined(joined) => Some(Rc::new(Term::from(Literal::from(
+                joined.unwrap_or_default(),
+            )))),
         }
     }
+}
+
+/// What a row is ordered by in one variable: SPARQL's order of blank nodes, then IRIs,
+/// then strings, which is all the compiler sorts.
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+enum Sorted {
+    Blank(String),
+    Iri(String),
+    Text(String),
+}
+
+fn sorted(term: &Option<Rc<Term>>) -> Result<Option<Sorted>, Fail> {
+    match term.as_deref() {
+        None => Ok(None),
+        Some(Term::BlankNode(node)) => Ok(Some(Sorted::Blank(node.as_str().to_owned()))),
+        Some(Term::NamedNode(node)) => Ok(Some(Sorted::Iri(node.as_str().to_owned()))),
+        Some(Term::Literal(literal)) if literal.datatype() == xsd::STRING => {
+            Ok(Some(Sorted::Text(literal.value().to_owned())))
+        }
+        Some(_) => Err(Fail::GiveUp),
+    }
+}
+
+/// The rows in the order of the variables, each row after the rows equal to it that came
+/// before it.
+fn ordered(order: &[(usize, bool)], rows: Vec<Row>) -> Result<Vec<Row>, Fail> {
+    let mut keyed = rows
+        .into_iter()
+        .map(|row| {
+            let key = order
+                .iter()
+                .map(|&(slot, _)| sorted(&row[slot]))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok((key, row))
+        })
+        .collect::<Result<Vec<_>, Fail>>()?;
+    keyed.sort_by(|(a, _), (b, _)| {
+        a.iter()
+            .zip(b)
+            .zip(order)
+            .map(|((a, b), &(_, descending))| if descending { b.cmp(a) } else { a.cmp(b) })
+            .find(|ordering| ordering.is_ne())
+            .unwrap_or(Ordering::Equal)
+    });
+    Ok(keyed.into_iter().map(|(_, row)| row).collect())
 }
 
 fn counts(seen: &mut HashSet<Rc<Term>>, of: Option<usize>, distinct: bool, row: &Row) -> bool {
@@ -517,7 +584,7 @@ impl Group {
 
     fn collected(&self, row: &mut Row, tree: &Tree) -> Result<Groups, Fail> {
         let mut groups = Groups::new();
-        run(&self.inner, row, tree, &mut |inner| {
+        let mut add = |inner: &Row| -> Result<(), Fail> {
             let key = self.keys.iter().map(|&slot| inner[slot].clone()).collect();
             let accumulators = groups.entry(key).or_insert_with(|| self.fresh());
             for (accumulator, Aggregate { kind, .. }) in
@@ -526,7 +593,19 @@ impl Group {
                 accumulator.add(kind, tree, inner)?;
             }
             Ok(())
-        })?;
+        };
+        if self.order.is_empty() {
+            run(&self.inner, row, tree, &mut |inner| add(inner))?;
+        } else {
+            let mut rows = Vec::new();
+            run(&self.inner, row, tree, &mut |inner| {
+                rows.push(inner.clone());
+                Ok(())
+            })?;
+            for inner in ordered(&self.order, rows)? {
+                add(&inner)?;
+            }
+        }
         Ok(groups)
     }
 

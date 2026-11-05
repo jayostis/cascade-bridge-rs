@@ -40,6 +40,7 @@ fn lowered(query: &Query, mut names: Names) -> Result<(Compiled, Vec<String>), S
         hints: Hints::default(),
         memos: 0,
         nested: Vec::new(),
+        sorted_by_group: false,
     };
     let mut built = Built::default();
     lowering.pattern(&scoped, &mut built)?;
@@ -85,6 +86,8 @@ pub(super) struct Lowering {
     hints: Hints,
     memos: usize,
     pub(super) nested: Vec<Nested>,
+    /// The subquery about to be lowered is the one a GROUP_CONCAT reads in order.
+    sorted_by_group: bool,
 }
 
 impl Lowering {
@@ -217,6 +220,9 @@ impl Lowering {
     }
 
     fn subquery(&mut self, subquery: &node::Subquery, out: &mut Built) -> Result<(), String> {
+        if subquery.order.is_some() && !std::mem::take(&mut self.sorted_by_group) {
+            return Err("ORDER BY".to_owned());
+        }
         let mut built = Built::default();
         let into = if subquery.distinct.is_some() {
             &mut built
@@ -233,6 +239,7 @@ impl Lowering {
                 inner: built.plan(),
                 keys: subquery.keys.clone(),
                 aggregates: Vec::new(),
+                order: Vec::new(),
             });
             out.push(step, &distinct.certain_after);
         }
@@ -240,18 +247,39 @@ impl Lowering {
     }
 
     fn group(&mut self, group: &node::GroupBy, out: &mut Built) -> Result<(), String> {
+        let concatenates = group.aggregates.iter().any(|aggregate| {
+            matches!(
+                aggregate.expression,
+                AggregateExpression::FunctionCall {
+                    name: AggregateFunction::GroupConcat { .. },
+                    ..
+                }
+            )
+        });
+        let order = ordering(&group.inner).filter(|_| concatenates);
         let mut built = Built::default();
-        self.apart(|me| me.pattern(&group.inner, &mut built))?;
+        self.sorted_by_group = order.is_some();
+        let inner = self.apart(|me| me.pattern(&group.inner, &mut built));
+        self.sorted_by_group = false;
+        inner?;
         let aggregates = group
             .aggregates
             .iter()
             .map(|aggregate| self.aggregates(aggregate, &group.scope))
             .collect::<Result<Vec<_>, _>>()?;
         group.reads?;
+        let order = if concatenates {
+            order
+                .ok_or("GROUP_CONCAT with no ORDER BY directly beneath it")?
+                .to_vec()
+        } else {
+            Vec::new()
+        };
         let step = Step::Group(Group {
             inner: built.plan(),
             keys: group.keys.clone(),
             aggregates,
+            order,
         });
         out.push(step, &group.certain_after);
         Ok(())
@@ -315,7 +343,15 @@ impl Lowering {
             AggregateFunction::Min => Kind::Min(operand),
             AggregateFunction::Max => Kind::Max(operand),
             AggregateFunction::Sample => Kind::Sample(operand),
-            _ => return Err("an aggregate other than COUNT, SUM, MIN, MAX or SAMPLE".to_owned()),
+            AggregateFunction::GroupConcat { separator } => {
+                Kind::GroupConcat(operand, separator.clone().unwrap_or_else(|| " ".to_owned()))
+            }
+            _ => {
+                return Err(
+                    "an aggregate other than COUNT, SUM, MIN, MAX, SAMPLE or GROUP_CONCAT"
+                        .to_owned(),
+                )
+            }
         };
         Ok((kind, note))
     }
@@ -565,6 +601,20 @@ impl Pattern {
             (false, true, false) => 4,
             (false, false, false) => UNREACHABLE,
         }
+    }
+}
+
+/// The ORDER BY of the subquery that is all a group reads: the only place the order of
+/// rows reaches an aggregate as the general evaluator gives it.
+fn ordering<'a>(scoped: &'a Scoped<'_>) -> Option<&'a [(usize, bool)]> {
+    let empty = |scoped: &Scoped<'_>| {
+        matches!(scoped, Scoped::Triples(triples) if triples.patterns.is_empty())
+    };
+    match scoped {
+        Scoped::Subquery(subquery) if subquery.distinct.is_none() => subquery.order.as_deref(),
+        Scoped::Join(left, right) if empty(&**left) => ordering(right),
+        Scoped::Join(left, right) if empty(&**right) => ordering(left),
+        _ => None,
     }
 }
 

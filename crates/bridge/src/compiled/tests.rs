@@ -214,10 +214,6 @@ const LOWERED: &[(&str, &str)] = &[
         "CONSTRUCT { :root :names ?c } WHERE { SELECT (GROUP_CONCAT(?id; separator=\"|\") AS ?c) WHERE { { SELECT ?id WHERE { ?m a :Item OPTIONAL { ?m :name ?n } ?m :id ?id } ORDER BY DESC(?n) ?id } } }",
     ),
     (
-        "an ORDER BY in a subquery nothing reads the order of",
-        "CONSTRUCT { ?i :named ?n } WHERE { { SELECT ?i ?n WHERE { ?i :name ?n } ORDER BY DESC(?n) } }",
-    ),
-    (
         "a blank node in the template",
         "CONSTRUCT { [] :holds ?i ; :named ?n } WHERE { ?i a :Item ; :name ?n }",
     ),
@@ -398,9 +394,19 @@ const DECLINED: &[(&str, &str, &str)] = &[
         "GROUP_CONCAT with no ORDER BY directly beneath it",
     ),
     (
-        "a GROUP_CONCAT with an ORDER BY beneath it that another pattern follows",
+        "an ORDER BY beneath a GROUP_CONCAT that another pattern follows, whose order the general evaluator loses in the join",
         "CONSTRUCT { :root :p ?o } WHERE { SELECT (GROUP_CONCAT(?n) AS ?o) WHERE { { SELECT ?n WHERE { ?m :name ?n } ORDER BY ?n } ?x :id ?k } }",
-        "GROUP_CONCAT with no ORDER BY directly beneath it",
+        "ORDER BY",
+    ),
+    (
+        "an ORDER BY in a subquery no GROUP_CONCAT reads",
+        "CONSTRUCT { ?i :named ?n } WHERE { { SELECT ?i ?n WHERE { ?i :name ?n } ORDER BY DESC(?n) } }",
+        "ORDER BY",
+    ),
+    (
+        "an ORDER BY beneath a COUNT",
+        "CONSTRUCT { :root :count ?c } WHERE { SELECT (COUNT(?n) AS ?c) WHERE { { SELECT ?n WHERE { ?m :name ?n } ORDER BY ?n } } }",
+        "ORDER BY",
     ),
     (
         "a GROUP_CONCAT in the order of an expression",

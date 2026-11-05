@@ -1,7 +1,8 @@
 use super::{Bound, Certain, Frame, Hidden, Maybe, Names, Reads, Scope, Slots};
 use oxigraph::model::Variable;
 use spargebra::algebra::{
-    AggregateExpression, Expression, Function, GraphPattern, PropertyPathExpression,
+    AggregateExpression, Expression, Function, GraphPattern, OrderExpression,
+    PropertyPathExpression,
 };
 use spargebra::term::{GroundTerm, NamedNode, NamedNodePattern, TermPattern, TriplePattern};
 use std::collections::HashMap;
@@ -91,6 +92,8 @@ pub(crate) struct Subquery<'q> {
     pub(crate) inner: Scoped<'q>,
     pub(crate) keys: Vec<usize>,
     pub(crate) distinct: Option<Distinct>,
+    /// The variables it orders its rows by, each with whether it is descending.
+    pub(crate) order: Option<Vec<(usize, bool)>>,
 }
 
 pub(crate) struct Distinct {
@@ -383,6 +386,12 @@ impl Analysis<'_> {
         distinct: bool,
         frame: &mut Frame,
     ) -> Scoped<'q> {
+        let (inner, ordered) = match inner {
+            GraphPattern::OrderBy { inner, expression } if !distinct => {
+                (&**inner, Some(expression))
+            }
+            _ => (inner, None),
+        };
         let shared: HashMap<String, usize> = variables
             .iter()
             .map(|v| (v.as_str().to_owned(), self.names.slot(v)))
@@ -391,7 +400,13 @@ impl Analysis<'_> {
         self.names.enter(shared);
         let mut child = frame.child();
         let scoped = self.pattern(inner, &mut child);
+        let order = ordered.map(|expressions| self.order(expressions));
         let names = self.names.leave();
+        let order = match order {
+            Some(Err(reason)) => return Scoped::Declined(reason),
+            Some(Ok(order)) => Some(order),
+            None => None,
+        };
         let distinct = distinct.then(|| {
             let reads = child.reads(&keys.iter().copied().collect());
             for &slot in &keys {
@@ -410,7 +425,23 @@ impl Analysis<'_> {
             inner: scoped,
             keys,
             distinct,
+            order,
         }))
+    }
+
+    fn order(&mut self, expressions: &[OrderExpression]) -> Result<Vec<(usize, bool)>, Declined> {
+        expressions
+            .iter()
+            .map(|expression| match expression {
+                OrderExpression::Asc(Expression::Variable(variable)) => {
+                    Ok((self.names.slot(variable), false))
+                }
+                OrderExpression::Desc(Expression::Variable(variable)) => {
+                    Ok((self.names.slot(variable), true))
+                }
+                _ => Err("ORDER BY on an expression"),
+            })
+            .collect()
     }
 
     fn group<'q>(
