@@ -70,6 +70,26 @@ const GIVEN_UP: &[(&str, &str)] = &[
         "a SAMPLE of a group whose values differ",
         "CONSTRUCT { ?g :any ?s } WHERE { ?g a :Thing . { SELECT ?g (SAMPLE(?x) AS ?s) WHERE { { ?g :m ?x FILTER(?x != \"a\") } UNION { ?g :m ?x FILTER(?x = \"a\") } } GROUP BY ?g } }",
     ),
+    (
+        "a GROUP_CONCAT over integers",
+        "CONSTRUCT { :root :sizes ?c } WHERE { SELECT (GROUP_CONCAT(?s; separator=\"|\") AS ?c) WHERE { { SELECT ?s WHERE { ?m :size ?s } ORDER BY ?m } } }",
+    ),
+    (
+        "a GROUP_CONCAT of a variable some rows leave unbound",
+        "CONSTRUCT { :root :names ?c } WHERE { SELECT (GROUP_CONCAT(?n; separator=\"|\") AS ?c) WHERE { { SELECT ?m ?n WHERE { ?m a :Item OPTIONAL { ?m :name ?n } } ORDER BY ?m } } }",
+    ),
+    (
+        "a GROUP_CONCAT whose ORDER BY ties on rows that carry different values",
+        "CONSTRUCT { :root :names ?c } WHERE { SELECT (GROUP_CONCAT(?n; separator=\"|\") AS ?c) WHERE { { SELECT ?g ?n WHERE { ?g :m ?n } ORDER BY ?g } } }",
+    ),
+    (
+        "a GROUP_CONCAT in the order of integers",
+        "CONSTRUCT { :root :names ?c } WHERE { SELECT (GROUP_CONCAT(?n; separator=\"|\") AS ?c) WHERE { { SELECT ?n WHERE { ?m :name ?n ; :size ?s } ORDER BY ?s } } }",
+    ),
+    (
+        "a GROUP_CONCAT in the order of language-tagged strings",
+        "CONSTRUCT { :root :names ?c } WHERE { SELECT (GROUP_CONCAT(STR(?v); separator=\"|\") AS ?c) WHERE { { SELECT ?v WHERE { ?m :v ?v } ORDER BY ?v } } }",
+    ),
 ];
 
 const LOWERED: &[(&str, &str)] = &[
@@ -182,6 +202,30 @@ const LOWERED: &[(&str, &str)] = &[
         "CONSTRUCT { ?i :pair ?j } WHERE { { SELECT DISTINCT ?i ?j WHERE { ?i ?s ?x . ?j ?t ?x . ?i a :Note . ?j a :Note } } }",
     ),
     (
+        "a GROUP_CONCAT in the order of an ORDER BY beneath it, descending",
+        "CONSTRUCT { :root :names ?c } WHERE { SELECT (GROUP_CONCAT(?n; separator=\"|\") AS ?c) WHERE { { SELECT ?n WHERE { ?m a :Item ; :name ?n } ORDER BY DESC(?n) } } }",
+    ),
+    (
+        "a GROUP_CONCAT whose ORDER BY ties on rows that carry the same value",
+        "CONSTRUCT { :root :names ?c } WHERE { SELECT (GROUP_CONCAT(?n; separator=\"|\") AS ?c) WHERE { { SELECT ?g ?n WHERE { ?g :m ?x . BIND(\"k\" AS ?n) } ORDER BY ?g } } }",
+    ),
+    (
+        "a GROUP_CONCAT for each key, in the order of two variables",
+        "CONSTRUCT { ?g :letters ?c } WHERE { SELECT ?g (GROUP_CONCAT(?l; separator=\"\") AS ?c) WHERE { { SELECT ?g ?l WHERE { ?g :m ?l } ORDER BY ?g ?l } } GROUP BY ?g }",
+    ),
+    (
+        "a GROUP_CONCAT in the order of a variable the subquery does not project, with the default separator",
+        "CONSTRUCT { :root :names ?c } WHERE { SELECT (GROUP_CONCAT(?n) AS ?c) WHERE { { SELECT ?n WHERE { ?m :id ?id ; :name ?n } ORDER BY DESC(?id) } } }",
+    ),
+    (
+        "a GROUP_CONCAT over no rows",
+        "CONSTRUCT { :root :names ?c } WHERE { SELECT (GROUP_CONCAT(?n; separator=\"|\") AS ?c) WHERE { { SELECT ?n WHERE { ?m :absent ?n } ORDER BY ?n } } }",
+    ),
+    (
+        "a GROUP_CONCAT in the order of a variable some rows leave unbound",
+        "CONSTRUCT { :root :names ?c } WHERE { SELECT (GROUP_CONCAT(?id; separator=\"|\") AS ?c) WHERE { { SELECT ?id WHERE { ?m a :Item OPTIONAL { ?m :name ?n } ?m :id ?id } ORDER BY DESC(?n) ?id } } }",
+    ),
+    (
         "a blank node in the template",
         "CONSTRUCT { [] :holds ?i ; :named ?n } WHERE { ?i a :Item ; :name ?n }",
     ),
@@ -192,6 +236,30 @@ const LOWERED: &[(&str, &str)] = &[
     (
         "a walk over all but one edge, not from the start",
         "CONSTRUCT { ?n :reaches ?m } WHERE { :p (!rdf:type)+ ?m . BIND(:p AS ?n) }",
+    ),
+    (
+        "a walk backwards over all but one edge, from the start",
+        "CONSTRUCT { ?n :reached ?m } WHERE { :p ^(!rdf:type)* ?m . BIND(:p AS ?n) }",
+    ),
+    (
+        "a walk backwards over all but one edge, not from the start",
+        "CONSTRUCT { ?n :reached ?m } WHERE { :r ^(!rdf:type)+ ?m . BIND(:r AS ?n) }",
+    ),
+    (
+        "a walk written forwards to a node that is known, which is taken backwards from it",
+        "CONSTRUCT { ?m :reaches :r } WHERE { ?m (!rdf:type)* :r }",
+    ),
+    (
+        "a walk written forwards to a node an earlier pattern bound",
+        "CONSTRUCT { ?m :above ?q } WHERE { ?q a :Node . ?m (!rdf:type)+ ?q }",
+    ),
+    (
+        "a choice of a walk and the same walk backwards, which takes the start once from each",
+        "CONSTRUCT { :root :count ?c } WHERE { SELECT (COUNT(*) AS ?c) WHERE { :p ((!rdf:type)*|^(!rdf:type)*) ?m } }",
+    ),
+    (
+        "a choice of a walk and the same walk backwards, to a node that is known",
+        "CONSTRUCT { ?m :related :q } WHERE { ?m ((!rdf:type)*|^(!rdf:type)*) :q }",
     ),
     (
         "a pattern with a constant object",
@@ -353,8 +421,38 @@ const DECLINED: &[(&str, &str, &str)] = &[
     ),
     (
         "an aggregate the compiler has no accumulator for",
+        "CONSTRUCT { ?s :p ?o } WHERE { SELECT ?s (AVG(?z) AS ?o) WHERE { ?s :size ?z } GROUP BY ?s }",
+        "an aggregate other than COUNT, SUM, MIN, MAX, SAMPLE or GROUP_CONCAT",
+    ),
+    (
+        "a GROUP_CONCAT with no ORDER BY beneath it",
         "CONSTRUCT { ?s :p ?o } WHERE { SELECT ?s (GROUP_CONCAT(?i) AS ?o) WHERE { ?s :id ?i } GROUP BY ?s }",
-        "an aggregate other than COUNT, SUM, MIN, MAX or SAMPLE",
+        "GROUP_CONCAT with no ORDER BY directly beneath it",
+    ),
+    (
+        "an ORDER BY beneath a GROUP_CONCAT that another pattern follows, whose order the general evaluator loses in the join",
+        "CONSTRUCT { :root :p ?o } WHERE { SELECT (GROUP_CONCAT(?n) AS ?o) WHERE { { SELECT ?n WHERE { ?m :name ?n } ORDER BY ?n } ?x :id ?k } }",
+        "ORDER BY",
+    ),
+    (
+        "an ORDER BY in a subquery no GROUP_CONCAT reads",
+        "CONSTRUCT { ?i :named ?n } WHERE { { SELECT ?i ?n WHERE { ?i :name ?n } ORDER BY DESC(?n) } }",
+        "ORDER BY",
+    ),
+    (
+        "an ORDER BY beneath a COUNT",
+        "CONSTRUCT { :root :count ?c } WHERE { SELECT (COUNT(?n) AS ?c) WHERE { { SELECT ?n WHERE { ?m :name ?n } ORDER BY ?n } } }",
+        "ORDER BY",
+    ),
+    (
+        "a GROUP_CONCAT in the order of an expression",
+        "CONSTRUCT { :root :p ?o } WHERE { SELECT (GROUP_CONCAT(?n) AS ?o) WHERE { { SELECT ?n WHERE { ?m :name ?n } ORDER BY STRLEN(?n) } } }",
+        "ORDER BY on an expression",
+    ),
+    (
+        "an ORDER BY of a SELECT DISTINCT",
+        "CONSTRUCT { :root :p ?o } WHERE { SELECT (GROUP_CONCAT(?n) AS ?o) WHERE { { SELECT DISTINCT ?n WHERE { ?m :name ?n } ORDER BY ?n } } }",
+        "ORDER BY",
     ),
     (
         "COUNT(DISTINCT *)",

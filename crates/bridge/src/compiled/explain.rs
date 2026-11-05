@@ -144,6 +144,21 @@ fn step(step: &Step, labels: &[String], out: &mut Vec<String>) {
                 ));
                 exists(&aggregate.note, out);
             }
+            if !group.order.is_empty() {
+                out.push(format!(
+                    "  rows in the order of ({})",
+                    group
+                        .order
+                        .iter()
+                        .map(|&(at, descending)| format!(
+                            "{}{}",
+                            slot(at, labels),
+                            if descending { " descending" } else { "" }
+                        ))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ));
+            }
             indented(lines(&group.inner, labels), 2, out);
         }
         Step::Choice(edges) => {
@@ -156,20 +171,29 @@ fn step(step: &Step, labels: &[String], out: &mut Vec<String>) {
                 ));
             }
         }
-        Step::Reach(walk) => out.push(format!(
-            "reach {} to {} over {}, skipping [{}]",
-            place(&walk.from, labels),
-            place(&walk.to, labels),
-            if walk.from_itself {
-                "zero or more edges"
-            } else {
-                "one or more edges"
-            },
-            walk.skipped
+        Step::Reach(reach) => out.push(format!(
+            "reach {} to {} over {}",
+            place(&reach.from, labels),
+            place(&reach.to, labels),
+            reach
+                .walks
                 .iter()
-                .map(ToString::to_string)
+                .map(|walk| format!(
+                    "{}{}, skipping [{}]",
+                    if walk.from_itself {
+                        "zero or more edges"
+                    } else {
+                        "one or more edges"
+                    },
+                    if walk.backwards { ", backwards" } else { "" },
+                    walk.skipped
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                ))
                 .collect::<Vec<_>>()
-                .join(" ")
+                .join("; or ")
         )),
     }
 }
@@ -190,5 +214,6 @@ fn kind(aggregate: &Aggregate, labels: &[String]) -> String {
         Kind::Min(_) => format!("min({argument})"),
         Kind::Max(_) => format!("max({argument})"),
         Kind::Sample(_) => format!("sample({argument})"),
+        Kind::GroupConcat(_, separator) => format!("group_concat({argument}; {separator:?})"),
     }
 }

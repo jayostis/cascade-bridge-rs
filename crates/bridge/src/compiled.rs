@@ -195,17 +195,29 @@ struct Edge {
     backwards: bool,
 }
 
+/// The nodes any of some walks reaches from a node, each once.
 struct Reach {
     from: Place,
     to: Place,
+    walks: Vec<Walk>,
+}
+
+/// A walk over all edges but some, which starts at the node it reaches from where it takes
+/// zero or more.
+struct Walk {
     skipped: Vec<Term>,
     from_itself: bool,
+    /// It follows each edge from its object to its subject.
+    backwards: bool,
 }
 
 struct Group {
     inner: Plan,
     keys: Vec<usize>,
     aggregates: Vec<Aggregate>,
+    /// The variables its rows are put in the order of before any aggregate reads them,
+    /// each with whether it is descending.
+    order: Vec<(usize, bool)>,
 }
 
 struct Aggregate {
@@ -220,6 +232,7 @@ enum Kind {
     Min(Expr),
     Max(Expr),
     Sample(Expr),
+    GroupConcat(Expr, String),
 }
 
 /// Equal as graphs: each part no blank node reaches out of, compared on its own.
