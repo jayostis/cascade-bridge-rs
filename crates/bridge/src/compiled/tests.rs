@@ -79,6 +79,10 @@ const GIVEN_UP: &[(&str, &str)] = &[
         "CONSTRUCT { :root :names ?c } WHERE { SELECT (GROUP_CONCAT(?n; separator=\"|\") AS ?c) WHERE { { SELECT ?m ?n WHERE { ?m a :Item OPTIONAL { ?m :name ?n } } ORDER BY ?m } } }",
     ),
     (
+        "a GROUP_CONCAT whose ORDER BY ties on rows that carry different values",
+        "CONSTRUCT { :root :names ?c } WHERE { SELECT (GROUP_CONCAT(?n; separator=\"|\") AS ?c) WHERE { { SELECT ?g ?n WHERE { ?g :m ?n } ORDER BY ?g } } }",
+    ),
+    (
         "a GROUP_CONCAT in the order of integers",
         "CONSTRUCT { :root :names ?c } WHERE { SELECT (GROUP_CONCAT(?n; separator=\"|\") AS ?c) WHERE { { SELECT ?n WHERE { ?m :name ?n ; :size ?s } ORDER BY ?s } } }",
     ),
@@ -200,6 +204,10 @@ const LOWERED: &[(&str, &str)] = &[
     (
         "a GROUP_CONCAT in the order of an ORDER BY beneath it, descending",
         "CONSTRUCT { :root :names ?c } WHERE { SELECT (GROUP_CONCAT(?n; separator=\"|\") AS ?c) WHERE { { SELECT ?n WHERE { ?m a :Item ; :name ?n } ORDER BY DESC(?n) } } }",
+    ),
+    (
+        "a GROUP_CONCAT whose ORDER BY ties on rows that carry the same value",
+        "CONSTRUCT { :root :names ?c } WHERE { SELECT (GROUP_CONCAT(?n; separator=\"|\") AS ?c) WHERE { { SELECT ?g ?n WHERE { ?g :m ?x . BIND(\"k\" AS ?n) } ORDER BY ?g } } }",
     ),
     (
         "a GROUP_CONCAT for each key, in the order of two variables",

@@ -498,7 +498,15 @@ fn sorted(term: &Option<Rc<Term>>) -> Result<Option<Sorted>, Fail> {
 
 /// The rows in the order of the variables, each row after the rows equal to it that came
 /// before it.
-fn ordered(order: &[(usize, bool)], rows: Vec<Row>) -> Result<Vec<Row>, Fail> {
+///
+/// Where two rows tie on every key, the general evaluator's sort may put them in either order,
+/// so `differ` says whether the order of two tied rows could show in the answer, and if it
+/// could the query is given up.
+fn ordered(
+    order: &[(usize, bool)],
+    rows: Vec<Row>,
+    differ: &dyn Fn(&Row, &Row) -> Result<bool, Fail>,
+) -> Result<Vec<Row>, Fail> {
     let mut keyed = rows
         .into_iter()
         .map(|row| {
@@ -509,14 +517,20 @@ fn ordered(order: &[(usize, bool)], rows: Vec<Row>) -> Result<Vec<Row>, Fail> {
             Ok((key, row))
         })
         .collect::<Result<Vec<_>, Fail>>()?;
-    keyed.sort_by(|(a, _), (b, _)| {
+    let compare = |a: &Vec<Option<Sorted>>, b: &Vec<Option<Sorted>>| {
         a.iter()
             .zip(b)
             .zip(order)
             .map(|((a, b), &(_, descending))| if descending { b.cmp(a) } else { a.cmp(b) })
             .find(|ordering| ordering.is_ne())
             .unwrap_or(Ordering::Equal)
-    });
+    };
+    keyed.sort_by(|(a, _), (b, _)| compare(a, b));
+    for pair in keyed.windows(2) {
+        if compare(&pair[0].0, &pair[1].0).is_eq() && differ(&pair[0].1, &pair[1].1)? {
+            return Err(Fail::GiveUp);
+        }
+    }
     Ok(keyed.into_iter().map(|(_, row)| row).collect())
 }
 
@@ -619,7 +633,17 @@ impl Group {
                 rows.push(inner.clone());
                 Ok(())
             })?;
-            for inner in ordered(&self.order, rows)? {
+            let differ = |a: &Row, b: &Row| -> Result<bool, Fail> {
+                for Aggregate { kind, .. } in &self.aggregates {
+                    if let Kind::GroupConcat(expr, _) = kind {
+                        if expr(tree, a)? != expr(tree, b)? {
+                            return Ok(true);
+                        }
+                    }
+                }
+                Ok(false)
+            };
+            for inner in ordered(&self.order, rows, &differ)? {
                 add(&inner)?;
             }
         }
