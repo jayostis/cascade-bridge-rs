@@ -125,6 +125,9 @@ pub(crate) struct Path<'q> {
     pub(crate) object: &'q TermPattern,
     /// The edges it may take, each with whether it is taken backwards, where it takes one.
     pub(crate) edges: Option<Vec<(&'q NamedNode, bool)>>,
+    /// It is a walk whose object is known and whose subject is not, so it starts from the
+    /// object and goes the other way.
+    pub(crate) flipped: bool,
     /// It starts from a constant or from a node bound in every row, or takes one of
     /// some edges, which may start from either end or neither.
     pub(crate) starts: Result<(), Declined>,
@@ -501,16 +504,23 @@ impl Analysis<'_> {
         frame: &mut Frame,
     ) -> Scoped<'q> {
         let edges = edges(path, false);
-        let starts = match subject {
-            TermPattern::Variable(variable)
-                if edges.is_none() && !frame.bound.certain.contains(self.names.slot(variable)) =>
-            {
-                Err("a property path from a node not yet bound")
+        let mut known = |end: &TermPattern| match end {
+            TermPattern::Variable(variable) => {
+                frame.bound.certain.contains(self.names.slot(variable))
             }
-            _ => Ok(()),
+            _ => true,
+        };
+        let (subject_known, object_known) = (known(subject), known(object));
+        let flipped = edges.is_none() && !subject_known && object_known;
+        let starts = if edges.is_none() && !subject_known && !object_known {
+            Err("a property path from a node not yet bound")
+        } else {
+            Ok(())
         };
         let ends = if edges.is_some() {
             vec![subject, object]
+        } else if flipped {
+            vec![subject]
         } else {
             vec![object]
         };
@@ -525,6 +535,7 @@ impl Analysis<'_> {
             path,
             object,
             edges,
+            flipped,
             starts,
             certain_after: frame.bound.certain.clone(),
         })

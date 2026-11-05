@@ -240,28 +240,47 @@ fn reach(walk: &Reach, row: &mut Row, tree: &Tree, next: Sink<'_>) -> Result<(),
     Ok(())
 }
 
-fn reached(walk: &Reach, start: Term, tree: &Tree) -> Result<Vec<Rc<Term>>, Fail> {
-    let skipped: Vec<Id> = walk
-        .skipped
-        .iter()
-        .filter_map(|edge| tree.id(edge))
-        .collect();
+fn reached(reach: &Reach, start: Term, tree: &Tree) -> Result<Vec<Rc<Term>>, Fail> {
     let start_id = tree.id(&start);
-    let mut seen: HashSet<Id> = HashSet::new();
+    let start = Rc::new(start);
+    let mut found: HashSet<Id> = HashSet::new();
+    let mut start_found = false;
     let mut reached = Vec::new();
-    if walk.from_itself {
-        reached.push(Rc::new(start));
-        seen.extend(start_id);
-    }
-    let mut pending: Vec<Id> = start_id.into_iter().collect();
-    while let Some(node) = pending.pop() {
-        tree.scan(Some(node), None, None, &mut |_, edge, to| {
-            if !skipped.contains(&edge) && seen.insert(to) {
-                reached.push(Rc::clone(tree.term(to)));
-                pending.push(to);
+    for walk in &reach.walks {
+        let skipped: Vec<Id> = walk
+            .skipped
+            .iter()
+            .filter_map(|edge| tree.id(edge))
+            .collect();
+        let mut seen: HashSet<Id> = HashSet::new();
+        if walk.from_itself {
+            seen.extend(start_id);
+            let new = match start_id {
+                Some(id) => found.insert(id),
+                None => !std::mem::replace(&mut start_found, true),
+            };
+            if new {
+                reached.push(Rc::clone(&start));
             }
-            Ok::<(), Fail>(())
-        })?;
+        }
+        let mut pending: Vec<Id> = start_id.into_iter().collect();
+        while let Some(node) = pending.pop() {
+            let (subject, object) = if walk.backwards {
+                (None, Some(node))
+            } else {
+                (Some(node), None)
+            };
+            tree.scan(subject, None, object, &mut |from, edge, to| {
+                let next = if walk.backwards { from } else { to };
+                if !skipped.contains(&edge) && seen.insert(next) {
+                    if found.insert(next) {
+                        reached.push(Rc::clone(tree.term(next)));
+                    }
+                    pending.push(next);
+                }
+                Ok::<(), Fail>(())
+            })?;
+        }
     }
     Ok(reached)
 }

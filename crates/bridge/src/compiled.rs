@@ -195,11 +195,20 @@ struct Edge {
     backwards: bool,
 }
 
+/// The nodes any of some walks reaches from a node, each once.
 struct Reach {
     from: Place,
     to: Place,
+    walks: Vec<Walk>,
+}
+
+/// A walk over all edges but some, which starts at the node it reaches from where it takes
+/// zero or more.
+struct Walk {
     skipped: Vec<Term>,
     from_itself: bool,
+    /// It follows each edge from its object to its subject.
+    backwards: bool,
 }
 
 struct Group {

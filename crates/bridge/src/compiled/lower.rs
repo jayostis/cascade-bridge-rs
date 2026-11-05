@@ -3,7 +3,9 @@ use super::keys::{known_values, settled, Hints};
 use super::run::Compiled;
 use super::scope::analysis::{self as node, makes_blank_nodes};
 use super::scope::{analyze, Bound, Certain, Frame, Hidden, Names, Reads, Scope, Scoped};
-use super::{Aggregate, Edge, Expr, Group, Key, Kind, Note, Pattern, Place, Plan, Reach, Step};
+use super::{
+    Aggregate, Edge, Expr, Group, Key, Kind, Note, Pattern, Place, Plan, Reach, Step, Walk,
+};
 use oxigraph::model::vocab::xsd;
 use oxigraph::model::{BlankNode, Literal, NamedNode, NamedNodeRef, Term};
 use oxiri::Iri;
@@ -360,16 +362,18 @@ impl Lowering {
         if let Some(edges) = &path.edges {
             return self.choice(path, edges, out);
         }
-        let (skipped, from_itself) = walked(path.path)?;
-        let (from, to) = (self.place(path.subject)?, self.place(path.object)?);
+        let mut walks = walked(path.path, false)?;
+        let (subject, object) = (self.place(path.subject)?, self.place(path.object)?);
         path.starts?;
-        let step = Step::Reach(Reach {
-            from,
-            to,
-            skipped,
-            from_itself,
-        });
-        out.push(step, &path.certain_after);
+        let (from, to) = if path.flipped {
+            (object, subject)
+        } else {
+            (subject, object)
+        };
+        for walk in &mut walks {
+            walk.backwards ^= path.flipped;
+        }
+        out.push(Step::Reach(Reach { from, to, walks }), &path.certain_after);
         Ok(())
     }
 
@@ -618,19 +622,28 @@ fn ordering<'a>(scoped: &'a Scoped<'_>) -> Option<&'a [(usize, bool)]> {
     }
 }
 
-fn walked(path: &PropertyPathExpression) -> Result<(Vec<Term>, bool), String> {
-    let (PropertyPathExpression::ZeroOrMore(edges) | PropertyPathExpression::OneOrMore(edges)) =
-        path
-    else {
-        return Err("a property path other than a choice of edges or a walk".to_owned());
-    };
-    let PropertyPathExpression::NegatedPropertySet(skipped) = &**edges else {
-        return Err("a property path that is not a walk over all but some edges".to_owned());
-    };
-    Ok((
-        skipped.iter().map(|n| Term::from(n.clone())).collect(),
-        matches!(path, PropertyPathExpression::ZeroOrMore(_)),
-    ))
+/// The walks a path is a choice of, each taken backwards where an odd number of
+/// reversals stand around it.
+fn walked(path: &PropertyPathExpression, backwards: bool) -> Result<Vec<Walk>, String> {
+    match path {
+        PropertyPathExpression::Reverse(inner) => walked(inner, !backwards),
+        PropertyPathExpression::Alternative(left, right) => {
+            let mut taken = walked(left, backwards)?;
+            taken.extend(walked(right, backwards)?);
+            Ok(taken)
+        }
+        PropertyPathExpression::ZeroOrMore(edges) | PropertyPathExpression::OneOrMore(edges) => {
+            let PropertyPathExpression::NegatedPropertySet(skipped) = &**edges else {
+                return Err("a property path that is not a walk over all but some edges".to_owned());
+            };
+            Ok(vec![Walk {
+                skipped: skipped.iter().map(|n| Term::from(n.clone())).collect(),
+                from_itself: matches!(path, PropertyPathExpression::ZeroOrMore(_)),
+                backwards,
+            }])
+        }
+        _ => Err("a property path other than a choice of edges or a walk".to_owned()),
+    }
 }
 
 fn value(cell: &Option<GroundTerm>) -> Result<Option<Term>, String> {

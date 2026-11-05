@@ -171,20 +171,29 @@ fn step(step: &Step, labels: &[String], out: &mut Vec<String>) {
                 ));
             }
         }
-        Step::Reach(walk) => out.push(format!(
-            "reach {} to {} over {}, skipping [{}]",
-            place(&walk.from, labels),
-            place(&walk.to, labels),
-            if walk.from_itself {
-                "zero or more edges"
-            } else {
-                "one or more edges"
-            },
-            walk.skipped
+        Step::Reach(reach) => out.push(format!(
+            "reach {} to {} over {}",
+            place(&reach.from, labels),
+            place(&reach.to, labels),
+            reach
+                .walks
                 .iter()
-                .map(ToString::to_string)
+                .map(|walk| format!(
+                    "{}{}, skipping [{}]",
+                    if walk.from_itself {
+                        "zero or more edges"
+                    } else {
+                        "one or more edges"
+                    },
+                    if walk.backwards { ", backwards" } else { "" },
+                    walk.skipped
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                ))
                 .collect::<Vec<_>>()
-                .join(" ")
+                .join("; or ")
         )),
     }
 }
