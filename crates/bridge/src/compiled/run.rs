@@ -1,4 +1,5 @@
 use super::expr::{holds, order};
+use super::once::Tuple;
 use super::tree::{Id, Tree};
 use super::{
     Aggregate, Edge, Expr, Fail, Group, Key, Kind, Pattern, Place, Plan, Reach, Row, Step,
@@ -596,14 +597,39 @@ fn extreme(
 
 impl Group {
     fn run(&self, row: &mut Row, tree: &Tree, next: Sink<'_>) -> Result<(), Fail> {
+        let Some(memo) = self.once else {
+            for tuple in self.answered(row, tree)? {
+                self.emit(&tuple, row, next)?;
+            }
+            return Ok(());
+        };
+        let answer =
+            tree.remembered_group(memo, || self.answered(&mut vec![None; row.len()], tree))?;
+        let bound: Vec<_> = self
+            .keys
+            .iter()
+            .enumerate()
+            .filter_map(|(at, &slot)| Some((at, Rc::clone(row[slot].as_ref()?))))
+            .collect();
+        for at in answer.agreeing(&bound) {
+            self.emit(answer.tuple(at), row, next)?;
+        }
+        Ok(())
+    }
+
+    fn answered(&self, row: &mut Row, tree: &Tree) -> Result<Vec<Tuple>, Fail> {
         let mut groups = self.collected(row, tree)?;
         if groups.is_empty() && self.keys.is_empty() {
             groups.insert(Vec::new(), self.fresh());
         }
-        for (key, accumulators) in groups {
-            self.emit(key, accumulators, row, next)?;
-        }
-        Ok(())
+        Ok(groups
+            .into_iter()
+            .map(|(key, accumulators)| {
+                key.into_iter()
+                    .chain(accumulators.into_iter().map(Accumulator::finish))
+                    .collect()
+            })
+            .collect())
     }
 
     fn fresh(&self) -> Vec<Accumulator> {
@@ -650,22 +676,26 @@ impl Group {
         Ok(groups)
     }
 
-    fn emit(
-        &self,
-        key: Vec<Option<Rc<Term>>>,
-        accumulators: Vec<Accumulator>,
-        row: &mut Row,
-        next: Sink<'_>,
-    ) -> Result<(), Fail> {
+    /// The row joined to a group of the answer, or nothing where a key the row binds
+    /// is bound to another term there.
+    fn emit(&self, tuple: &Tuple, row: &mut Row, next: Sink<'_>) -> Result<(), Fail> {
+        let (key, aggregated) = tuple.split_at(self.keys.len());
         let mut set = Vec::new();
         for (&slot, value) in self.keys.iter().zip(key) {
-            if row[slot].is_none() && value.is_some() {
-                row[slot] = value;
-                set.push(slot);
+            match (&row[slot], value) {
+                (Some(bound), Some(value)) if bound != value => {
+                    unbind(row, &set);
+                    return Ok(());
+                }
+                (None, Some(value)) => {
+                    row[slot] = Some(Rc::clone(value));
+                    set.push(slot);
+                }
+                _ => {}
             }
         }
-        for (aggregate, accumulator) in self.aggregates.iter().zip(accumulators) {
-            row[aggregate.slot] = accumulator.finish();
+        for (aggregate, value) in self.aggregates.iter().zip(aggregated) {
+            row[aggregate.slot] = value.clone();
             set.push(aggregate.slot);
         }
         let done = next(row);

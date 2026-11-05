@@ -237,11 +237,14 @@ impl Lowering {
         lowered?;
         if let Some(distinct) = &subquery.distinct {
             distinct.reads?;
+            let inner = built.plan();
+            let once = self.once(&inner, &subquery.keys);
             let step = Step::Group(Group {
-                inner: built.plan(),
+                inner,
                 keys: subquery.keys.clone(),
                 aggregates: Vec::new(),
                 order: Vec::new(),
+                once,
             });
             out.push(step, &distinct.certain_after);
         }
@@ -277,14 +280,23 @@ impl Lowering {
         } else {
             Vec::new()
         };
+        let inner = built.plan();
+        let once = self.once(&inner, &group.keys);
         let step = Step::Group(Group {
-            inner: built.plan(),
+            inner,
             keys: group.keys.clone(),
             aggregates,
             order,
+            once,
         });
         out.push(step, &group.certain_after);
         Ok(())
+    }
+
+    /// A name to remember a group's answer under, where no lookup of its plan is seeded
+    /// by the row: its answer is then the tree's alone, and each row is joined to it.
+    fn once(&mut self, inner: &Plan, keys: &[usize]) -> Option<usize> {
+        (!seeded(inner, keys, &[])).then(|| self.next_memo())
     }
 
     fn aggregates(
@@ -564,6 +576,47 @@ impl Lowering {
         }
         Ok(())
     }
+}
+
+/// Whether a step of a plan looks up, from the row it runs on, a key that no step before
+/// it has bound to an expression.
+fn seeded(plan: &Plan, keys: &[usize], agreed: &[usize]) -> bool {
+    let mut agreed = agreed.to_vec();
+    let reads = |place: &Place, agreed: &[usize]| {
+        let open = |slot: &usize| keys.contains(slot) && !agreed.contains(slot);
+        match place {
+            Place::Var(slot) => open(slot),
+            Place::Key(slot, key) => open(slot) || key.reads.iter().any(open),
+            Place::Const(_) | Place::Blank(_) => false,
+        }
+    };
+    let pattern = |pattern: &Pattern, agreed: &[usize]| {
+        [&pattern.subject, &pattern.predicate, &pattern.object]
+            .into_iter()
+            .any(|place| reads(place, agreed))
+    };
+    for step in plan {
+        let seeds = match step {
+            Step::Triple(each) => pattern(each, &agreed),
+            Step::Choice(edges) => edges.iter().any(|edge| pattern(&edge.pattern, &agreed)),
+            Step::Reach(walk) => reads(&walk.from, &agreed) || reads(&walk.to, &agreed),
+            Step::Values(slots, _) => slots
+                .iter()
+                .any(|slot| keys.contains(slot) && !agreed.contains(slot)),
+            Step::Union(branches) => branches.iter().any(|branch| seeded(branch, keys, &agreed)),
+            Step::Optional(branch, ..) => seeded(branch, keys, &agreed),
+            Step::Group(group) => group.once.is_none() && seeded(&group.inner, keys, &agreed),
+            Step::Agree(slot, ..) | Step::Bind(slot, ..) => {
+                agreed.push(*slot);
+                false
+            }
+            Step::Filter(..) => false,
+        };
+        if seeds {
+            return true;
+        }
+    }
+    false
 }
 
 fn bind_step(extend: &node::Binding, operand: Expr, note: Note) -> Step {

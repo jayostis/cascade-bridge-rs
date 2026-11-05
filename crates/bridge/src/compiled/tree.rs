@@ -1,3 +1,4 @@
+use super::once::{Answer, Tuple};
 use super::Fail;
 use crate::budget::Watch;
 use crate::error::Result;
@@ -143,6 +144,7 @@ pub(crate) struct Tree {
     shared: Option<Rc<Layer>>,
     own: Layer,
     answers: RefCell<FxHashMap<usize, bool>>,
+    groups: RefCell<FxHashMap<usize, Rc<Answer>>>,
     watch: Watch,
     #[cfg(test)]
     scans: Cell<usize>,
@@ -164,6 +166,7 @@ impl Tree {
             shared,
             own,
             answers: RefCell::default(),
+            groups: RefCell::default(),
             watch,
             #[cfg(test)]
             scans: Cell::default(),
@@ -201,6 +204,21 @@ impl Tree {
 
     pub(super) fn forget_answers(&self) {
         self.answers.take();
+        self.groups.take();
+    }
+
+    /// A group's answer, which depends on the tree alone, computed the first time it is asked.
+    pub(super) fn remembered_group(
+        &self,
+        group: usize,
+        compute: impl FnOnce() -> std::result::Result<Vec<Tuple>, Fail>,
+    ) -> std::result::Result<Rc<Answer>, Fail> {
+        if let Some(answer) = self.groups.borrow().get(&group) {
+            return Ok(Rc::clone(answer));
+        }
+        let answer = Rc::new(Answer::of(compute()?));
+        self.groups.borrow_mut().insert(group, Rc::clone(&answer));
+        Ok(answer)
     }
 
     /// An answer that depends on the tree alone, computed the first time it is asked.
