@@ -1,4 +1,5 @@
 use super::builtin::BUILTINS;
+use super::once::Answer;
 use super::{agree, compile, compile_explained, Dataset, Executor, Fail, Shared, Tree};
 use crate::budget::{Budgets, Watch};
 use crate::error::Result;
@@ -6,11 +7,12 @@ use crate::fixtures::{conversion_under, profiled_under, tiny, tiny_json, Variant
 use crate::query::{Form, Profile, Query, QueryProfile};
 use crate::rdf::canonical_parts;
 use crate::resolver::Resolver;
-use oxigraph::model::{GraphName, Quad};
+use oxigraph::model::{GraphName, NamedNode, Quad, Term};
 use oxigraph::sparql::{QueryResults, SparqlEvaluator};
 use oxigraph::store::Store;
 use oxrdfio::{RdfFormat, RdfParser};
 use std::collections::HashSet;
+use std::rc::Rc;
 
 const PREFIXES: &str =
     "PREFIX : <urn:t#> PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> \
@@ -81,6 +83,10 @@ const GIVEN_UP: &[(&str, &str)] = &[
     (
         "a GROUP_CONCAT whose ORDER BY ties on rows that carry different values",
         "CONSTRUCT { :root :names ?c } WHERE { SELECT (GROUP_CONCAT(?n; separator=\"|\") AS ?c) WHERE { { SELECT ?g ?n WHERE { ?g :m ?n } ORDER BY ?g } } }",
+    ),
+    (
+        "a GROUP_CONCAT whose ORDER BY ties rows of two keys, one of which carries different values",
+        "CONSTRUCT { :root :names ?c } WHERE { SELECT ?k (GROUP_CONCAT(?n; separator=\"|\") AS ?c) WHERE { { SELECT ?k ?n WHERE { { ?g :m ?n BIND(1 AS ?k) } UNION { ?i :name ?n BIND(2 AS ?k) } BIND(\"t\" AS ?r) } ORDER BY ?r } } GROUP BY ?k }",
     ),
     (
         "a GROUP_CONCAT in the order of integers",
@@ -210,6 +216,10 @@ const LOWERED: &[(&str, &str)] = &[
         "CONSTRUCT { :root :names ?c } WHERE { SELECT (GROUP_CONCAT(?n; separator=\"|\") AS ?c) WHERE { { SELECT ?g ?n WHERE { ?g :m ?x . BIND(\"k\" AS ?n) } ORDER BY ?g } } }",
     ),
     (
+        "a GROUP_CONCAT for each key whose ORDER BY ties on rows of different keys that carry different values",
+        "CONSTRUCT { ?i :names ?c } WHERE { SELECT ?i (GROUP_CONCAT(?n; separator=\"|\") AS ?c) WHERE { { SELECT ?i ?n WHERE { ?i a :Item ; :name ?n . BIND(\"t\" AS ?r) } ORDER BY ?r } } GROUP BY ?i }",
+    ),
+    (
         "a GROUP_CONCAT for each key, in the order of two variables",
         "CONSTRUCT { ?g :letters ?c } WHERE { SELECT ?g (GROUP_CONCAT(?l; separator=\"\") AS ?c) WHERE { { SELECT ?g ?l WHERE { ?g :m ?l } ORDER BY ?g ?l } } GROUP BY ?g }",
     ),
@@ -320,6 +330,79 @@ const LOWERED: &[(&str, &str)] = &[
     (
         "BNODE() in a BIND, a node for each row where a condition holds",
         "CONSTRUCT { ?i :has ?b . ?b :named ?n } WHERE { ?i a :Item . OPTIONAL { ?i :name ?n } BIND(IF(BOUND(?n), BNODE(), 1/0) AS ?b) }",
+    ),
+    (
+        "an OPTIONAL of a SELECT DISTINCT that names its key by a BIND, some rows unmatched",
+        "CONSTRUCT { ?i :named ?m } WHERE { ?i a :Item . OPTIONAL { SELECT DISTINCT (?x AS ?i) (true AS ?m) WHERE { ?x :name ?n } } }",
+    ),
+    (
+        "an OPTIONAL of an aggregate that names its key by a BIND, some rows unmatched",
+        "CONSTRUCT { ?i :children ?c } WHERE { ?i a :Item . OPTIONAL { SELECT ?i (COUNT(?y) AS ?c) WHERE { ?x rdf:_1 ?y BIND(?x AS ?i) } GROUP BY ?i } }",
+    ),
+    (
+        "an OPTIONAL of a walk from a constant that names its key by a BIND",
+        "CONSTRUCT { ?i :under ?m } WHERE { ?i a :Item . OPTIONAL { SELECT DISTINCT (?node AS ?i) (true AS ?m) WHERE { :a (!rdf:type)* ?node } } }",
+    ),
+    (
+        "a SELECT DISTINCT that names its key by a BIND, joined to the rows it matches",
+        "CONSTRUCT { ?i :named :yes } WHERE { ?i a :Item . { SELECT DISTINCT (?x AS ?i) WHERE { ?x :name ?n } } }",
+    ),
+    (
+        "an aggregate that shares no variable with the rows it joins",
+        "CONSTRUCT { ?i :of ?c } WHERE { ?i a :Item . { SELECT (COUNT(*) AS ?c) WHERE { ?x :name ?n } } }",
+    ),
+    (
+        "an aggregate that shares no variable with the rows it joins, over nothing",
+        "CONSTRUCT { ?i :of ?c } WHERE { ?i a :Item . { SELECT (COUNT(*) AS ?c) WHERE { ?x :absent ?n } } }",
+    ),
+    (
+        "a SELECT DISTINCT that names its key by a BIND, in an OPTIONAL after rows that do not bind the key",
+        "CONSTRUCT { :root :seen ?i } WHERE { :root a :Root . OPTIONAL { SELECT DISTINCT (?x AS ?i) WHERE { ?x :name ?n } } }",
+    ),
+    (
+        "a SELECT DISTINCT that names its key by a BIND, in an aggregate that scans the key",
+        "CONSTRUCT { ?i :of ?c } WHERE { SELECT ?i (COUNT(?m) AS ?c) WHERE { ?i a :Item OPTIONAL { SELECT DISTINCT (?w AS ?i) (true AS ?m) WHERE { ?w :name ?n } } } GROUP BY ?i }",
+    ),
+];
+
+/// A subquery that reads nothing from the rows it joins: the construct, the rows
+/// it joins to, and the subquery alone.
+const ONCE: &[(&str, &str, &str, &str)] = &[
+    (
+        "a SELECT DISTINCT in an OPTIONAL",
+        "CONSTRUCT { ?i :named ?m } WHERE { ?i a :Item . OPTIONAL { SELECT DISTINCT (?x AS ?i) (true AS ?m) WHERE { ?x :name ?n } } }",
+        "CONSTRUCT { ?i :named :no } WHERE { ?i a :Item }",
+        "CONSTRUCT { ?i :named ?m } WHERE { SELECT DISTINCT (?x AS ?i) (true AS ?m) WHERE { ?x :name ?n } }",
+    ),
+    (
+        "an aggregate in an OPTIONAL",
+        "CONSTRUCT { ?i :children ?c } WHERE { ?i a :Item . OPTIONAL { SELECT ?i (COUNT(?y) AS ?c) WHERE { ?x rdf:_1 ?y BIND(?x AS ?i) } GROUP BY ?i } }",
+        "CONSTRUCT { ?i :children :no } WHERE { ?i a :Item }",
+        "CONSTRUCT { ?i :children ?c } WHERE { SELECT ?i (COUNT(?y) AS ?c) WHERE { ?x rdf:_1 ?y BIND(?x AS ?i) } GROUP BY ?i }",
+    ),
+    (
+        "a walk in a SELECT DISTINCT in an OPTIONAL",
+        "CONSTRUCT { ?i :under ?m } WHERE { ?i a :Item . OPTIONAL { SELECT DISTINCT (?node AS ?i) (true AS ?m) WHERE { :a (!rdf:type)* ?node } } }",
+        "CONSTRUCT { ?i :under :no } WHERE { ?i a :Item }",
+        "CONSTRUCT { ?i :under ?m } WHERE { SELECT DISTINCT (?node AS ?i) (true AS ?m) WHERE { :a (!rdf:type)* ?node } }",
+    ),
+    (
+        "a SELECT DISTINCT whose other key is a plain projected variable the rows do not bind",
+        "CONSTRUCT { ?i :named ?n } WHERE { ?i a :Item . OPTIONAL { SELECT DISTINCT (?x AS ?i) ?n WHERE { ?x :name ?n } } }",
+        "CONSTRUCT { ?i :named :no } WHERE { ?i a :Item }",
+        "CONSTRUCT { ?i :named ?n } WHERE { SELECT DISTINCT (?x AS ?i) ?n WHERE { ?x :name ?n } }",
+    ),
+    (
+        "an aggregate grouped by a plain variable the rows do not bind",
+        "CONSTRUCT { ?i :of ?c } WHERE { ?i a :Item . OPTIONAL { SELECT ?n (COUNT(?x) AS ?c) WHERE { ?x :name ?n } GROUP BY ?n } }",
+        "CONSTRUCT { ?i :of :no } WHERE { ?i a :Item }",
+        "CONSTRUCT { ?n :of ?c } WHERE { SELECT ?n (COUNT(?x) AS ?c) WHERE { ?x :name ?n } GROUP BY ?n }",
+    ),
+    (
+        "an aggregate with no variable in common, in a join",
+        "CONSTRUCT { ?i :of ?c } WHERE { ?i a :Item . { SELECT (COUNT(*) AS ?c) WHERE { ?x :name ?n } } }",
+        "CONSTRUCT { ?i :of :no } WHERE { ?i a :Item }",
+        "CONSTRUCT { :root :of ?c } WHERE { SELECT (COUNT(*) AS ?c) WHERE { ?x :name ?n } }",
     ),
 ];
 
@@ -926,6 +1009,65 @@ fn prints_the_same_plan_each_time_a_query_is_parsed_and_tells_shadowed_variables
             "  ?i <urn:t#seen> ?c\n",
         )
     );
+}
+
+#[test]
+fn offers_every_tuple_of_an_answer_where_one_leaves_a_key_the_row_binds_unbound() {
+    let term = |name: &str| {
+        Rc::new(Term::from(NamedNode::new_unchecked(format!(
+            "urn:t#{name}"
+        ))))
+    };
+    let (a, b) = (term("a"), term("b"));
+    let bound = [(0, Rc::clone(&a))];
+    let complete = Answer::of(vec![
+        vec![Some(Rc::clone(&a))],
+        vec![Some(Rc::clone(&b))],
+        vec![Some(Rc::clone(&a))],
+    ]);
+    assert_eq!(complete.agreeing(&bound), [0, 2]);
+    assert_eq!(complete.agreeing(&[(0, term("c"))]), Vec::<usize>::new());
+    assert_eq!(complete.agreeing(&[]), [0, 1, 2]);
+    let incomplete = Answer::of(vec![vec![Some(a)], vec![None]]);
+    assert_eq!(incomplete.agreeing(&bound), [0, 1]);
+}
+
+fn scans_of(query: &str, store: &Store) -> usize {
+    let tree = Tree::of(store, Watch::default()).expect("a tree");
+    compile(&parse(query))
+        .expect("a query the compiler reads")
+        .construct(&tree)
+        .expect("constructed");
+    tree.scans()
+}
+
+#[test]
+fn runs_a_subquery_that_reads_nothing_from_the_rows_it_joins_once_for_the_tree() {
+    let store = graph();
+    for &(construct, query, rows, subquery) in ONCE {
+        assert!(
+            evaluated(rows, &store).len() > 1,
+            "{construct}: one row would not tell once from each"
+        );
+        assert_eq!(
+            scans_of(query, &store),
+            scans_of(rows, &store) + scans_of(subquery, &store),
+            "{construct}"
+        );
+    }
+}
+
+#[test]
+fn prints_a_subquery_run_once_and_one_that_reads_its_key_from_the_rows_apart() {
+    let once = explained(ONCE[0].1);
+    assert!(
+        once.contains("group by (?i ?m), remembered as memo 0\n"),
+        "{once}"
+    );
+    let seeded = explained(
+        "CONSTRUCT { ?i :count ?c } WHERE { ?i a :Item . OPTIONAL { SELECT ?i (COUNT(?y) AS ?c) WHERE { ?i rdf:_1 ?y } GROUP BY ?i } }",
+    );
+    assert!(seeded.contains("group by (?i)\n"), "{seeded}");
 }
 
 #[test]

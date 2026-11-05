@@ -135,7 +135,13 @@ fn step(step: &Step, labels: &[String], out: &mut Vec<String>) {
             indented(lines(inner, labels), 2, out);
         }
         Step::Group(group) => {
-            out.push(format!("group by ({})", slots(&group.keys, labels)));
+            out.push(format!(
+                "group by ({}){}",
+                slots(&group.keys, labels),
+                group
+                    .once
+                    .map_or_else(String::new, |memo| format!(", remembered as memo {memo}"))
+            ));
             for aggregate in &group.aggregates {
                 out.push(format!(
                     "  {} := {}",

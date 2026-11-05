@@ -13,6 +13,7 @@ mod explain;
 mod expr;
 mod keys;
 mod lower;
+mod once;
 mod run;
 mod scope;
 #[cfg(test)]
@@ -218,6 +219,9 @@ struct Group {
     /// The variables its rows are put in the order of before any aggregate reads them,
     /// each with whether it is descending.
     order: Vec<(usize, bool)>,
+    /// The name its answer is remembered under where it reads none of its keys from the
+    /// row it runs on: run once for the tree, and each row joined to the answer.
+    once: Option<usize>,
 }
 
 struct Aggregate {
