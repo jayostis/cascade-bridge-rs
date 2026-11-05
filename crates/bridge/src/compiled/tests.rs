@@ -75,6 +75,10 @@ const GIVEN_UP: &[(&str, &str)] = &[
         "CONSTRUCT { :root :sizes ?c } WHERE { SELECT (GROUP_CONCAT(?s; separator=\"|\") AS ?c) WHERE { { SELECT ?s WHERE { ?m :size ?s } ORDER BY ?m } } }",
     ),
     (
+        "a GROUP_CONCAT of a variable some rows leave unbound",
+        "CONSTRUCT { :root :names ?c } WHERE { SELECT (GROUP_CONCAT(?n; separator=\"|\") AS ?c) WHERE { { SELECT ?m ?n WHERE { ?m a :Item OPTIONAL { ?m :name ?n } } ORDER BY ?m } } }",
+    ),
+    (
         "a GROUP_CONCAT in the order of integers",
         "CONSTRUCT { :root :names ?c } WHERE { SELECT (GROUP_CONCAT(?n; separator=\"|\") AS ?c) WHERE { { SELECT ?n WHERE { ?m :name ?n ; :size ?s } ORDER BY ?s } } }",
     ),
