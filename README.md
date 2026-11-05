@@ -12,6 +12,11 @@ Every merge to `main` publishes the npm package `cascade-bridge-rs`, the library
 built for WebAssembly, as a pre-release on the
 [releases page](https://github.com/jayostis/cascade-bridge-rs/releases).
 
+## Docs
+
+- [The Cascade hub](https://jayostis.github.io/cascade-runtime-js/): where to go for each thing, and every repository.
+- [Adapters](https://jayostis.github.io/cascade-runtime-js/adapters/): what each adapter it runs carries.
+
 ## Status: DRAFT
 
 No compatibility is promised. Which version of every repository a run uses is
