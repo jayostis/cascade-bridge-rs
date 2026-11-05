@@ -5,6 +5,8 @@ use oxigraph::model::{GraphName, Quad, Term};
 #[cfg(test)]
 use oxigraph::store::Store;
 use rustc_hash::{FxHashMap, FxHashSet};
+#[cfg(test)]
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -142,6 +144,8 @@ pub(crate) struct Tree {
     own: Layer,
     answers: RefCell<FxHashMap<usize, bool>>,
     watch: Watch,
+    #[cfg(test)]
+    scans: Cell<usize>,
 }
 
 impl Tree {
@@ -161,7 +165,14 @@ impl Tree {
             own,
             answers: RefCell::default(),
             watch,
+            #[cfg(test)]
+            scans: Cell::default(),
         })
+    }
+
+    #[cfg(test)]
+    pub(super) fn scans(&self) -> usize {
+        self.scans.get()
     }
 
     #[cfg(test)]
@@ -215,6 +226,8 @@ impl Tree {
         object: Option<Id>,
         each: &mut dyn FnMut(Id, Id, Id) -> std::result::Result<(), E>,
     ) -> std::result::Result<(), E> {
+        #[cfg(test)]
+        self.scans.set(self.scans.get() + 1);
         if let Some(shared) = &self.shared {
             shared.scan(subject, predicate, object, each)?;
         }

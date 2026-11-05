@@ -321,6 +321,55 @@ const LOWERED: &[(&str, &str)] = &[
         "BNODE() in a BIND, a node for each row where a condition holds",
         "CONSTRUCT { ?i :has ?b . ?b :named ?n } WHERE { ?i a :Item . OPTIONAL { ?i :name ?n } BIND(IF(BOUND(?n), BNODE(), 1/0) AS ?b) }",
     ),
+    (
+        "an OPTIONAL of a SELECT DISTINCT that names its key by a BIND, some rows unmatched",
+        "CONSTRUCT { ?i :named ?m } WHERE { ?i a :Item . OPTIONAL { SELECT DISTINCT (?x AS ?i) (true AS ?m) WHERE { ?x :name ?n } } }",
+    ),
+    (
+        "an OPTIONAL of an aggregate that names its key by a BIND, some rows unmatched",
+        "CONSTRUCT { ?i :children ?c } WHERE { ?i a :Item . OPTIONAL { SELECT ?i (COUNT(?y) AS ?c) WHERE { ?x rdf:_1 ?y BIND(?x AS ?i) } GROUP BY ?i } }",
+    ),
+    (
+        "an OPTIONAL of a walk from a constant that names its key by a BIND",
+        "CONSTRUCT { ?i :under ?m } WHERE { ?i a :Item . OPTIONAL { SELECT DISTINCT (?node AS ?i) (true AS ?m) WHERE { :a (!rdf:type)* ?node } } }",
+    ),
+    (
+        "a SELECT DISTINCT that names its key by a BIND, joined to the rows it matches",
+        "CONSTRUCT { ?i :named :yes } WHERE { ?i a :Item . { SELECT DISTINCT (?x AS ?i) WHERE { ?x :name ?n } } }",
+    ),
+    (
+        "an aggregate that shares no variable with the rows it joins",
+        "CONSTRUCT { ?i :of ?c } WHERE { ?i a :Item . { SELECT (COUNT(*) AS ?c) WHERE { ?x :name ?n } } }",
+    ),
+];
+
+/// A subquery that reads nothing from the rows it joins: the construct, the rows
+/// it joins to, and the subquery alone.
+const ONCE: &[(&str, &str, &str, &str)] = &[
+    (
+        "a SELECT DISTINCT in an OPTIONAL",
+        "CONSTRUCT { ?i :named ?m } WHERE { ?i a :Item . OPTIONAL { SELECT DISTINCT (?x AS ?i) (true AS ?m) WHERE { ?x :name ?n } } }",
+        "CONSTRUCT { ?i :named :no } WHERE { ?i a :Item }",
+        "CONSTRUCT { ?i :named ?m } WHERE { SELECT DISTINCT (?x AS ?i) (true AS ?m) WHERE { ?x :name ?n } }",
+    ),
+    (
+        "an aggregate in an OPTIONAL",
+        "CONSTRUCT { ?i :children ?c } WHERE { ?i a :Item . OPTIONAL { SELECT ?i (COUNT(?y) AS ?c) WHERE { ?x rdf:_1 ?y BIND(?x AS ?i) } GROUP BY ?i } }",
+        "CONSTRUCT { ?i :children :no } WHERE { ?i a :Item }",
+        "CONSTRUCT { ?i :children ?c } WHERE { SELECT ?i (COUNT(?y) AS ?c) WHERE { ?x rdf:_1 ?y BIND(?x AS ?i) } GROUP BY ?i }",
+    ),
+    (
+        "a walk in a SELECT DISTINCT in an OPTIONAL",
+        "CONSTRUCT { ?i :under ?m } WHERE { ?i a :Item . OPTIONAL { SELECT DISTINCT (?node AS ?i) (true AS ?m) WHERE { :a (!rdf:type)* ?node } } }",
+        "CONSTRUCT { ?i :under :no } WHERE { ?i a :Item }",
+        "CONSTRUCT { ?i :under ?m } WHERE { SELECT DISTINCT (?node AS ?i) (true AS ?m) WHERE { :a (!rdf:type)* ?node } }",
+    ),
+    (
+        "an aggregate with no variable in common, in a join",
+        "CONSTRUCT { ?i :of ?c } WHERE { ?i a :Item . { SELECT (COUNT(*) AS ?c) WHERE { ?x :name ?n } } }",
+        "CONSTRUCT { ?i :of :no } WHERE { ?i a :Item }",
+        "CONSTRUCT { :root :of ?c } WHERE { SELECT (COUNT(*) AS ?c) WHERE { ?x :name ?n } }",
+    ),
 ];
 
 const DECLINED: &[(&str, &str, &str)] = &[
@@ -926,6 +975,44 @@ fn prints_the_same_plan_each_time_a_query_is_parsed_and_tells_shadowed_variables
             "  ?i <urn:t#seen> ?c\n",
         )
     );
+}
+
+fn scans_of(query: &str, store: &Store) -> usize {
+    let tree = Tree::of(store, Watch::default()).expect("a tree");
+    compile(&parse(query))
+        .expect("a query the compiler reads")
+        .construct(&tree)
+        .expect("constructed");
+    tree.scans()
+}
+
+#[test]
+fn runs_a_subquery_that_reads_nothing_from_the_rows_it_joins_once_for_the_tree() {
+    let store = graph();
+    for &(construct, query, rows, subquery) in ONCE {
+        assert!(
+            evaluated(rows, &store).len() > 1,
+            "{construct}: one row would not tell once from each"
+        );
+        assert_eq!(
+            scans_of(query, &store),
+            scans_of(rows, &store) + scans_of(subquery, &store),
+            "{construct}"
+        );
+    }
+}
+
+#[test]
+fn prints_a_subquery_run_once_and_one_that_reads_its_key_from_the_rows_apart() {
+    let once = explained(ONCE[0].1);
+    assert!(
+        once.contains("group by (?i ?m), remembered as memo 0\n"),
+        "{once}"
+    );
+    let seeded = explained(
+        "CONSTRUCT { ?i :count ?c } WHERE { ?i a :Item . OPTIONAL { SELECT ?i (COUNT(?y) AS ?c) WHERE { ?i rdf:_1 ?y } GROUP BY ?i } }",
+    );
+    assert!(seeded.contains("group by (?i)\n"), "{seeded}");
 }
 
 #[test]
