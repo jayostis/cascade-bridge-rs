@@ -444,21 +444,19 @@ impl Accumulator {
             (Self::Chosen(chosen), Kind::Max(expr)) => {
                 extreme(chosen, expr, Ordering::Greater, tree, row)
             }
-            (Self::Joined(joined), Kind::GroupConcat(expr, separator)) => {
-                match expr(tree, row) {
-                    Ok(ExpressionTerm::StringLiteral(text)) => {
-                        if let Some(so_far) = joined.as_mut() {
-                            so_far.push_str(separator);
-                            so_far.push_str(&text);
-                        } else {
-                            *joined = Some(text);
-                        }
-                        Ok(())
+            (Self::Joined(joined), Kind::GroupConcat(expr, separator)) => match expr(tree, row) {
+                Ok(ExpressionTerm::StringLiteral(text)) => {
+                    if let Some(so_far) = joined.as_mut() {
+                        so_far.push_str(separator);
+                        so_far.push_str(&text);
+                    } else {
+                        *joined = Some(text);
                     }
-                    Ok(_) | Err(Fail::Error) => Err(Fail::GiveUp),
-                    Err(other) => Err(other),
+                    Ok(())
                 }
-            }
+                Ok(_) | Err(Fail::Error) => Err(Fail::GiveUp),
+                Err(other) => Err(other),
+            },
             _ => unreachable!("an accumulator is made for its own kind"),
         }
     }

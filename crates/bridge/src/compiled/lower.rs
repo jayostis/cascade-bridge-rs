@@ -611,13 +611,11 @@ impl Pattern {
 /// The ORDER BY of the subquery that is all a group reads: the only place the order of
 /// rows reaches an aggregate as the general evaluator gives it.
 fn ordering<'a>(scoped: &'a Scoped<'_>) -> Option<&'a [(usize, bool)]> {
-    let empty = |scoped: &Scoped<'_>| {
-        matches!(scoped, Scoped::Triples(triples) if triples.patterns.is_empty())
-    };
+    let empty = |scoped: &Scoped<'_>| matches!(scoped, Scoped::Triples(triples) if triples.patterns.is_empty());
     match scoped {
         Scoped::Subquery(subquery) if subquery.distinct.is_none() => subquery.order.as_deref(),
-        Scoped::Join(left, right) if empty(&**left) => ordering(right),
-        Scoped::Join(left, right) if empty(&**right) => ordering(left),
+        Scoped::Join(left, right) if empty(left) => ordering(right),
+        Scoped::Join(left, right) if empty(right) => ordering(left),
         _ => None,
     }
 }
