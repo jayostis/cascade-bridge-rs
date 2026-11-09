@@ -524,7 +524,37 @@ mod identity;
 mod manifest;
 #[cfg(test)]
 mod tests {
-    use super::beyond;
+    use super::{beyond, graph_at, without_the_release};
+    use crate::rdf::canonical_lines;
+    use std::collections::BTreeSet;
+
+    fn compared(release: &str, author: &str) -> BTreeSet<String> {
+        let turtle = format!(
+            "@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+<urn:x:document> prov:wasGeneratedBy _:writing ; prov:wasAttributedTo _:author .
+_:writing prov:qualifiedAssociation [ prov:agent _:author ] .
+_:author rdfs:label \"{author}\" .
+_:import prov:qualifiedAssociation [ prov:hadPlan [ a prov:Plan ] ; prov:agent _:release ] .
+_:release rdfs:label \"{release}\" ."
+        );
+        let quads = graph_at(turtle.as_bytes(), "urn:x:").expect("turtle");
+        canonical_lines(without_the_release(quads)).expect("canonical")
+    }
+
+    #[test]
+    fn leaves_out_of_a_conversion_only_the_agent_of_the_association_that_has_a_plan() {
+        assert_eq!(
+            compared("release 1", "Registry"),
+            compared("release 2", "Registry"),
+            "a release named differently still compares equal"
+        );
+        assert_ne!(
+            compared("release 1", "Registry"),
+            compared("release 1", "Elsewhere"),
+            "an author named differently does not"
+        );
+    }
 
     fn findings(lines: &[&str]) -> Vec<String> {
         lines.iter().map(|line| (*line).to_owned()).collect()
