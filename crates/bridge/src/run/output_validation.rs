@@ -177,6 +177,41 @@ fn reports_a_predicate_no_ontology_declares_and_leaves_rdf_type_and_the_bridge_s
 }
 
 #[test]
+fn refuses_a_mapping_writing_the_old_attribution_shape_and_lets_through_the_roles_on_an_association(
+) {
+    let undeclared = |written: &str| -> Vec<String> {
+        let resolver = Variant::of(tiny_with_vocabularies()).replacing_exactly(
+            "mapping/item.rq",
+            "ex:title ?title . }",
+            format!("ex:title ?title ; {written} . }}"),
+            1,
+        );
+        let (conversion, _) = run(&resolver, "two.xml");
+        output_findings(&conversion.findings)
+            .into_iter()
+            .filter(|finding| finding.body == PREDICATE_NOT_DECLARED)
+            .map(|finding| finding.path)
+            .collect()
+    };
+    assert_eq!(
+        undeclared(
+            "<http://www.w3.org/ns/prov#qualifiedAttribution> [ <http://www.w3.org/ns/prov#agent> [] ]"
+        ),
+        ["http://www.w3.org/ns/prov#qualifiedAttribution"; 2],
+        "one for each of the document's two records"
+    );
+    assert_eq!(
+        undeclared(
+            "<http://www.w3.org/ns/prov#wasGeneratedBy> [ <http://www.w3.org/ns/prov#qualifiedAssociation> [
+               <http://www.w3.org/ns/prov#agent> [] ;
+               <http://www.w3.org/ns/prov#hadRole> <https://ns.cascadeprotocol.org/cascade#AuthorRole> ] ] ;
+             <http://www.w3.org/ns/prov#wasAttributedTo> []"
+        ),
+        Vec::<String>::new()
+    );
+}
+
+#[test]
 fn reads_the_vocabulary_from_the_directory_the_command_was_given() {
     let (without, _) = run(&tiny(), "output-fails-a-shape.xml");
     assert_eq!(

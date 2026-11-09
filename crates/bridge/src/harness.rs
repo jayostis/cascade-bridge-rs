@@ -15,7 +15,7 @@ use crate::terms::{
     BRIDGE_EXPECTED_FINDINGS, BRIDGE_EXPECTED_GRAPH, BRIDGE_FACTS, BRIDGE_IDENTITY_RELATION_TEST,
     BRIDGE_INPUT, BRIDGE_INPUT_ONLY, BRIDGE_ISOMORPHIC, BRIDGE_SAME_RECORD, BRIDGE_SELECTOR,
     BRIDGE_SPARQL_1_1, MF_ACTION, MF_ENTRIES, MF_NAME, MF_RESULT, OA_HAS_SELECTOR, PROV_AGENT,
-    PROV_QUALIFIED_ASSOCIATION, PROV_SPECIALIZATION_OF, RDF_TYPE, RDF_VALUE,
+    PROV_HAD_PLAN, PROV_QUALIFIED_ASSOCIATION, PROV_SPECIALIZATION_OF, RDF_TYPE, RDF_VALUE,
 };
 use oxigraph::model::{Graph, NamedOrBlankNode, Quad, Term};
 use oxrdfio::{RdfFormat, RdfParser};
@@ -100,10 +100,16 @@ fn beyond(these: &[String], those: &[String]) -> Vec<String> {
 }
 
 fn without_the_release(quads: Vec<Quad>) -> Vec<Quad> {
+    let planned: HashSet<Term> = quads
+        .iter()
+        .filter(|q| q.predicate.as_str() == PROV_HAD_PLAN)
+        .map(|q| Term::from(q.subject.clone()))
+        .collect();
     let associations: HashSet<Term> = quads
         .iter()
         .filter(|q| q.predicate.as_str() == PROV_QUALIFIED_ASSOCIATION)
         .map(|q| q.object.clone())
+        .filter(|association| planned.contains(association))
         .collect();
     let releases: HashSet<Term> = quads
         .iter()
@@ -524,7 +530,37 @@ mod identity;
 mod manifest;
 #[cfg(test)]
 mod tests {
-    use super::beyond;
+    use super::{beyond, graph_at, without_the_release};
+    use crate::rdf::canonical_lines;
+    use std::collections::BTreeSet;
+
+    fn compared(release: &str, author: &str) -> BTreeSet<String> {
+        let turtle = format!(
+            "@prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+<urn:x:document> prov:wasGeneratedBy _:writing ; prov:wasAttributedTo _:author .
+_:writing prov:qualifiedAssociation [ prov:agent _:author ] .
+_:author rdfs:label \"{author}\" .
+_:import prov:qualifiedAssociation [ prov:hadPlan [ a prov:Plan ] ; prov:agent _:release ] .
+_:release rdfs:label \"{release}\" ."
+        );
+        let quads = graph_at(turtle.as_bytes(), "urn:x:").expect("turtle");
+        canonical_lines(without_the_release(quads)).expect("canonical")
+    }
+
+    #[test]
+    fn leaves_out_of_a_conversion_only_the_agent_of_the_association_that_has_a_plan() {
+        assert_eq!(
+            compared("release 1", "Registry"),
+            compared("release 2", "Registry"),
+            "a release named differently still compares equal"
+        );
+        assert_ne!(
+            compared("release 1", "Registry"),
+            compared("release 1", "Elsewhere"),
+            "an author named differently does not"
+        );
+    }
 
     fn findings(lines: &[&str]) -> Vec<String> {
         lines.iter().map(|line| (*line).to_owned()).collect()
