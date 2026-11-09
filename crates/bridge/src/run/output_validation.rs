@@ -177,7 +177,8 @@ fn reports_a_predicate_no_ontology_declares_and_leaves_rdf_type_and_the_bridge_s
 }
 
 #[test]
-fn refuses_a_mapping_writing_the_old_attribution_shape_and_lets_through_the_roles_on_an_association() {
+fn refuses_a_mapping_writing_the_old_attribution_shape_and_lets_through_the_roles_on_an_association(
+) {
     let undeclared = |written: &str| -> Vec<String> {
         let resolver = Variant::of(tiny_with_vocabularies()).replacing_exactly(
             "mapping/item.rq",

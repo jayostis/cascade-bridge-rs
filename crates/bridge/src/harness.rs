@@ -15,7 +15,7 @@ use crate::terms::{
     BRIDGE_EXPECTED_FINDINGS, BRIDGE_EXPECTED_GRAPH, BRIDGE_FACTS, BRIDGE_IDENTITY_RELATION_TEST,
     BRIDGE_INPUT, BRIDGE_INPUT_ONLY, BRIDGE_ISOMORPHIC, BRIDGE_SAME_RECORD, BRIDGE_SELECTOR,
     BRIDGE_SPARQL_1_1, MF_ACTION, MF_ENTRIES, MF_NAME, MF_RESULT, OA_HAS_SELECTOR, PROV_AGENT,
-    PROV_QUALIFIED_ASSOCIATION, PROV_SPECIALIZATION_OF, RDF_TYPE, RDF_VALUE,
+    PROV_HAD_PLAN, PROV_QUALIFIED_ASSOCIATION, PROV_SPECIALIZATION_OF, RDF_TYPE, RDF_VALUE,
 };
 use oxigraph::model::{Graph, NamedOrBlankNode, Quad, Term};
 use oxrdfio::{RdfFormat, RdfParser};
@@ -100,10 +100,16 @@ fn beyond(these: &[String], those: &[String]) -> Vec<String> {
 }
 
 fn without_the_release(quads: Vec<Quad>) -> Vec<Quad> {
+    let planned: HashSet<Term> = quads
+        .iter()
+        .filter(|q| q.predicate.as_str() == PROV_HAD_PLAN)
+        .map(|q| Term::from(q.subject.clone()))
+        .collect();
     let associations: HashSet<Term> = quads
         .iter()
         .filter(|q| q.predicate.as_str() == PROV_QUALIFIED_ASSOCIATION)
         .map(|q| q.object.clone())
+        .filter(|association| planned.contains(association))
         .collect();
     let releases: HashSet<Term> = quads
         .iter()

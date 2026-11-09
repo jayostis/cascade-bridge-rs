@@ -213,6 +213,38 @@ bridge:because a owl:DatatypeProperty ;
   rdfs:range xsd:string ;
   rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
 
+bridge:carriedAs a owl:ObjectProperty ;
+  rdfs:label "carried as"@en ;
+  rdfs:comment "A Cascade property the value at the entry's path becomes, on one class of record; a path that becomes several, by its record or by its code system, names one for each."@en ;
+  rdfs:domain bridge:PathEntry ;
+  rdfs:range bridge:CarriedAs ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:CarriedAs a owl:Class ;
+  rdfs:label "Carried as"@en ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:asProperty a owl:ObjectProperty ;
+  rdfs:label "as property"@en ;
+  rdfs:comment "The property the value is written as: of the record, or of the node of it the value lands on."@en ;
+  rdfs:domain bridge:CarriedAs ;
+  rdfs:range rdf:Property ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:inRecordClass a owl:ObjectProperty ;
+  rdfs:label "in record class"@en ;
+  rdfs:comment "The class of the record the value is written on, also where bridge:asProperty is a property of a node the record reaches."@en ;
+  rdfs:domain bridge:CarriedAs ;
+  rdfs:range owl:Class ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
+bridge:inSourceRecordType a owl:DatatypeProperty ;
+  rdfs:label "in source record type"@en ;
+  rdfs:comment "The source's own name for the kind of record the path is read in: a FHIR resource type, or the root of a C-CDA templateId."@en ;
+  rdfs:domain bridge:CarriedAs ;
+  rdfs:range xsd:string ;
+  rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
+
 bridge:verdicts a skos:ConceptScheme ;
   skos:prefLabel "What an adapter does with a path"@en ;
   rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
@@ -398,7 +430,7 @@ prov:startedAtTime a owl:DatatypeProperty ;
 prov:qualifiedAssociation a owl:ObjectProperty ;
   rdfs:isDefinedBy <http://www.w3.org/ns/prov-o#> .
 
-prov:qualifiedAttribution a owl:ObjectProperty ;
+prov:wasAttributedTo a owl:ObjectProperty ;
   rdfs:isDefinedBy <http://www.w3.org/ns/prov-o#> .
 
 prov:agent a owl:ObjectProperty ;
@@ -449,7 +481,7 @@ dct:conformsTo a rdf:Property ;
 bridge:IsomorphicConversionTest a owl:Class ;
   rdfs:subClassOf mf:ManifestEntry ;
   rdfs:label "Isomorphic conversion test"@en ;
-  rdfs:comment "Convert bridge:input, supplied with the facts bridge:facts names where the action names them. The produced graph must be isomorphic to bridge:expectedGraph (blank nodes relabelled, IRIs and literals exact) after every triple whose subject is the prov:agent of a prov:qualifiedAssociation, the Bridge's release, is removed from both sides. The produced findings must be isomorphic to bridge:expectedFindings in the same way, except that two selectors of one kind, oa:XPathSelector or an oa:FragmentSelector conforming to JSON Pointer, are equal when their rdf:values select the same one node: a record's selector evaluated against bridge:input, a refinement against the record that selector selects, read as a document of its own. An address selecting no node, or more than one, fails the entry. A finding produced twice is two blank nodes and counts twice."@en ;
+  rdfs:comment "Convert bridge:input, supplied with the facts bridge:facts names where the action names them. The produced graph must be isomorphic to bridge:expectedGraph (blank nodes relabelled, IRIs and literals exact) after every triple whose subject is the prov:agent of a prov:qualifiedAssociation that has a prov:hadPlan, the Bridge's release, is removed from both sides. The produced findings must be isomorphic to bridge:expectedFindings in the same way, except that two selectors of one kind, oa:XPathSelector or an oa:FragmentSelector conforming to JSON Pointer, are equal when their rdf:values select the same one node: a record's selector evaluated against bridge:input, a refinement against the record that selector selects, read as a document of its own. An address selecting no node, or more than one, fails the entry. A finding produced twice is two blank nodes and counts twice."@en ;
   rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
 
 bridge:InputOnlyTest a owl:Class ;
@@ -623,7 +655,7 @@ bridge:bridgeFailure a bridge:FailureKind ;
 bridge:LibraryTest a owl:Class ;
   rdfs:subClassOf mf:ManifestEntry ;
   rdfs:label "Library test"@en ;
-  rdfs:comment "A test of a Bridge's library: make each call the mf:action lists, in order, a bridge:AskCall or bridge:ConvertCall on the adapter the latest successful bridge:LoadCall before it returned. A call naming a bridge:failure must fail with that kind; one naming a bridge:missingFile must name the map it is missing from and its path, that map's bridge:iri followed by the path being the bridge:missingFile. Any other call must not fail, and: a graph must be isomorphic to bridge:expectedGraph (blank nodes relabelled, IRIs and literals exact), a converted one after every triple whose subject is the prov:agent of a prov:qualifiedAssociation, the Bridge's release, is removed from both sides; a conversion's findings must hold, for each finding of bridge:expectedFindings, one finding of its oa:hasSource and oa:hasBody, and no other, and none where the call names no bridge:expectedFindings; an answer must be bridge:expectedAnswer; a report, with the adapter's test manifest read at the adapter map's bridge:iri, must have no fault engine/faults-of-a-report.rq finds and name every entry under that IRI. An expected file inside an adapter map's bridge:directory is read at that map's bridge:iri followed by its path there. Nothing a call returns names a file: IRI."@en ;
+  rdfs:comment "A test of a Bridge's library: make each call the mf:action lists, in order, a bridge:AskCall or bridge:ConvertCall on the adapter the latest successful bridge:LoadCall before it returned. A call naming a bridge:failure must fail with that kind; one naming a bridge:missingFile must name the map it is missing from and its path, that map's bridge:iri followed by the path being the bridge:missingFile. Any other call must not fail, and: a graph must be isomorphic to bridge:expectedGraph (blank nodes relabelled, IRIs and literals exact), a converted one after every triple whose subject is the prov:agent of a prov:qualifiedAssociation that has a prov:hadPlan, the Bridge's release, is removed from both sides; a conversion's findings must hold, for each finding of bridge:expectedFindings, one finding of its oa:hasSource and oa:hasBody, and no other, and none where the call names no bridge:expectedFindings; an answer must be bridge:expectedAnswer; a report, with the adapter's test manifest read at the adapter map's bridge:iri, must have no fault engine/faults-of-a-report.rq finds and name every entry under that IRI. An expected file inside an adapter map's bridge:directory is read at that map's bridge:iri followed by its path there. Nothing a call returns names a file: IRI."@en ;
   rdfs:isDefinedBy <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
 
 bridge:DescribeCall a owl:Class ;

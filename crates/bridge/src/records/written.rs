@@ -5,8 +5,8 @@ use crate::fixtures::{
 };
 use crate::terms::{
     BRIDGE_ARRIVED_AS, OA_HAS_SELECTOR, OA_HAS_SOURCE, OA_XPATH_SELECTOR, PAV_LAST_UPDATE_ON,
-    PAV_VERSION, PROV_ACTIVITY, PROV_AGENT, PROV_WAS_DERIVED_FROM, PROV_WAS_GENERATED_BY,
-    RDFS_LABEL, RDF_TYPE, RDF_VALUE,
+    PAV_VERSION, PROV_ACTIVITY, PROV_AGENT, PROV_QUALIFIED_ASSOCIATION, PROV_WAS_DERIVED_FROM,
+    PROV_WAS_GENERATED_BY, RDFS_LABEL, RDF_TYPE, RDF_VALUE,
 };
 use crate::terms::{
     BRIDGE_VERSION_NOT_KEPT, OA_HAS_BODY, PROV_SPECIALIZATION_OF, SH_RESULT_SEVERITY, SH_VALUE,
@@ -16,6 +16,7 @@ use oxrdf::{NamedNode, Quad, Term};
 use std::collections::BTreeSet;
 
 const EX: &str = "urn:example:catalog#";
+const PROV_HAD_ROLE: &str = "http://www.w3.org/ns/prov#hadRole";
 
 fn two() -> String {
     ni_name(&fixture("tests/tiny-adapter/fixtures/in/two.xml"))
@@ -184,23 +185,35 @@ fn folds_each_version_s_arrival_into_one_node_naming_its_selector_its_document_a
 }
 
 #[test]
-fn keeps_an_attribution_a_mapping_writes_of_the_document_beside_the_supplied_facts() {
+fn keeps_the_roles_a_mapping_writes_on_an_association_of_the_document_s_generating_act_beside_the_supplied_facts(
+) {
     let resolver = reading(
-        "?document <http://www.w3.org/ns/prov#qualifiedAttribution> [
-           <http://www.w3.org/ns/prov#agent> [ <http://www.w3.org/2000/01/rdf-schema#label> \"a clinic\" ] ] .",
+        "?document <http://www.w3.org/ns/prov#wasGeneratedBy> [
+           <http://www.w3.org/ns/prov#qualifiedAssociation> [
+             <http://www.w3.org/ns/prov#agent> [ <http://www.w3.org/2000/01/rdf-schema#label> \"a clinic\" ] ;
+             <http://www.w3.org/ns/prov#hadRole> <https://ns.cascadeprotocol.org/cascade#AuthorRole> ] ] .",
         "bridge:thisDocument bridge:sha256 ?sha256 . BIND(IRI(?sha256) AS ?document)",
     );
     let quads = converted_with_facts(&resolver, "two.xml").quads;
-    let agents: BTreeSet<String> = objects(
-        &quads,
-        &format!("<{}>", two()),
-        "http://www.w3.org/ns/prov#qualifiedAttribution",
-    )
-    .iter()
-    .flat_map(|attribution| said(&quads, &attribution.to_string(), PROV_AGENT))
-    .flat_map(|agent| said(&quads, &agent, RDFS_LABEL))
-    .collect();
+    let associations: Vec<String> = objects(&quads, &format!("<{}>", two()), PROV_WAS_GENERATED_BY)
+        .iter()
+        .flat_map(|act| objects(&quads, &act.to_string(), PROV_QUALIFIED_ASSOCIATION))
+        .map(|association| association.to_string())
+        .collect();
+    let agents: BTreeSet<String> = associations
+        .iter()
+        .flat_map(|association| said(&quads, association, PROV_AGENT))
+        .flat_map(|agent| said(&quads, &agent, RDFS_LABEL))
+        .collect();
+    let roles: BTreeSet<String> = associations
+        .iter()
+        .flat_map(|association| said(&quads, association, PROV_HAD_ROLE))
+        .collect();
     assert!(agents.contains("a clinic"), "{agents:?}");
+    assert_eq!(
+        roles,
+        BTreeSet::from(["<https://ns.cascadeprotocol.org/cascade#AuthorRole>".to_owned()])
+    );
 }
 
 #[test]
@@ -210,7 +223,12 @@ fn writes_the_same_graph_byte_for_byte_in_every_run() {
         "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix prov: <http://www.w3.org/ns/prov#> .
 @prefix bridge: <https://ns.cascadeprotocol.org/bridge/v1-draft#> .
-bridge:thisDocument prov:qualifiedAttribution [ prov:agent [ rdfs:label \"a shop\" ] ] .",
+@prefix cascade: <https://ns.cascadeprotocol.org/cascade#> .
+bridge:thisDocument prov:wasGeneratedBy _:writing ; prov:wasAttributedTo _:shop .
+_:writing prov:qualifiedAssociation [ prov:agent _:shop ; prov:hadRole cascade:AuthorRole ] ,
+  [ prov:agent _:apple ; prov:hadRole cascade:TransmitterRole ] .
+_:shop rdfs:label \"a shop\" .
+_:apple rdfs:label \"Apple Health\" .",
     );
     let written = |_| {
         converted_with_facts(&resolver, "two.xml")
