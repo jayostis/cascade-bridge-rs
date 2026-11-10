@@ -1255,13 +1255,7 @@ mod telling_why_a_command_stopped {
         /// refuses `--format rdfxml`
         #[test]
         fn refuses_a_format_it_does_not_write() {
-            refused_with_the_usage(&[
-                "convert",
-                &adapter(),
-                "document.xml",
-                "--format",
-                "rdfxml",
-            ]);
+            refused_with_the_usage(&["convert", &adapter(), "document.xml", "--format", "rdfxml"]);
         }
 
         /// refuses `--memory-budget-mib 0`
@@ -1333,13 +1327,7 @@ mod telling_why_a_command_stopped {
         /// refuses `--executor fast`
         #[test]
         fn refuses_an_executor_it_does_not_know() {
-            refused_with_the_usage(&[
-                "convert",
-                &adapter(),
-                "document.xml",
-                "--executor",
-                "fast",
-            ]);
+            refused_with_the_usage(&["convert", &adapter(), "document.xml", "--executor", "fast"]);
         }
 
         /// refuses `--skip everything`
