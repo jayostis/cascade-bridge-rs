@@ -299,7 +299,8 @@ mod tests {
                             .iter()
                             .filter_map(as_subject)
                             .map(|version| {
-                                let content = file(&only(&graph, &version, BRIDGE_CANONICAL_CONTENT));
+                                let content =
+                                    file(&only(&graph, &version, BRIDGE_CANONICAL_CONTENT));
                                 (
                                     only(&graph, &version, BRIDGE_EXPECTED_NAME),
                                     String::from_utf8(content).expect("UTF-8"),

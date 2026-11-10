@@ -339,7 +339,9 @@ mod tests {
 
             #[test]
             fn refuses_a_findings_query_whose_target_is_a_name() {
-                let Err(refusal) = conversion(&rewritten(&[(TARGET, "bridge:thisRecord")]), "two.xml") else {
+                let Err(refusal) =
+                    conversion(&rewritten(&[(TARGET, "bridge:thisRecord")]), "two.xml")
+                else {
                     panic!("the named form is accepted");
                 };
                 let refusal = refusal.to_string();
@@ -353,7 +355,8 @@ mod tests {
 
             #[test]
             fn refuses_a_findings_query_whose_target_names_no_document() {
-                let Err(refusal) = conversion(&rewritten(&[(TARGET, SOURCELESS)]), "two.xml") else {
+                let Err(refusal) = conversion(&rewritten(&[(TARGET, SOURCELESS)]), "two.xml")
+                else {
                     panic!("a finding about no document is accepted");
                 };
                 let refusal = refusal.to_string();
@@ -374,7 +377,8 @@ mod tests {
 
             #[test]
             fn refuses_a_findings_query_that_names_the_annotation_it_constructs() {
-                let named = rewritten(&[("[] a oa:Annotation", "bridge:thisRecord a oa:Annotation")]);
+                let named =
+                    rewritten(&[("[] a oa:Annotation", "bridge:thisRecord a oa:Annotation")]);
                 let Err(refusal) = conversion(&named, "two.xml") else {
                     panic!("the named form is accepted");
                 };
@@ -408,7 +412,8 @@ mod tests {
             /// takes sh info where neither the query's template nor the concept says
             #[test]
             fn takes_sh_info_where_neither_the_query_s_template_nor_the_concept_says() {
-                let findings = findings_through(&severities(&[], &[NO_SEVERITY_IN_THE_TEMPLATE]), "two.xml");
+                let findings =
+                    findings_through(&severities(&[], &[NO_SEVERITY_IN_THE_TEMPLATE]), "two.xml");
                 assert_eq!(severity_of(&findings, NOTE_HAS_NO_TERM), severity("Info"));
             }
 
@@ -451,7 +456,8 @@ mod tests {
             /// keeps the severity the query's template wrote over the concept s
             #[test]
             fn keeps_the_severity_the_query_s_template_wrote_over_the_concept_s() {
-                let findings = findings_through(&severities(&[WARNING_ON_THE_CONCEPT], &[]), "two.xml");
+                let findings =
+                    findings_through(&severities(&[WARNING_ON_THE_CONCEPT], &[]), "two.xml");
                 assert_eq!(severity_of(&findings, NOTE_HAS_NO_TERM), severity("Info"));
             }
 

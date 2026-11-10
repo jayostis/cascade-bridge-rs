@@ -31,7 +31,8 @@ mod tests {
             #[test]
             fn names_a_namespaced_document_element_of_a_finding_about_the_document_itself() {
                 let values = values(&converted(&namespaced(), "two.xml").findings);
-                let document = format!("/*[local-name()='catalog' and namespace-uri()='{CATALOG}']");
+                let document =
+                    format!("/*[local-name()='catalog' and namespace-uri()='{CATALOG}']");
                 assert!(values.contains(&document), "{values:?}");
                 let record = format!(
                     "/*[local-name()='catalog' and namespace-uri()='{CATALOG}']\

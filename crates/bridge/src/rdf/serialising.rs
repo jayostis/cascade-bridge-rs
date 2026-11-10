@@ -319,7 +319,8 @@ WHERE {
                         .collect();
                     assert_eq!(
                         canonical_lines(as_turtle).expect("canonical"),
-                        canonical_lines(read_back(&ntriples, RdfFormat::NTriples)).expect("canonical"),
+                        canonical_lines(read_back(&ntriples, RdfFormat::NTriples))
+                            .expect("canonical"),
                         "{input}:\n{turtle}"
                     );
                     compared += 1;

@@ -1108,7 +1108,8 @@ mod choosing_how_queries_are_executed {
             );
             let (compiled, profiled) =
                 profiled_under(&ordered, "two.xml", Executor::Compiled).expect("conversion");
-            let general = conversion_under(&ordered, "two.xml", Executor::Spareval).expect("conversion");
+            let general =
+                conversion_under(&ordered, "two.xml", Executor::Spareval).expect("conversion");
             assert_eq!(
                 canonical_parts(compiled.quads).expect("canonical"),
                 canonical_parts(general.quads).expect("canonical")

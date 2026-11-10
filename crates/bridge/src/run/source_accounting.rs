@@ -381,7 +381,9 @@ mod tests {
 
                 let deep = censuses(&found)
                     .into_iter()
-                    .find(|annotation| says(&found, annotation, &format!("{SH}value")) == "/item/label/deep")
+                    .find(|annotation| {
+                        says(&found, annotation, &format!("{SH}value")) == "/item/label/deep"
+                    })
                     .expect("a census about the element that label carries");
                 assert_eq!(
                     located(&found, &deep),
@@ -515,7 +517,8 @@ mod tests {
             fn refuses_an_accounting_the_crate_names_and_nothing_answers_to() {
                 assert_eq!(census(&findings(&unaccounted(), "two.xml")), Vec::new());
 
-                let missing = Variant::of(tiny()).replacing_exactly(CRATE, ACCOUNTING, UNWRITTEN, 2);
+                let missing =
+                    Variant::of(tiny()).replacing_exactly(CRATE, ACCOUNTING, UNWRITTEN, 2);
                 let Err(refusal) = conversion(&missing, "two.xml") else {
                     panic!("a crate that says what it accounts for and cannot show it is read in silence");
                 };
@@ -563,7 +566,9 @@ mod tests {
 
             #[test]
             fn refuses_a_source_path_that_is_no_literal_where_dropping_it_would_report_the_path() {
-                let Err(refusal) = conversion(&with_accounting(A_PATH_THAT_IS_NO_LITERAL), "two.xml") else {
+                let Err(refusal) =
+                    conversion(&with_accounting(A_PATH_THAT_IS_NO_LITERAL), "two.xml")
+                else {
                     panic!("a path that is not a string is read past in silence");
                 };
                 let refusal = refusal.to_string();

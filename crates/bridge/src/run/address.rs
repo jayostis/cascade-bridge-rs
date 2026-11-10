@@ -189,7 +189,8 @@ mod tests {
 
             #[test]
             fn reports_an_address_that_is_no_xpath_at_all() {
-                let nonsense = converted(&variant(NOTE_QUERY, NOTE, "rdf:value \"(((\""), "two.xml");
+                let nonsense =
+                    converted(&variant(NOTE_QUERY, NOTE, "rdf:value \"(((\""), "two.xml");
                 assert_eq!(
                     reports(&nonsense.findings),
                     [("/catalog".to_owned(), "(((".to_owned())]
@@ -270,7 +271,9 @@ mod tests {
                     );
                     followed += annotations(&conversion.findings)
                         .iter()
-                        .filter(|annotation| !address(&conversion.findings, annotation).1.is_empty())
+                        .filter(|annotation| {
+                            !address(&conversion.findings, annotation).1.is_empty()
+                        })
                         .count();
                 }
                 assert!(
@@ -310,14 +313,16 @@ mod tests {
             // be compared at all.
             #[test]
             fn fails_an_address_that_selects_another_node_of_the_same_document() {
-                let (outcome, said) = judged(&variant(ORACLE, "\"/catalog/item[2]\"", RECORD), "pass");
+                let (outcome, said) =
+                    judged(&variant(ORACLE, "\"/catalog/item[2]\"", RECORD), "pass");
                 assert_eq!(outcome, "failed", "{said}");
                 assert!(said.contains("findings differ"), "{said}");
             }
 
             #[test]
             fn passes_a_refinement_of_a_text_node_spelled_another_correct_way() {
-                let (outcome, said) = judged(&spelled("note[1]/text()", "note[1]/text()[1]"), "pass");
+                let (outcome, said) =
+                    judged(&spelled("note[1]/text()", "note[1]/text()[1]"), "pass");
                 assert_eq!(outcome, "passed", "{said}");
             }
 
@@ -329,7 +334,8 @@ mod tests {
 
             #[test]
             fn fails_an_entry_whose_refinement_leaves_the_record() {
-                let (outcome, said) = judged(&spelled("../item[2]", "following-sibling::item[1]"), "pass");
+                let (outcome, said) =
+                    judged(&spelled("../item[2]", "following-sibling::item[1]"), "pass");
                 assert_eq!(outcome, "failed", "{said}");
                 assert!(
                     said.contains("produced \"../item[2]\" selects no node"),

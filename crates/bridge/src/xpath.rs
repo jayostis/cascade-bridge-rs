@@ -685,15 +685,17 @@ mod tests {
             fn spells_a_record_as_the_lift_wrote_its_selector() {
                 let document =
                     br#"<s:set xmlns:s="urn:example:set"><g><s:item/><s:item/></g><g><item/></g></s:set>"#;
-                let units: Vec<crate::lift::Unit> = crate::lift::xml::lift_slice(document, Some("item"))
-                    .expect("the lift")
-                    .map(|unit| unit.expect("a unit"))
-                    .collect();
+                let units: Vec<crate::lift::Unit> =
+                    crate::lift::xml::lift_slice(document, Some("item"))
+                        .expect("the lift")
+                        .map(|unit| unit.expect("a unit"))
+                        .collect();
                 assert_eq!(units.len(), 3);
                 let tree = tree(std::str::from_utf8(document).expect("utf-8"));
                 for unit in &units {
                     let selector = unit.selector();
-                    let at = selects(&tree, DOCUMENT, &selector).unwrap_or_else(|| panic!("{selector}"));
+                    let at =
+                        selects(&tree, DOCUMENT, &selector).unwrap_or_else(|| panic!("{selector}"));
                     assert_eq!(tree.spell_absolute(at).as_deref(), Some(selector.as_str()));
                 }
             }
@@ -725,8 +727,9 @@ mod tests {
 
             #[test]
             fn selects_no_node_for_an_address_that_leaves_the_record() {
-                let whole =
-                    tree(r#"<catalog><item>said<!-- aside --><note a="b"/></item><item/></catalog>"#);
+                let whole = tree(
+                    r#"<catalog><item>said<!-- aside --><note a="b"/></item><item/></catalog>"#,
+                );
                 let record = selects(&whole, DOCUMENT, "/catalog/item[1]").expect("the record");
                 // Taken out of the document or read alone, a record is one tree.
                 let taken = whole.record(record);
@@ -748,13 +751,15 @@ mod tests {
                     ("comment()", "comment()[1]"),
                     ("text()", "text()[1]"),
                 ] {
-                    let at = selects(&taken, taken.element, written).unwrap_or_else(|| panic!("{written}"));
+                    let at = selects(&taken, taken.element, written)
+                        .unwrap_or_else(|| panic!("{written}"));
                     assert_eq!(
                         taken.spell_relative(at, taken.element).as_deref(),
                         Some(spelled),
                         "{written}"
                     );
-                    let at = selects(&alone, alone.element, written).unwrap_or_else(|| panic!("{written}"));
+                    let at = selects(&alone, alone.element, written)
+                        .unwrap_or_else(|| panic!("{written}"));
                     assert_eq!(
                         alone.spell_relative(at, alone.element).as_deref(),
                         Some(spelled),
@@ -839,10 +844,11 @@ mod tests {
                 let document =
                     b"<catalog><item><note/></item><item><note/></item><item><note/></item></catalog>";
                 let followed = Followed::default();
-                let units: Vec<crate::lift::Unit> = crate::lift::xml::lift_slice(document, Some("item"))
-                    .expect("the lift")
-                    .map(|unit| unit.expect("a unit"))
-                    .collect();
+                let units: Vec<crate::lift::Unit> =
+                    crate::lift::xml::lift_slice(document, Some("item"))
+                        .expect("the lift")
+                        .map(|unit| unit.expect("a unit"))
+                        .collect();
                 assert_eq!(units.len(), 3);
                 let findings = refining("note[1]");
                 EVALUATED.with(|count| count.set(0));
@@ -866,10 +872,11 @@ mod tests {
                 let document =
                     b"<catalog><item><note/></item><item><note/></item><item><note/></item></catalog>";
                 let followed = Followed::default();
-                let units: Vec<crate::lift::Unit> = crate::lift::xml::lift_slice(document, Some("item"))
-                    .expect("the lift")
-                    .map(|unit| unit.expect("a unit"))
-                    .collect();
+                let units: Vec<crate::lift::Unit> =
+                    crate::lift::xml::lift_slice(document, Some("item"))
+                        .expect("the lift")
+                        .map(|unit| unit.expect("a unit"))
+                        .collect();
                 assert_eq!(units.len(), 3);
                 let findings = refining("note[1]");
                 PARSED.with(|count| count.set(0));

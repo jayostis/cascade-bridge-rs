@@ -159,9 +159,9 @@ mod tests {
                     format!("{root}./{CRATE}"),
                     format!("{root}missing/%2e%2E/{CRATE}"),
                 ] {
-                    let read = resolver
-                        .read(&dotted)
-                        .unwrap_or_else(|e| panic!("{dotted} is the crate, inside the adapter: {e}"));
+                    let read = resolver.read(&dotted).unwrap_or_else(|e| {
+                        panic!("{dotted} is the crate, inside the adapter: {e}")
+                    });
                     assert_eq!(read, judged, "{dotted}");
                 }
             }
@@ -173,8 +173,9 @@ mod tests {
             #[test]
             fn reads_no_vocabulary_where_none_was_given() {
                 let resolver = tiny();
-                let refused =
-                    refusal(resolver.read_vocabulary(&format!("{}ro-crate-metadata.json", resolver.root())));
+                let refused = refusal(
+                    resolver.read_vocabulary(&format!("{}ro-crate-metadata.json", resolver.root())),
+                );
                 assert!(refused.contains("no vocabulary was given"), "{refused:?}");
             }
         }

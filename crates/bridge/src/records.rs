@@ -613,8 +613,9 @@ mod tests {
                 assert!(dropped[0]
                     .selector
                     .as_deref()
-                    .is_some_and(|selector| selector
-                        .contains("[local-name()='entry' and namespace-uri()='urn:hl7-org:v3'][1]")));
+                    .is_some_and(|selector| selector.contains(
+                        "[local-name()='entry' and namespace-uri()='urn:hl7-org:v3'][1]"
+                    )));
             }
 
             /// finds a dropped arrival's selector when the selector node is named

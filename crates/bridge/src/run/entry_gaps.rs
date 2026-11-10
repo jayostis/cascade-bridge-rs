@@ -551,7 +551,8 @@ mod tests {
 
             #[test]
             fn refuses_a_gap_scheme_the_crate_names_and_nothing_answers_to() {
-                let missing = Variant::of(tiny()).replacing_exactly(CRATE, GAP_SCHEME, UNWRITTEN, 1);
+                let missing =
+                    Variant::of(tiny()).replacing_exactly(CRATE, GAP_SCHEME, UNWRITTEN, 1);
                 let refusal = refused(
                     &missing,
                     "two.xml",

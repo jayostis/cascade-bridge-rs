@@ -154,7 +154,8 @@ mod tests {
 
             #[test]
             fn refuses_a_json_document_that_is_not_json() {
-                let resolver = Variant::of(tiny_json()).replacing("fixtures/in/item.json", "\"nine\"", "nine");
+                let resolver =
+                    Variant::of(tiny_json()).replacing("fixtures/in/item.json", "\"nine\"", "nine");
                 let adapter = load_adapter(&resolver).expect("the adapter");
                 let prepared = prepare(&adapter, &resolver).expect("prepared");
                 let iri = format!("{}fixtures/in/item.json", resolver.root());
@@ -360,7 +361,8 @@ mod tests {
             #[test]
             fn validates_a_record_against_the_subschema_its_envelope_s_schema_fragment_names_resolving_refs_in_the_whole_document(
             ) {
-                let violations = fixtures::violations(&converted(&entry_schema(), "list.json").findings);
+                let violations =
+                    fixtures::violations(&converted(&entry_schema(), "list.json").findings);
                 let section = |number: &str| {
                     format!("https://datatracker.ietf.org/doc/html/draft-wright-json-schema-validation-01#section-6.{number}")
                 };
@@ -377,7 +379,11 @@ mod tests {
             fn validates_a_record_read_in_an_envelope_naming_no_schema_against_the_adapter_s() {
                 let violations = fixtures::violations(
                     &converted(
-                        &entry_schema().replacing("fixtures/in/item.json", "\"kind\": \"item\"", "\"kind\": 3"),
+                        &entry_schema().replacing(
+                            "fixtures/in/item.json",
+                            "\"kind\": \"item\"",
+                            "\"kind\": 3",
+                        ),
                         "item.json",
                     )
                     .findings,
@@ -419,7 +425,8 @@ mod tests {
             fn passes_every_entry_of_the_tiny_json_adapter() {
                 let resolver = tiny_json();
                 let adapter = load_adapter(&resolver).expect("the adapter");
-                let results = run_manifest(&adapter, &resolver, RunOptions::default()).expect("the run");
+                let results =
+                    run_manifest(&adapter, &resolver, RunOptions::default()).expect("the run");
                 assert_eq!(results.len(), 2);
                 for result in results {
                     assert_eq!(

@@ -189,7 +189,9 @@ mod rules_this_repository_keeps {
         fn meets_the_specification_s_synthetic_adapter_only_through_its_vector() {
             let offenders: Vec<String> = files_naming("fixtures/synthetic-adapter")
                 .into_iter()
-                .filter(|file| file != "crates/bridge-cli/tests/specification_vector.rs" && file != file!())
+                .filter(|file| {
+                    file != "crates/bridge-cli/tests/specification_vector.rs" && file != file!()
+                })
                 .collect();
             assert_eq!(offenders, Vec::<String>::new());
         }

@@ -112,7 +112,9 @@ mod tests {
                 let findings = &conversion.findings;
                 let mut warned: Vec<(String, String, String, String)> = annotations(findings)
                     .iter()
-                    .filter(|annotation| says(findings, annotation, OA_HAS_BODY) == BRIDGE_VERSION_NOT_KEPT)
+                    .filter(|annotation| {
+                        says(findings, annotation, OA_HAS_BODY) == BRIDGE_VERSION_NOT_KEPT
+                    })
                     .map(|annotation| {
                         let (record, within) = address(findings, annotation);
                         (
@@ -220,11 +222,14 @@ CONSTRUCT {{ [] ex:holds ?id }} WHERE {{ ?item a fx:root, xyz:item ; xyz:id ?id 
                     "bridge:thisDocument bridge:sha256 ?sha256 . BIND(IRI(?sha256) AS ?document)",
                 );
                 let quads = converted_with_facts(&resolver, "two.xml").quads;
-                let associations: Vec<String> = objects(&quads, &format!("<{}>", two()), PROV_WAS_GENERATED_BY)
-                    .iter()
-                    .flat_map(|act| objects(&quads, &act.to_string(), PROV_QUALIFIED_ASSOCIATION))
-                    .map(|association| association.to_string())
-                    .collect();
+                let associations: Vec<String> =
+                    objects(&quads, &format!("<{}>", two()), PROV_WAS_GENERATED_BY)
+                        .iter()
+                        .flat_map(|act| {
+                            objects(&quads, &act.to_string(), PROV_QUALIFIED_ASSOCIATION)
+                        })
+                        .map(|association| association.to_string())
+                        .collect();
                 let agents: BTreeSet<String> = associations
                     .iter()
                     .flat_map(|association| said(&quads, association, PROV_AGENT))
@@ -237,7 +242,9 @@ CONSTRUCT {{ [] ex:holds ?id }} WHERE {{ ?item a fx:root, xyz:item ; xyz:id ?id 
                 assert!(agents.contains("a clinic"), "{agents:?}");
                 assert_eq!(
                     roles,
-                    BTreeSet::from(["<https://ns.cascadeprotocol.org/cascade#AuthorRole>".to_owned()])
+                    BTreeSet::from([
+                        "<https://ns.cascadeprotocol.org/cascade#AuthorRole>".to_owned()
+                    ])
                 );
             }
 
@@ -398,12 +405,15 @@ CONSTRUCT {{ [] ex:holds ?id }} WHERE {{ ?item a fx:root, xyz:item ; xyz:id ?id 
                         "<title>2026-01-01T00:00:00.000+01:00</title>",
                     );
                 let quads = converted_with_facts(&resolver, "two.xml").quads;
-                let names = BTreeSet::from_iter(quads.iter().filter_map(|quad| match &quad.object {
-                    Term::NamedNode(version) if quad.predicate.as_str() == BRIDGE_ARRIVED_AS => {
-                        Some(version.clone())
-                    }
-                    _ => None,
-                }));
+                let names =
+                    BTreeSet::from_iter(quads.iter().filter_map(|quad| match &quad.object {
+                        Term::NamedNode(version)
+                            if quad.predicate.as_str() == BRIDGE_ARRIVED_AS =>
+                        {
+                            Some(version.clone())
+                        }
+                        _ => None,
+                    }));
                 assert_eq!(names.len(), 2, "{names:?}");
                 for name in names {
                     let content: Vec<Quad> = quads

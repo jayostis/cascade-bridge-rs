@@ -1,6 +1,7 @@
 use crate::fixtures::{
     accounting, address, annotations, concept, count, entry, findings, gap_scheme, node, refused,
-    says, tiny, Variant, ACCOUNTING, ACCOUNTING_PREAMBLE, CONCEPT_MAP, GAP_SCHEME, NOTE_GAP, OA, SH,
+    says, tiny, Variant, ACCOUNTING, ACCOUNTING_PREAMBLE, CONCEPT_MAP, GAP_SCHEME, NOTE_GAP, OA,
+    SH,
 };
 use oxrdf::{Quad, Term};
 
@@ -352,10 +353,15 @@ mod tests {
             #[test]
             fn takes_the_severity_the_gap_declares_and_sh_info_where_it_declares_none() {
                 for (declared, reported) in [(Some("Warning"), "Warning"), (None, "Info")] {
-                    let severity = declaring(accounting(&[looks_up("/item/note", "consumed")])).with(
-                        GAP_SCHEME,
-                        gap_scheme(&[concept("statusOutsideTheTable", "valueNotMapped", declared)]),
-                    );
+                    let severity = declaring(accounting(&[looks_up("/item/note", "consumed")]))
+                        .with(
+                            GAP_SCHEME,
+                            gap_scheme(&[concept(
+                                "statusOutsideTheTable",
+                                "valueNotMapped",
+                                declared,
+                            )]),
+                        );
                     let found = findings(&severity, "lookup-a-value-at-three-nodes.xml");
                     assert_eq!(
                         says(
@@ -468,10 +474,11 @@ mod tests {
                     "carriedWithLoss",
                     "schemaRuleUnnamed",
                 ] {
-                    let mistyped = declaring(accounting(&[looks_up("/item/note", "consumed")])).with(
-                        GAP_SCHEME,
-                        gap_scheme(&[concept("statusOutsideTheTable", kind, None)]),
-                    );
+                    let mistyped = declaring(accounting(&[looks_up("/item/note", "consumed")]))
+                        .with(
+                            GAP_SCHEME,
+                            gap_scheme(&[concept("statusOutsideTheTable", kind, None)]),
+                        );
                     let refusal = refused(
                         &mistyped,
                         "two.xml",
@@ -495,7 +502,9 @@ mod tests {
                     let refusal = refused(
                         &both,
                         "two.xml",
-                        &format!("an entry declaring {twice} is read at whichever the parse saw last"),
+                        &format!(
+                            "an entry declaring {twice} is read at whichever the parse saw last"
+                        ),
                     );
                     assert!(refusal.contains("/item/note"), "{refusal}");
                 }
@@ -503,8 +512,8 @@ mod tests {
 
             #[test]
             fn refuses_a_concept_map_that_does_not_parse() {
-                let broken =
-                    declaring(accounting(&[looks_up("/item/note", "consumed")])).with(CONCEPT_MAP, UNPARSEABLE);
+                let broken = declaring(accounting(&[looks_up("/item/note", "consumed")]))
+                    .with(CONCEPT_MAP, UNPARSEABLE);
                 let refusal = refused(
                     &broken,
                     "two.xml",

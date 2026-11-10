@@ -85,7 +85,8 @@ mod reading_a_json_document_as_records {
         #[test]
         fn selects_through_a_repeated_name_each_node_a_null_and_an_array_s_item_by_its_index_as_rfc_6901_writes_it(
         ) {
-            let node = parse(r#"{"a": {"b": 1}, "a": {"b": 2}, "n": null, "i": [7, 8]}"#).expect("parsed");
+            let node =
+                parse(r#"{"a": {"b": 1}, "a": {"b": 2}, "n": null, "i": [7, 8]}"#).expect("parsed");
             assert_eq!(selected(&node, "/a/b").len(), 2);
             assert_eq!(selected(&node, "/n").len(), 1);
             assert_eq!(selected(&node, "/%FF").len(), 0);

@@ -70,13 +70,20 @@ mod tests {
                         format!("{root}vocab/missing-accounting.ttl"),
                     ),
                     (
-                        Variant::of(tiny()).replacing_exactly(CRATE, GAP_SCHEME, "vocab/missing-gaps.ttl", 1),
+                        Variant::of(tiny()).replacing_exactly(
+                            CRATE,
+                            GAP_SCHEME,
+                            "vocab/missing-gaps.ttl",
+                            1,
+                        ),
                         String::new(),
                         format!("{root}vocab/missing-gaps.ttl"),
                     ),
                     (
                         with_accounting(&lookup),
-                        format!("{accounting_iri}: the entry for /item/note looks its values up in "),
+                        format!(
+                            "{accounting_iri}: the entry for /item/note looks its values up in "
+                        ),
                         format!("{root}vocab/missing-statuses.ttl"),
                     ),
                 ];
@@ -171,7 +178,8 @@ mod tests {
                     "<urn:example:a> <urn:example:b> {",
                 );
                 let adapter = load_adapter(&variant).expect("the crate loads");
-                let results = run_manifest(&adapter, &variant, RunOptions::default()).expect("the manifest");
+                let results =
+                    run_manifest(&adapter, &variant, RunOptions::default()).expect("the manifest");
                 let reported: Vec<&str> = results.iter().map(|r| r.description.as_str()).collect();
                 assert!(
                     reported.iter().any(|d| d.contains("expected/two.ttl")),

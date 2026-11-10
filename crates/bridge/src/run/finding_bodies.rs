@@ -209,7 +209,8 @@ mod tests {
             fn names_a_rule_of_part_two_for_a_value_its_simple_type_refuses() {
                 // The type of an item's title narrowed, so a value its simple type refuses
                 // can be written where the schemas on disk accept every string.
-                let typed = Variant::of(tiny()).replacing("schema/item.xsd", STRING_TITLE, INT_TITLE);
+                let typed =
+                    Variant::of(tiny()).replacing("schema/item.xsd", STRING_TITLE, INT_TITLE);
                 let findings = converted(&typed, "refused-value.xml").findings;
                 assert_eq!(
                     violations(&findings),
@@ -231,7 +232,9 @@ mod tests {
             #[test]
             fn selects_the_offending_element_under_the_document_element() {
                 assert_eq!(
-                    violations(&converted(&tiny(), "element-under-the-document-element.xml").findings),
+                    violations(
+                        &converted(&tiny(), "element-under-the-document-element.xml").findings
+                    ),
                     [
                         (
                             format!("{PART_1}cvc-complex-type"),

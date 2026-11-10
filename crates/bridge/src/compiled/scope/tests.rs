@@ -221,11 +221,8 @@ mod workings_no_caller_sees {
                             named(names, &frame.bound.maybe),
                         )
                     });
-                    (found_certain != strings(certain) || found_maybe != strings(maybe)).then_some((
-                        construct,
-                        found_certain,
-                        found_maybe,
-                    ))
+                    (found_certain != strings(certain) || found_maybe != strings(maybe))
+                        .then_some((construct, found_certain, found_maybe))
                 })
                 .collect();
             assert!(wrong.is_empty(), "{wrong:#?}");

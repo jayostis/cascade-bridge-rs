@@ -384,7 +384,8 @@ mod converting_a_document {
         fn returns_true_for_a_document_the_detect_query_claims_and_false_for_one_it_does_not() {
             let loaded = load(&tiny_to_load(), &vocabulary());
             let two = fixture("fixtures/in/two.xml");
-            let shelf = b"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<shelf><item id=\"1\"/></shelf>\n";
+            let shelf =
+                b"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<shelf><item id=\"1\"/></shelf>\n";
             assert!(matches!(loaded.accepts(&document(&two)), Ok(true)));
             assert!(matches!(loaded.accepts(&document(shelf)), Ok(false)));
         }
@@ -556,8 +557,9 @@ mod stopping_a_convert_at_its_budgets {
             let loaded = load(&tiny_to_load(), &vocabulary());
             let two = fixture("fixtures/in/two.xml");
             past_its_time_budget(&loaded, &two);
-            let graph =
-                |adapter: &Loaded| canonical(&written(convert(adapter, &two).graph(Format::Turtle)));
+            let graph = |adapter: &Loaded| {
+                canonical(&written(convert(adapter, &two).graph(Format::Turtle)))
+            };
             let reloaded = load(&tiny_to_load(), &vocabulary());
             assert_eq!(graph(&loaded), graph(&reloaded));
             assert!(names_an_item(&graph(&reloaded)));
@@ -586,8 +588,9 @@ mod measuring_a_load_and_a_convert {
             let (profiled, _) = loaded
                 .convert_profiled(&document(&two))
                 .unwrap_or_else(|error| panic!("the document does not convert: {error}"));
-            let findings =
-                |conversion: &Conversion| canonical(&written(conversion.findings(Format::Turtle, None)));
+            let findings = |conversion: &Conversion| {
+                canonical(&written(conversion.findings(Format::Turtle, None)))
+            };
             assert_eq!(
                 canonical(&written(profiled.graph(Format::Turtle))),
                 canonical(&written(plain.graph(Format::Turtle)))
@@ -700,7 +703,8 @@ mod running_an_adapter_s_test_manifest {
             .unwrap_or_else(|error| panic!("the adapter is not tested: {error}"));
             let earl = String::from_utf8_lossy(&report.earl);
             assert!(!earl.contains("file:"), "{earl}");
-            let tested: BTreeSet<String> = objects_of(&report.earl, EARL_TEST).into_iter().collect();
+            let tested: BTreeSet<String> =
+                objects_of(&report.earl, EARL_TEST).into_iter().collect();
             let entries: BTreeSet<String> = [
                 "pass",
                 "graph-fail",

@@ -213,7 +213,8 @@ mod tests {
                     selector_type: SelectorType::JsonPointer,
                 };
                 let record = r#"{"a": 1, "b": 2, "b": 3, "n": null}"#;
-                for (within, reported) in [("/a", false), ("/b", true), ("/n", false), ("/z", true)] {
+                for (within, reported) in [("/a", false), ("/b", true), ("/n", false), ("/z", true)]
+                {
                     let reports = Followed
                         .unresolved(&document, record, &finding("/0", within))
                         .expect("the reports");

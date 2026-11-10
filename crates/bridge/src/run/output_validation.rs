@@ -174,7 +174,8 @@ mod tests {
             /// makes one finding of the result a record's graph failed a shape on
             #[test]
             fn makes_one_finding_of_the_result_a_record_s_graph_failed_a_shape_on() {
-                let (conversion, document) = read_against_the_vocabulary("output-fails-a-shape.xml");
+                let (conversion, document) =
+                    read_against_the_vocabulary("output-fails-a-shape.xml");
                 assert_eq!(
                     output_findings(&conversion.findings),
                     [code_too_long(&document)]
@@ -209,12 +210,18 @@ mod tests {
 
             #[test]
             fn makes_a_finding_of_its_own_of_each_of_two_results_about_one_record() {
-                let (conversion, document) = read_against_the_vocabulary("output-fails-two-shapes.xml");
+                let (conversion, document) =
+                    read_against_the_vocabulary("output-fails-two-shapes.xml");
                 assert_eq!(
                     output_findings(&conversion.findings),
                     [
                         code_too_long(&document),
-                        on_the_first_record("MinCountConstraintComponent", "Violation", "", &document),
+                        on_the_first_record(
+                            "MinCountConstraintComponent",
+                            "Violation",
+                            "",
+                            &document
+                        ),
                     ],
                     "each finding carries the severity of the result it was made from"
                 );
@@ -233,7 +240,8 @@ mod tests {
             #[test]
             fn reports_a_predicate_no_ontology_declares_and_leaves_rdf_type_and_the_bridge_s_own_alone(
             ) {
-                let (conversion, _) = read_against_the_vocabulary("a-predicate-no-ontology-declares.xml");
+                let (conversion, _) =
+                    read_against_the_vocabulary("a-predicate-no-ontology-declares.xml");
                 let reported: Vec<(String, String, String)> = output_findings(&conversion.findings)
                     .into_iter()
                     .map(|finding| (finding.body, finding.path, finding.severity))

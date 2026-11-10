@@ -177,7 +177,8 @@ mod tests {
                     let whole = converted_skipping(adapter.as_ref(), left.input, &[]);
                     let skipped = converted_skipping(adapter.as_ref(), left.input, &[left.skip]);
                     let name = left.skip.as_str();
-                    let (before, after) = ((left.kind)(&whole.findings), (left.kind)(&skipped.findings));
+                    let (before, after) =
+                        ((left.kind)(&whole.findings), (left.kind)(&skipped.findings));
                     assert!(before > 0, "{name}: nothing to leave out");
                     assert_eq!(after, 0, "{name}");
                     assert_eq!(
@@ -215,7 +216,8 @@ mod tests {
             fn names_in_conversion_skipped_each_skip_once_and_nothing_for_a_default_load() {
                 assert_eq!(prepared_skipping(&tiny(), &[]).skipped, []);
                 assert_eq!(
-                    prepared_skipping(&tiny(), &[Skip::Findings, Skip::Schema, Skip::Findings]).skipped,
+                    prepared_skipping(&tiny(), &[Skip::Findings, Skip::Schema, Skip::Findings])
+                        .skipped,
                     [Skip::Schema, Skip::Findings]
                 );
             }

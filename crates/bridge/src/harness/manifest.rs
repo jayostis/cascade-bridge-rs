@@ -292,8 +292,9 @@ mod tests {
                 );
                 // A finding carries no sentence, so the comparison names it by its body and address.
                 assert!(
-                    described("findings-fail")
-                        .contains("<http://www.w3.org/ns/oa#hasBody> <urn:example:catalog#noteHasNoTerm>"),
+                    described("findings-fail").contains(
+                        "<http://www.w3.org/ns/oa#hasBody> <urn:example:catalog#noteHasNoTerm>"
+                    ),
                     "the finding that differs is not named by its body: {}",
                     described("findings-fail")
                 );
@@ -317,7 +318,8 @@ mod tests {
                 adapter
                     .required_profiles
                     .push("https://ns.cascadeprotocol.org/bridge/v1-draft#xslt-3".to_owned());
-                let results = run_manifest(&adapter, &resolver, RunOptions::default()).expect("manifest");
+                let results =
+                    run_manifest(&adapter, &resolver, RunOptions::default()).expect("manifest");
                 assert_eq!(results.len(), run().len(), "every entry is reported");
                 for result in &results {
                     assert_eq!(
@@ -341,7 +343,8 @@ mod tests {
                 let resolver = tiny();
                 let mut adapter = load_adapter(&resolver).expect("adapter");
                 adapter.element_name_of_each_record = None;
-                let results = run_manifest(&adapter, &resolver, RunOptions::default()).expect("manifest");
+                let results =
+                    run_manifest(&adapter, &resolver, RunOptions::default()).expect("manifest");
                 assert!(!results.is_empty());
                 for result in &results {
                     assert_eq!(
@@ -375,7 +378,8 @@ mod tests {
                     name: "test".to_owned(),
                     version: "0".to_owned(),
                 };
-                let turtle = earl_report_at(&results, &subject, "2026-01-01T00:00:00Z").expect("earl");
+                let turtle =
+                    earl_report_at(&results, &subject, "2026-01-01T00:00:00Z").expect("earl");
 
                 let mut graph = Graph::new();
                 for quad in RdfParser::from_format(RdfFormat::Turtle)
@@ -488,7 +492,10 @@ mod tests {
                                 .filter(|named| !said.contains(*named))
                                 .collect();
                             if !unnamed.is_empty() {
-                                wrong.push(format!("{}: {unnamed:?} not in: {said}", second.doubled));
+                                wrong.push(format!(
+                                    "{}: {unnamed:?} not in: {said}",
+                                    second.doubled
+                                ));
                             }
                         }
                         Err(said) => wrong.push(format!("{}: {said}", second.doubled)),
@@ -509,7 +516,8 @@ mod tests {
                 let (sender, receiver) = mpsc::channel();
                 thread::spawn(move || {
                     let run = run_manifest(&adapter, &resolver, RunOptions::default());
-                    let _ = sender.send(run.map(|results| results.len()).map_err(|e| e.to_string()));
+                    let _ =
+                        sender.send(run.map(|results| results.len()).map_err(|e| e.to_string()));
                 });
                 let run = receiver
                     .recv_timeout(Duration::from_secs(10))
