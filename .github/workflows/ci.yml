@@ -60,11 +60,9 @@ jobs:
       - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
       - run: node --test .github/scripts/junit-properties.test.mjs
         working-directory: ${{ github.event.repository.name }}
-      # Nextest runs each test in a process of its own and writes the JUnit report that the tests page reads. The first run
-      # is every crate's tests; the second is the two binaries that need the built package and the specification beside.
       - uses: taiki-e/install-action@v2
         with:
-          tool: cargo-nextest@0.9.151
+          tool: cargo-nextest@0.9.149
       - run: cargo nextest run --locked --profile ci
         working-directory: ${{ github.event.repository.name }}
       - run: cargo nextest run --locked --profile ci-hosts -p cascade-bridge-cli --test node_host --test specification_vector --run-ignored all
@@ -90,7 +88,6 @@ jobs:
           done
           exit "$failed"
         working-directory: ${{ github.event.repository.name }}
-      # The two reports as one, each case given the file, line and doc comment of where it is in the source.
       - name: the report the tests page reads
         if: ${{ !cancelled() }}
         run: |

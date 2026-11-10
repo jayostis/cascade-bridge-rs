@@ -156,7 +156,7 @@
     },
     {
       "term": "library",
-      "definition": "what the Bridge offers a program that loads it: five operations (describe, load, ask, convert, test), bytes in and bytes out. `cascade-bridge library` is the command that makes calls on it from a file."
+      "definition": "what the Bridge offers a program that loads it: five operations (describe, load, ask, convert, test), bytes in and bytes out. `load` takes an adapter's files, and a vocabulary's, and holds them for the calls after it, so a `convert` made before any `load` has nothing to work with. `cascade-bridge library` is the command that makes calls on it from a file."
     },
     {
       "term": "map",
