@@ -35,113 +35,6 @@ fn violations(findings: &[Quad]) -> Vec<(String, String)> {
     addressed
 }
 
-#[test]
-fn converts_a_record_that_fails_its_schema_and_reports_it_at_that_record_s_position() {
-    let conversion = converted(&tiny(), "invalid.xml");
-    assert_eq!(conversion.units, 2);
-    assert!(
-        conversion.quads.iter().any(
-            |q| matches!(&q.subject, NamedOrBlankNode::NamedNode(n) if n.as_str() == "urn:example:item:1")
-        ),
-        "the record that passed still produced its graph"
-    );
-
-    let records: Vec<String> = violations(&conversion.findings)
-        .into_iter()
-        .map(|(record, _)| record)
-        .collect();
-    assert!(
-        records.contains(&"/catalog/item[2]".to_owned()),
-        "{records:?}"
-    );
-    assert!(
-        records.contains(&"/catalog".to_owned()),
-        "the document fails its envelope's schema too: {records:?}"
-    );
-}
-
-#[test]
-fn reports_nothing_about_a_document_both_its_schemas_accept() {
-    let conversion = converted(&tiny(), "two.xml");
-    assert_eq!(
-        violations(&conversion.findings),
-        Vec::<(String, String)>::new(),
-        "{:?}",
-        rows(&conversion.findings)
-    );
-}
-
-#[test]
-fn reports_a_value_matching_a_branch_of_its_pattern_at_only_one_end() {
-    let either = Variant::of(tiny())
-        .replacing(
-            "schema/item.xsd",
-            "<xs:attribute name=\"internal\" type=\"xs:string\"/>",
-            "<xs:attribute name=\"internal\">\n      <xs:simpleType>\n        <xs:restriction base=\"xs:string\">\n          <xs:pattern value=\"a|b\"/>\n        </xs:restriction>\n      </xs:simpleType>\n    </xs:attribute>",
-        )
-        .replacing(
-            "fixtures/in/two.xml",
-            "<item id=\"1\">",
-            "<item id=\"1\" internal=\"ax\">",
-        )
-        .replacing(
-            "fixtures/in/two.xml",
-            "<item id=\"2\"/>",
-            "<item id=\"2\" internal=\"xb\"/>\n  <item id=\"3\" internal=\"b\"/>",
-        );
-    let addressed: Vec<(String, String)> = [
-        ("/catalog", "item[1]"),
-        ("/catalog", "item[2]"),
-        ("/catalog/item[1]", ""),
-        ("/catalog/item[2]", ""),
-    ]
-    .map(|(record, within)| (record.to_owned(), within.to_owned()))
-    .into();
-    assert_eq!(
-        violations(&converted(&either, "two.xml").findings),
-        addressed
-    );
-}
-
-#[test]
-fn refuses_a_schema_that_includes_a_file_outside_the_adapter() {
-    let outside = Variant::of(tiny()).replacing(
-        "schema/catalog.xsd",
-        "\"item.xsd\"",
-        "\"../../../harness.rs\"",
-    );
-    let adapter = load_adapter(&outside).expect("adapter");
-    let Err(error) = prepare(&adapter, &outside) else {
-        panic!("a schema outside the adapter was read");
-    };
-    assert!(
-        error.to_string().contains("not inside the adapter"),
-        "{error}"
-    );
-}
-
-/// The record's own type is element-only, so neither a comment nor an instruction is
-/// content.
-#[test]
-fn reports_nothing_about_a_record_carrying_a_comment_and_an_instruction() {
-    let plain = converted(&tiny(), "two.xml");
-    let aside = converted(
-        &Variant::of(tiny()).replacing(
-            "fixtures/in/two.xml",
-            "<item id=\"1\">",
-            "<item id=\"1\"><!-- said of the first --><?say it again?>",
-        ),
-        "two.xml",
-    );
-    assert_eq!(rows(&aside.findings), rows(&plain.findings));
-    assert_eq!(
-        violations(&aside.findings),
-        Vec::<(String, String)>::new(),
-        "{:?}",
-        rows(&aside.findings)
-    );
-}
-
 struct Rehomed {
     root: String,
     directory: Fixture,
@@ -159,22 +52,6 @@ impl Resolver for Rehomed {
         self.directory
             .read(&format!("{}{rest}", self.directory.root()))
     }
-}
-
-#[test]
-fn applies_an_included_schema_under_a_root_that_is_not_a_file() {
-    let rehomed = Rehomed {
-        root: "s3://b/a/".to_owned(),
-        directory: tiny(),
-    };
-    let records: Vec<String> = violations(&converted(&rehomed, "invalid.xml").findings)
-        .into_iter()
-        .map(|(record, _)| record)
-        .collect();
-    assert!(
-        records.contains(&"/catalog/item[2]".to_owned()),
-        "the item without the id its included schema requires: {records:?}"
-    );
 }
 
 const XML_NAMESPACE: &str = "http://www.w3.org/XML/1998/namespace";
@@ -232,86 +109,10 @@ fn assert_no_violation(adapter: &Variant) {
     );
 }
 
-#[test]
-fn reports_nothing_about_a_record_whose_schema_imports_the_xml_namespace_with_no_schema_location() {
-    assert_no_violation(&importing_the_xml_namespace(""));
-}
-
-#[test]
-fn reports_nothing_about_a_record_whose_schema_imports_the_xml_namespace_from_w3c() {
-    assert_no_violation(&importing_the_xml_namespace(
-        " schemaLocation=\"http://www.w3.org/2009/01/xml.xsd\"",
-    ));
-}
-
-#[test]
-fn reports_nothing_about_a_record_whose_schema_imports_xlink_from_a_remote_address() {
-    assert_no_violation(&importing_xlink(
-        " schemaLocation=\"https://www.w3.org/1999/xlink.xsd\"",
-    ));
-}
-
-#[test]
-fn reports_nothing_about_a_record_whose_schema_imports_the_xml_namespace_from_a_file_the_adapter_lacks(
-) {
-    assert_no_violation(&importing_the_xml_namespace(" schemaLocation=\"xml.xsd\""));
-}
-
-#[test]
-fn reports_nothing_about_a_record_whose_schema_imports_xlink_from_a_file_the_adapter_lacks() {
-    assert_no_violation(&importing_xlink(" schemaLocation=\"xlink.xsd\""));
-}
-
 fn shipping_xml_xsd(lang: &str) -> String {
     format!(
         "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" targetNamespace=\"{XML_NAMESPACE}\">\n  {lang}\n</xs:schema>\n"
     )
-}
-
-#[test]
-fn reports_nothing_about_a_record_whose_schema_imports_the_xml_namespace_from_the_adapter() {
-    assert_no_violation(
-        &importing_the_xml_namespace(" schemaLocation=\"xml.xsd\"").with(
-            "schema/xml.xsd",
-            shipping_xml_xsd("<xs:attribute name=\"lang\" type=\"xs:language\"/>"),
-        ),
-    );
-}
-
-#[test]
-fn applies_the_adapter_s_own_schema_of_the_xml_namespace_over_the_bridge_s() {
-    let french_only = importing_the_xml_namespace(" schemaLocation=\"xml.xsd\"").with(
-        "schema/xml.xsd",
-        shipping_xml_xsd(
-            "<xs:attribute name=\"lang\">\n    <xs:simpleType>\n      <xs:restriction base=\"xs:language\">\n        <xs:enumeration value=\"fr\"/>\n      </xs:restriction>\n    </xs:simpleType>\n  </xs:attribute>",
-        ),
-    );
-    let records: Vec<String> = violations(&converted(&french_only, "two.xml").findings)
-        .into_iter()
-        .map(|(record, _)| record)
-        .collect();
-    assert!(
-        records.contains(&"/catalog/item[1]".to_owned()),
-        "the item whose xml:lang the adapter's schema does not allow: {records:?}"
-    );
-}
-
-#[test]
-fn refuses_a_schema_that_imports_another_namespace_from_a_remote_address() {
-    let remote = importing(
-        "urn:example:elsewhere",
-        " schemaLocation=\"http://www.w3.org/2009/01/xml.xsd\"",
-        "",
-        "",
-    );
-    let adapter = load_adapter(&remote).expect("adapter");
-    let Err(error) = prepare(&adapter, &remote) else {
-        panic!("a schema at a remote address was read");
-    };
-    assert!(
-        error.to_string().contains("not inside the adapter"),
-        "{error}"
-    );
 }
 
 fn declaring_a_simple_type(name: &str) -> String {
@@ -320,40 +121,261 @@ fn declaring_a_simple_type(name: &str) -> String {
     )
 }
 
-#[test]
-fn applies_two_included_schemas_whose_paths_differ_only_before_a_colon_segment() {
-    let apart = Variant::of(tiny())
-        .replacing(
-            "schema/item.xsd",
-            "<xs:element name=\"item\"",
-            "<xs:include schemaLocation=\"v1/ab:/t.xsd\"/>\n  <xs:include schemaLocation=\"v2/ab:/t.xsd\"/>\n  <xs:element name=\"item\"",
-        )
-        .replacing(
-            "schema/item.xsd",
-            "<xs:attribute name=\"internal\" type=\"xs:string\"/>",
-            "<xs:attribute name=\"internal\" type=\"second\"/>\n    <xs:attribute name=\"external\" type=\"first\"/>",
-        )
-        .with("schema/v1/ab:/t.xsd", declaring_a_simple_type("first"))
-        .with("schema/v2/ab:/t.xsd", declaring_a_simple_type("second"));
-    let conversion = converted(&apart, "two.xml");
-    assert_eq!(
-        violations(&conversion.findings),
-        Vec::<(String, String)>::new(),
-        "{:?}",
-        rows(&conversion.findings)
-    );
-}
+mod tests {
+    use super::*;
 
-#[test]
-fn refuses_an_xml_schema_named_with_a_fragment() {
-    let resolver = Variant::of(tiny()).replacing(
-        "ro-crate-metadata.json",
-        "\"schema/item.xsd\"",
-        "\"schema/item.xsd#item\"",
-    );
-    let adapter = load_adapter(&resolver).expect("adapter");
-    let Err(error) = prepare(&adapter, &resolver) else {
-        panic!("an XML Schema named with a fragment was compiled");
-    };
-    assert!(error.to_string().contains("without a fragment"), "{error}");
+    /// Validating a document against the adapter's XML Schema · Loaded::convert()
+    mod validating_a_document_against_the_adapter_s_xml_schema {
+        use super::*;
+
+        mod given_a_record_and_its_schema {
+            use super::*;
+
+            /// converts a record that fails its schema and reports it at that record's position
+            #[test]
+            fn converts_a_record_that_fails_its_schema_and_reports_it_at_that_record_s_position() {
+                let conversion = converted(&tiny(), "invalid.xml");
+                assert_eq!(conversion.units, 2);
+                assert!(
+                    conversion.quads.iter().any(
+                        |q| matches!(&q.subject, NamedOrBlankNode::NamedNode(n) if n.as_str() == "urn:example:item:1")
+                    ),
+                    "the record that passed still produced its graph"
+                );
+
+                let records: Vec<String> = violations(&conversion.findings)
+                    .into_iter()
+                    .map(|(record, _)| record)
+                    .collect();
+                assert!(
+                    records.contains(&"/catalog/item[2]".to_owned()),
+                    "{records:?}"
+                );
+                assert!(
+                    records.contains(&"/catalog".to_owned()),
+                    "the document fails its envelope's schema too: {records:?}"
+                );
+            }
+
+            #[test]
+            fn reports_nothing_about_a_document_both_its_schemas_accept() {
+                let conversion = converted(&tiny(), "two.xml");
+                assert_eq!(
+                    violations(&conversion.findings),
+                    Vec::<(String, String)>::new(),
+                    "{:?}",
+                    rows(&conversion.findings)
+                );
+            }
+
+            #[test]
+            fn reports_a_value_matching_a_branch_of_its_pattern_at_only_one_end() {
+                let either = Variant::of(tiny())
+                    .replacing(
+                        "schema/item.xsd",
+                        "<xs:attribute name=\"internal\" type=\"xs:string\"/>",
+                        "<xs:attribute name=\"internal\">\n      <xs:simpleType>\n        <xs:restriction base=\"xs:string\">\n          <xs:pattern value=\"a|b\"/>\n        </xs:restriction>\n      </xs:simpleType>\n    </xs:attribute>",
+                    )
+                    .replacing(
+                        "fixtures/in/two.xml",
+                        "<item id=\"1\">",
+                        "<item id=\"1\" internal=\"ax\">",
+                    )
+                    .replacing(
+                        "fixtures/in/two.xml",
+                        "<item id=\"2\"/>",
+                        "<item id=\"2\" internal=\"xb\"/>\n  <item id=\"3\" internal=\"b\"/>",
+                    );
+                let addressed: Vec<(String, String)> = [
+                    ("/catalog", "item[1]"),
+                    ("/catalog", "item[2]"),
+                    ("/catalog/item[1]", ""),
+                    ("/catalog/item[2]", ""),
+                ]
+                .map(|(record, within)| (record.to_owned(), within.to_owned()))
+                .into();
+                assert_eq!(
+                    violations(&converted(&either, "two.xml").findings),
+                    addressed
+                );
+            }
+
+            // The record's own type is element-only, so neither a comment nor an instruction is
+            // content.
+            #[test]
+            fn reports_nothing_about_a_record_carrying_a_comment_and_an_instruction() {
+                let plain = converted(&tiny(), "two.xml");
+                let aside = converted(
+                    &Variant::of(tiny()).replacing(
+                        "fixtures/in/two.xml",
+                        "<item id=\"1\">",
+                        "<item id=\"1\"><!-- said of the first --><?say it again?>",
+                    ),
+                    "two.xml",
+                );
+                assert_eq!(rows(&aside.findings), rows(&plain.findings));
+                assert_eq!(
+                    violations(&aside.findings),
+                    Vec::<(String, String)>::new(),
+                    "{:?}",
+                    rows(&aside.findings)
+                );
+            }
+        }
+
+        mod given_a_schema_that_includes_or_imports_another {
+            use super::*;
+
+            #[test]
+            fn refuses_a_schema_that_includes_a_file_outside_the_adapter() {
+                let outside = Variant::of(tiny()).replacing(
+                    "schema/catalog.xsd",
+                    "\"item.xsd\"",
+                    "\"../../../harness.rs\"",
+                );
+                let adapter = load_adapter(&outside).expect("adapter");
+                let Err(error) = prepare(&adapter, &outside) else {
+                    panic!("a schema outside the adapter was read");
+                };
+                assert!(
+                    error.to_string().contains("not inside the adapter"),
+                    "{error}"
+                );
+            }
+
+            #[test]
+            fn applies_an_included_schema_under_a_root_that_is_not_a_file() {
+                let rehomed = Rehomed {
+                    root: "s3://b/a/".to_owned(),
+                    directory: tiny(),
+                };
+                let records: Vec<String> = violations(&converted(&rehomed, "invalid.xml").findings)
+                    .into_iter()
+                    .map(|(record, _)| record)
+                    .collect();
+                assert!(
+                    records.contains(&"/catalog/item[2]".to_owned()),
+                    "the item without the id its included schema requires: {records:?}"
+                );
+            }
+
+            #[test]
+            fn reports_nothing_about_a_record_whose_schema_imports_the_xml_namespace_with_no_schema_location(
+            ) {
+                assert_no_violation(&importing_the_xml_namespace(""));
+            }
+
+            #[test]
+            fn reports_nothing_about_a_record_whose_schema_imports_the_xml_namespace_from_w3c() {
+                assert_no_violation(&importing_the_xml_namespace(
+                    " schemaLocation=\"http://www.w3.org/2009/01/xml.xsd\"",
+                ));
+            }
+
+            #[test]
+            fn reports_nothing_about_a_record_whose_schema_imports_xlink_from_a_remote_address() {
+                assert_no_violation(&importing_xlink(
+                    " schemaLocation=\"https://www.w3.org/1999/xlink.xsd\"",
+                ));
+            }
+
+            #[test]
+            fn reports_nothing_about_a_record_whose_schema_imports_the_xml_namespace_from_a_file_the_adapter_lacks(
+            ) {
+                assert_no_violation(&importing_the_xml_namespace(" schemaLocation=\"xml.xsd\""));
+            }
+
+            #[test]
+            fn reports_nothing_about_a_record_whose_schema_imports_xlink_from_a_file_the_adapter_lacks(
+            ) {
+                assert_no_violation(&importing_xlink(" schemaLocation=\"xlink.xsd\""));
+            }
+
+            #[test]
+            fn reports_nothing_about_a_record_whose_schema_imports_the_xml_namespace_from_the_adapter(
+            ) {
+                assert_no_violation(
+                    &importing_the_xml_namespace(" schemaLocation=\"xml.xsd\"").with(
+                        "schema/xml.xsd",
+                        shipping_xml_xsd("<xs:attribute name=\"lang\" type=\"xs:language\"/>"),
+                    ),
+                );
+            }
+
+            /// applies the adapter's own schema of the xml namespace over the bridge s
+            #[test]
+            fn applies_the_adapter_s_own_schema_of_the_xml_namespace_over_the_bridge_s() {
+                let french_only = importing_the_xml_namespace(" schemaLocation=\"xml.xsd\"").with(
+                    "schema/xml.xsd",
+                    shipping_xml_xsd(
+                        "<xs:attribute name=\"lang\">\n    <xs:simpleType>\n      <xs:restriction base=\"xs:language\">\n        <xs:enumeration value=\"fr\"/>\n      </xs:restriction>\n    </xs:simpleType>\n  </xs:attribute>",
+                    ),
+                );
+                let records: Vec<String> = violations(&converted(&french_only, "two.xml").findings)
+                    .into_iter()
+                    .map(|(record, _)| record)
+                    .collect();
+                assert!(
+                    records.contains(&"/catalog/item[1]".to_owned()),
+                    "the item whose xml:lang the adapter's schema does not allow: {records:?}"
+                );
+            }
+
+            #[test]
+            fn refuses_a_schema_that_imports_another_namespace_from_a_remote_address() {
+                let remote = importing(
+                    "urn:example:elsewhere",
+                    " schemaLocation=\"http://www.w3.org/2009/01/xml.xsd\"",
+                    "",
+                    "",
+                );
+                let adapter = load_adapter(&remote).expect("adapter");
+                let Err(error) = prepare(&adapter, &remote) else {
+                    panic!("a schema at a remote address was read");
+                };
+                assert!(
+                    error.to_string().contains("not inside the adapter"),
+                    "{error}"
+                );
+            }
+
+            #[test]
+            fn applies_two_included_schemas_whose_paths_differ_only_before_a_colon_segment() {
+                let apart = Variant::of(tiny())
+                    .replacing(
+                        "schema/item.xsd",
+                        "<xs:element name=\"item\"",
+                        "<xs:include schemaLocation=\"v1/ab:/t.xsd\"/>\n  <xs:include schemaLocation=\"v2/ab:/t.xsd\"/>\n  <xs:element name=\"item\"",
+                    )
+                    .replacing(
+                        "schema/item.xsd",
+                        "<xs:attribute name=\"internal\" type=\"xs:string\"/>",
+                        "<xs:attribute name=\"internal\" type=\"second\"/>\n    <xs:attribute name=\"external\" type=\"first\"/>",
+                    )
+                    .with("schema/v1/ab:/t.xsd", declaring_a_simple_type("first"))
+                    .with("schema/v2/ab:/t.xsd", declaring_a_simple_type("second"));
+                let conversion = converted(&apart, "two.xml");
+                assert_eq!(
+                    violations(&conversion.findings),
+                    Vec::<(String, String)>::new(),
+                    "{:?}",
+                    rows(&conversion.findings)
+                );
+            }
+
+            #[test]
+            fn refuses_an_xml_schema_named_with_a_fragment() {
+                let resolver = Variant::of(tiny()).replacing(
+                    "ro-crate-metadata.json",
+                    "\"schema/item.xsd\"",
+                    "\"schema/item.xsd#item\"",
+                );
+                let adapter = load_adapter(&resolver).expect("adapter");
+                let Err(error) = prepare(&adapter, &resolver) else {
+                    panic!("an XML Schema named with a fragment was compiled");
+                };
+                assert!(error.to_string().contains("without a fragment"), "{error}");
+            }
+        }
+    }
 }

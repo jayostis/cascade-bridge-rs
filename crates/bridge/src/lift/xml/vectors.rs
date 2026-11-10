@@ -92,39 +92,6 @@ fn assert_vector(name: &str, produced: BTreeSet<String>) {
     );
 }
 
-#[test]
-fn reproduces_every_lift_vector_of_the_specification() {
-    let lifts: Vec<String> = vector_names()
-        .into_iter()
-        .filter(|name| {
-            !SKELETON_VECTORS
-                .iter()
-                .any(|(skeleton, _)| skeleton == name)
-        })
-        .collect();
-    assert!(lifts.len() >= 8, "{lifts:?}");
-    for name in lifts {
-        let breaking: Vec<String> = match BREAKING_VECTORS.contains(&name.as_str()) {
-            true => BREAKING.map(str::to_owned).to_vec(),
-            false => Vec::new(),
-        };
-        assert_vector(&name, lift_whole(&vector(&name, "xml"), &breaking));
-    }
-}
-
-#[test]
-fn reproduces_every_skeleton_vector_of_the_specification() {
-    let names = vector_names();
-    for (name, record) in SKELETON_VECTORS {
-        assert!(names.iter().any(|n| n == name), "no {name} vector");
-        let store = lift_slice(&vector(name, "xml"), Some(record))
-            .expect("lift")
-            .into_skeleton()
-            .expect("skeleton");
-        assert_vector(name, lines(&store));
-    }
-}
-
 const FIRST_UNIT: &str = r#"
 _:item <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/ns/root> .
 _:item <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/item> .
@@ -155,64 +122,6 @@ _:second <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/fa
 _:second <http://sparql.xyz/facade-x/data/id> "2" .
 "#;
 
-#[test]
-fn lifts_each_unit_with_the_unit_as_root_and_keeps_only_its_attributes_and_childless_children_in_the_skeleton(
-) {
-    let xml = br#"<set n="2"><item id="1"><t>x</t></item><item id="2"/></set>"#;
-    let mut lift = lift_slice(xml, Some("item")).expect("lift");
-    let mut records = Vec::new();
-    while let Some(record) = lift.next_unit().expect("record") {
-        records.push(lines(&record.store));
-    }
-    assert_eq!(records.len(), 2);
-    assert_graph(
-        "the first record",
-        records.remove(0),
-        parsed(FIRST_UNIT.as_bytes()),
-    );
-    assert_graph(
-        "the second record",
-        records.remove(0),
-        parsed(SECOND_UNIT.as_bytes()),
-    );
-    assert_graph(
-        "the skeleton",
-        lines(&lift.into_skeleton().expect("skeleton")),
-        parsed(SKELETON.as_bytes()),
-    );
-}
-
-#[test]
-fn refuses_a_document_ending_with_an_element_still_open_before_its_skeleton_is_read() {
-    let refused = lift_slice(b"<set><item/>", Some("item"))
-        .and_then(|lift| lift.into_skeleton())
-        .err()
-        .expect("refused");
-    assert!(
-        refused.message().contains("still open"),
-        "{}",
-        refused.message()
-    );
-}
-
-#[test]
-fn treats_a_document_whose_element_is_the_unit_as_one_unit() {
-    let mut lift = lift_slice(br#"<item id="9"/>"#, Some("item")).expect("lift");
-    let record = lift.next_unit().expect("record").expect("one record");
-    assert_graph(
-        "the one record",
-        lines(&record.store),
-        parsed(
-            br#"
-_:item <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/ns/root> .
-_:item <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/item> .
-_:item <http://sparql.xyz/facade-x/data/id> "9" .
-"#,
-        ),
-    );
-    assert!(lift.next_unit().expect("end").is_none());
-}
-
 fn attribute(xml: &[u8], local: &str) -> Vec<String> {
     let predicate = format!("http://sparql.xyz/facade-x/data/{local}");
     lift_slice(xml, None)
@@ -229,35 +138,145 @@ fn attribute(xml: &[u8], local: &str) -> Vec<String> {
         .collect()
 }
 
-#[test]
-fn normalises_an_attribute_value_as_xml_does_whatever_the_checkout() {
-    // A line break, however the checkout wrote it, and a tab are each a space;
-    // a character reference is the character it names, whitespace or not.
-    for xml in [
-        &b"<item note=\"a\r\nb\tc&#10;d&#9;e\"/>"[..],
-        b"<item note=\"a\nb\tc&#10;d&#9;e\"/>",
-        b"<item note=\"a\rb\tc&#10;d&#9;e\"/>",
-    ] {
-        assert_eq!(
-            attribute(xml, "note"),
-            ["a b c\nd\te"],
-            "{}",
-            String::from_utf8_lossy(xml).escape_debug()
-        );
-    }
-}
+mod tests {
+    use super::*;
 
-#[test]
-fn writes_a_record_out_with_the_comments_and_instructions_it_held() {
-    let document =
-        b"<catalog><!-- before --><item>before<!-- inside --><?say it?>after<e/></item></catalog>";
-    let record = lift_slice(document, Some("item"))
-        .expect("lift")
-        .next()
-        .expect("a record")
-        .expect("a record");
-    assert_eq!(
-        record.text,
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><item>before<!-- inside --><?say it?>after<e></e></item>"
-    );
+    /// Reading an XML document as records · Loaded::convert()
+    mod reading_an_xml_document_as_records {
+        use super::*;
+
+        /// given the specification's lift vectors
+        mod given_the_specification_s_lift_vectors {
+            use super::*;
+
+            #[test]
+            fn reproduces_every_lift_vector_of_the_specification() {
+                let lifts: Vec<String> = vector_names()
+                    .into_iter()
+                    .filter(|name| {
+                        !SKELETON_VECTORS
+                            .iter()
+                            .any(|(skeleton, _)| skeleton == name)
+                    })
+                    .collect();
+                assert!(lifts.len() >= 8, "{lifts:?}");
+                for name in lifts {
+                    let breaking: Vec<String> = match BREAKING_VECTORS.contains(&name.as_str()) {
+                        true => BREAKING.map(str::to_owned).to_vec(),
+                        false => Vec::new(),
+                    };
+                    assert_vector(&name, lift_whole(&vector(&name, "xml"), &breaking));
+                }
+            }
+
+            #[test]
+            fn reproduces_every_skeleton_vector_of_the_specification() {
+                let names = vector_names();
+                for (name, record) in SKELETON_VECTORS {
+                    assert!(names.iter().any(|n| n == name), "no {name} vector");
+                    let store = lift_slice(&vector(name, "xml"), Some(record))
+                        .expect("lift")
+                        .into_skeleton()
+                        .expect("skeleton");
+                    assert_vector(name, lines(&store));
+                }
+            }
+        }
+
+        mod given_a_document_split_into_records {
+            use super::*;
+
+            /// lifts each record with the record as root, and keeps only its attributes and childless children in the skeleton
+            #[test]
+            fn lifts_each_record_with_the_record_as_root_and_keeps_only_its_attributes_and_childless_children_in_the_skeleton(
+            ) {
+                let xml = br#"<set n="2"><item id="1"><t>x</t></item><item id="2"/></set>"#;
+                let mut lift = lift_slice(xml, Some("item")).expect("lift");
+                let mut records = Vec::new();
+                while let Some(record) = lift.next_unit().expect("record") {
+                    records.push(lines(&record.store));
+                }
+                assert_eq!(records.len(), 2);
+                assert_graph(
+                    "the first record",
+                    records.remove(0),
+                    parsed(FIRST_UNIT.as_bytes()),
+                );
+                assert_graph(
+                    "the second record",
+                    records.remove(0),
+                    parsed(SECOND_UNIT.as_bytes()),
+                );
+                assert_graph(
+                    "the skeleton",
+                    lines(&lift.into_skeleton().expect("skeleton")),
+                    parsed(SKELETON.as_bytes()),
+                );
+            }
+
+            #[test]
+            fn refuses_a_document_ending_with_an_element_still_open_before_its_skeleton_is_read() {
+                let refused = lift_slice(b"<set><item/>", Some("item"))
+                    .and_then(|lift| lift.into_skeleton())
+                    .err()
+                    .expect("refused");
+                assert!(
+                    refused.message().contains("still open"),
+                    "{}",
+                    refused.message()
+                );
+            }
+
+            #[test]
+            fn treats_a_document_whose_document_element_is_the_record_as_one_record() {
+                let mut lift = lift_slice(br#"<item id="9"/>"#, Some("item")).expect("lift");
+                let record = lift.next_unit().expect("record").expect("one record");
+                assert_graph(
+                    "the one record",
+                    lines(&record.store),
+                    parsed(
+                        br#"
+_:item <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/ns/root> .
+_:item <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/item> .
+_:item <http://sparql.xyz/facade-x/data/id> "9" .
+"#,
+                    ),
+                );
+                assert!(lift.next_unit().expect("end").is_none());
+            }
+
+            #[test]
+            fn normalises_an_attribute_value_as_xml_does_whatever_the_checkout() {
+                // A line break, however the checkout wrote it, and a tab are each a space;
+                // a character reference is the character it names, whitespace or not.
+                for xml in [
+                    &b"<item note=\"a\r\nb\tc&#10;d&#9;e\"/>"[..],
+                    b"<item note=\"a\nb\tc&#10;d&#9;e\"/>",
+                    b"<item note=\"a\rb\tc&#10;d&#9;e\"/>",
+                ] {
+                    assert_eq!(
+                        attribute(xml, "note"),
+                        ["a b c\nd\te"],
+                        "{}",
+                        String::from_utf8_lossy(xml).escape_debug()
+                    );
+                }
+            }
+
+            #[test]
+            fn writes_a_record_out_with_the_comments_and_instructions_it_held() {
+                let document =
+                    b"<catalog><!-- before --><item>before<!-- inside --><?say it?>after<e/></item></catalog>";
+                let record = lift_slice(document, Some("item"))
+                    .expect("lift")
+                    .next()
+                    .expect("a record")
+                    .expect("a record");
+                assert_eq!(
+                    record.text,
+                    "<?xml version=\"1.0\" encoding=\"UTF-8\"?><item>before<!-- inside --><?say it?>after<e></e></item>"
+                );
+            }
+        }
+    }
 }

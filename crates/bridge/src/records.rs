@@ -493,34 +493,137 @@ mod tests {
 
     const OF: &str = "<http://www.w3.org/ns/prov#specializationOf>";
 
-    #[test]
-    fn says_of_each_version_it_drops_which_version_was_kept_and_where_the_dropped_one_arrived_from()
-    {
-        let mapped: Vec<Quad> = RdfParser::from_format(RdfFormat::NTriples)
-            .for_slice(&crate::fixtures::fixture(
-                "tests/versioning/one-version-a-record.mapped.nt",
-            ))
-            .map(|quad| quad.expect("N-Triples"))
-            .collect();
-        let dropped = versioned(mapped).expect("versioned").dropped;
-        assert_eq!(dropped.len(), 1);
-        assert_eq!(
-            dropped[0].kept,
-            "ni:///sha-256;NE41csq6GnQ0o4E6uBjw3zQq45yL4XhCXNUwAyC8Mm8"
-        );
-        assert!(dropped[0]
-            .selector
-            .as_deref()
-            .is_some_and(|selector| selector
-                .contains("[local-name()='entry' and namespace-uri()='urn:hl7-org:v3'][1]")));
-    }
+    /// Naming records and their versions · Facts, Document::facts
+    mod naming_records_and_their_versions {
+        use super::*;
 
-    #[test]
-    fn finds_a_dropped_arrival_s_selector_when_the_selector_node_is_named() {
-        let quads: Vec<Quad> = RdfParser::from_format(RdfFormat::NTriples)
-            .for_slice(
-                format!(
-                    "<urn:example:v1> {OF} <urn:example:record> .
+        mod given_a_version_a_mapping_writes {
+            use super::*;
+
+            #[test]
+            fn refuses_a_version_whose_iri_carries_a_fragment() {
+                let said = refusal(&format!("<urn:example:v#one> {OF} <urn:example:record> ."));
+                assert!(said.contains("with a fragment"), "{said}");
+            }
+
+            #[test]
+            fn refuses_a_version_of_two_records() {
+                let said = refusal(&format!(
+                    "<urn:example:v> {OF} <urn:example:one> .\n<urn:example:v> {OF} <urn:example:two> ."
+                ));
+                assert!(said.contains("more than one record"), "{said}");
+            }
+
+            #[test]
+            fn names_a_version_every_mapping_writes_as_a_specialization_of_the_same_record() {
+                let quads: Vec<Quad> = RdfParser::from_format(RdfFormat::NTriples)
+                    .for_slice(
+                        format!("<urn:example:v> {OF} <urn:example:record> .\n<urn:example:v> {OF} <urn:example:record> .\n")
+                            .as_bytes(),
+                    )
+                    .map(|quad| quad.expect("N-Triples"))
+                    .collect();
+                let versioned = versioned(quads).expect("versioned");
+                assert_eq!(versioned.versions.len(), 1);
+            }
+
+            #[test]
+            fn refuses_a_version_holding_a_blank_node() {
+                let said = refusal(&format!(
+                    "<urn:example:v> {OF} <urn:example:record> .\n<urn:example:v> <urn:example:reaction> _:r ."
+                ));
+                assert!(said.contains("blank node"), "{said}");
+            }
+
+            #[test]
+            fn refuses_a_version_naming_another_version() {
+                let said = refusal(&format!(
+                    "<urn:example:v> {OF} <urn:example:one> .\n<urn:example:w> {OF} <urn:example:two> .\n<urn:example:v> <urn:example:see> <urn:example:w#part> ."
+                ));
+                assert!(said.contains("names no other version"), "{said}");
+            }
+
+            #[test]
+            fn names_each_version_a_mapping_constructs_from_its_literals_as_written() {
+                let variant = Variant::of(tiny())
+                    .replacing(
+                        "mapping/item.rq",
+                        "CONSTRUCT { ?s a ex:Item ; ex:title ?title . }",
+                        "CONSTRUCT { ?s a ex:Item ; ex:title ?title . ?v <http://www.w3.org/ns/prov#specializationOf> ?s ; ex:dose \"2.00\"^^<http://www.w3.org/2001/XMLSchema#decimal> . }",
+                    )
+                    .replacing(
+                        "mapping/item.rq",
+                        "BIND(IRI(CONCAT(\"urn:example:item:\", ?id)) AS ?s)",
+                        "BIND(IRI(CONCAT(\"urn:example:item:\", ?id)) AS ?s) BIND(IRI(CONCAT(\"urn:example:draft:\", ?id)) AS ?v)",
+                    );
+                let quads = converted(&variant, "two.xml").quads;
+                let content = concat!(
+                    "<urn:cascade:this-version> <http://www.w3.org/ns/prov#specializationOf> <urn:example:item:1> .\n",
+                    "<urn:cascade:this-version> <urn:example:catalog#dose> \"2.00\"^^<http://www.w3.org/2001/XMLSchema#decimal> .\n",
+                );
+                let name = ni_name(content.as_bytes());
+                let dose: Vec<String> = quads
+                    .iter()
+                    .filter(|quad| quad.predicate.as_str() == "urn:example:catalog#dose")
+                    .map(|quad| format!("{} {}", quad.subject, quad.object))
+                    .collect();
+                assert!(
+                    dose.contains(&format!(
+                        "<{name}> \"2.00\"^^<http://www.w3.org/2001/XMLSchema#decimal>"
+                    )),
+                    "{dose:?}"
+                );
+                assert!(!quads
+                    .iter()
+                    .any(|quad| quad.subject.to_string().contains("urn:example:draft:")));
+            }
+
+            #[test]
+            fn leaves_a_graph_without_a_version_as_the_mapping_wrote_it() {
+                let quads: Vec<Quad> = RdfParser::from_format(RdfFormat::NTriples)
+                    .for_slice(
+                        b"_:r <urn:example:code> \"2.00\"^^<http://www.w3.org/2001/XMLSchema#decimal> .\n",
+                    )
+                    .map(|quad| quad.expect("N-Triples"))
+                    .collect();
+                let versioned = versioned(quads.clone()).expect("versioned");
+                assert_eq!(versioned.graph, quads);
+                assert!(versioned.versions.is_empty());
+            }
+        }
+
+        mod given_a_version_written_twice_in_one_document {
+            use super::*;
+
+            #[test]
+            fn says_about_each_version_it_drops_which_version_was_kept_and_where_the_dropped_one_arrived_from(
+            ) {
+                let mapped: Vec<Quad> = RdfParser::from_format(RdfFormat::NTriples)
+                    .for_slice(&crate::fixtures::fixture(
+                        "tests/versioning/one-version-a-record.mapped.nt",
+                    ))
+                    .map(|quad| quad.expect("N-Triples"))
+                    .collect();
+                let dropped = versioned(mapped).expect("versioned").dropped;
+                assert_eq!(dropped.len(), 1);
+                assert_eq!(
+                    dropped[0].kept,
+                    "ni:///sha-256;NE41csq6GnQ0o4E6uBjw3zQq45yL4XhCXNUwAyC8Mm8"
+                );
+                assert!(dropped[0]
+                    .selector
+                    .as_deref()
+                    .is_some_and(|selector| selector
+                        .contains("[local-name()='entry' and namespace-uri()='urn:hl7-org:v3'][1]")));
+            }
+
+            /// finds a dropped arrival's selector when the selector node is named
+            #[test]
+            fn finds_a_dropped_arrival_s_selector_when_the_selector_node_is_named() {
+                let quads: Vec<Quad> = RdfParser::from_format(RdfFormat::NTriples)
+                    .for_slice(
+                        format!(
+                            "<urn:example:v1> {OF} <urn:example:record> .
 <urn:example:v1> <urn:example:t> \"1\" .
 <urn:example:v2> {OF} <urn:example:record> .
 <urn:example:v2> <urn:example:t> \"2\" .
@@ -531,27 +634,27 @@ mod tests {
 <urn:example:a2> <http://www.w3.org/ns/oa#hasSelector> <urn:example:s2> .
 <urn:example:s2> <http://www.w3.org/1999/02/22-rdf-syntax-ns#value> \"/two\" .
 "
-                )
-                .as_bytes(),
-            )
-            .map(|quad| quad.expect("N-Triples"))
-            .collect();
-        let dropped = versioned(quads).expect("versioned").dropped;
-        assert_eq!(dropped.len(), 1);
-        assert!(
-            matches!(dropped[0].selector.as_deref(), Some("/one" | "/two")),
-            "{:?}",
-            dropped[0].selector
-        );
-    }
+                        )
+                        .as_bytes(),
+                    )
+                    .map(|quad| quad.expect("N-Triples"))
+                    .collect();
+                let dropped = versioned(quads).expect("versioned").dropped;
+                assert_eq!(dropped.len(), 1);
+                assert!(
+                    matches!(dropped[0].selector.as_deref(), Some("/one" | "/two")),
+                    "{:?}",
+                    dropped[0].selector
+                );
+            }
 
-    #[test]
-    fn leaves_nothing_of_a_dropped_version_behind_neither_a_reference_to_it_nor_what_hung_off_its_arrival(
-    ) {
-        let quads: Vec<Quad> = RdfParser::from_format(RdfFormat::NTriples)
-            .for_slice(
-                format!(
-                    "<urn:example:v1> {OF} <urn:example:record> .
+            #[test]
+            fn leaves_nothing_of_a_dropped_version_behind_neither_a_reference_to_it_nor_what_hung_off_its_arrival(
+            ) {
+                let quads: Vec<Quad> = RdfParser::from_format(RdfFormat::NTriples)
+                    .for_slice(
+                        format!(
+                            "<urn:example:v1> {OF} <urn:example:record> .
 <urn:example:v2> {OF} <urn:example:record> .
 _:kept <{ARRIVED_AS}> <urn:example:v1> .
 _:kept <urn:example:by> _:keptBy .
@@ -562,138 +665,49 @@ _:goneBy <urn:example:label> \"dropped\" .
 _:about <urn:example:about> <urn:example:v2> .
 _:about <urn:example:label> \"about\" .
 "
-                )
-                .as_bytes(),
-            )
-            .map(|quad| quad.expect("N-Triples"))
-            .collect();
-        let graph = versioned(quads).expect("versioned").graph;
-        let written: Vec<String> = graph.iter().map(ToString::to_string).collect();
-        assert!(
-            !written.iter().any(|quad| quad.contains("urn:example:v2")),
-            "{written:#?}"
-        );
-        let labels: BTreeSet<String> = graph
-            .iter()
-            .filter(|quad| quad.predicate.as_str() == "urn:example:label")
-            .map(|quad| quad.object.to_string())
-            .collect();
-        assert_eq!(
-            labels,
-            BTreeSet::from(["\"kept\"".to_owned(), "\"about\"".to_owned()])
-        );
-    }
+                        )
+                        .as_bytes(),
+                    )
+                    .map(|quad| quad.expect("N-Triples"))
+                    .collect();
+                let graph = versioned(quads).expect("versioned").graph;
+                let written: Vec<String> = graph.iter().map(ToString::to_string).collect();
+                assert!(
+                    !written.iter().any(|quad| quad.contains("urn:example:v2")),
+                    "{written:#?}"
+                );
+                let labels: BTreeSet<String> = graph
+                    .iter()
+                    .filter(|quad| quad.predicate.as_str() == "urn:example:label")
+                    .map(|quad| quad.object.to_string())
+                    .collect();
+                assert_eq!(
+                    labels,
+                    BTreeSet::from(["\"kept\"".to_owned(), "\"about\"".to_owned()])
+                );
+            }
 
-    #[test]
-    fn keeps_a_blank_node_only_itself_refers_to_where_no_version_is_dropped() {
-        let quads: Vec<Quad> = RdfParser::from_format(RdfFormat::NTriples)
-            .for_slice(
-                format!(
-                    "<urn:example:v> {OF} <urn:example:record> .
+            #[test]
+            fn keeps_a_blank_node_only_itself_refers_to_where_no_version_is_dropped() {
+                let quads: Vec<Quad> = RdfParser::from_format(RdfFormat::NTriples)
+                    .for_slice(
+                        format!(
+                            "<urn:example:v> {OF} <urn:example:record> .
 _:x <urn:example:next> _:x .
 "
-                )
-                .as_bytes(),
-            )
-            .map(|quad| quad.expect("N-Triples"))
-            .collect();
-        let graph = versioned(quads).expect("versioned").graph;
-        assert!(
-            graph
-                .iter()
-                .any(|quad| quad.predicate.as_str() == "urn:example:next"),
-            "{graph:?}"
-        );
-    }
-
-    #[test]
-    fn refuses_a_version_whose_iri_carries_a_fragment() {
-        let said = refusal(&format!("<urn:example:v#one> {OF} <urn:example:record> ."));
-        assert!(said.contains("with a fragment"), "{said}");
-    }
-
-    #[test]
-    fn refuses_a_version_of_two_records() {
-        let said = refusal(&format!(
-            "<urn:example:v> {OF} <urn:example:one> .\n<urn:example:v> {OF} <urn:example:two> ."
-        ));
-        assert!(said.contains("more than one record"), "{said}");
-    }
-
-    #[test]
-    fn names_a_version_every_mapping_writes_as_a_specialization_of_the_same_record() {
-        let quads: Vec<Quad> = RdfParser::from_format(RdfFormat::NTriples)
-            .for_slice(
-                format!("<urn:example:v> {OF} <urn:example:record> .\n<urn:example:v> {OF} <urn:example:record> .\n")
-                    .as_bytes(),
-            )
-            .map(|quad| quad.expect("N-Triples"))
-            .collect();
-        let versioned = versioned(quads).expect("versioned");
-        assert_eq!(versioned.versions.len(), 1);
-    }
-
-    #[test]
-    fn refuses_a_version_holding_a_blank_node() {
-        let said = refusal(&format!(
-            "<urn:example:v> {OF} <urn:example:record> .\n<urn:example:v> <urn:example:reaction> _:r ."
-        ));
-        assert!(said.contains("blank node"), "{said}");
-    }
-
-    #[test]
-    fn refuses_a_version_naming_another_version() {
-        let said = refusal(&format!(
-            "<urn:example:v> {OF} <urn:example:one> .\n<urn:example:w> {OF} <urn:example:two> .\n<urn:example:v> <urn:example:see> <urn:example:w#part> ."
-        ));
-        assert!(said.contains("names no other version"), "{said}");
-    }
-
-    #[test]
-    fn names_each_version_a_mapping_constructs_from_its_literals_as_written() {
-        let variant = Variant::of(tiny())
-            .replacing(
-                "mapping/item.rq",
-                "CONSTRUCT { ?s a ex:Item ; ex:title ?title . }",
-                "CONSTRUCT { ?s a ex:Item ; ex:title ?title . ?v <http://www.w3.org/ns/prov#specializationOf> ?s ; ex:dose \"2.00\"^^<http://www.w3.org/2001/XMLSchema#decimal> . }",
-            )
-            .replacing(
-                "mapping/item.rq",
-                "BIND(IRI(CONCAT(\"urn:example:item:\", ?id)) AS ?s)",
-                "BIND(IRI(CONCAT(\"urn:example:item:\", ?id)) AS ?s) BIND(IRI(CONCAT(\"urn:example:draft:\", ?id)) AS ?v)",
-            );
-        let quads = converted(&variant, "two.xml").quads;
-        let content = concat!(
-            "<urn:cascade:this-version> <http://www.w3.org/ns/prov#specializationOf> <urn:example:item:1> .\n",
-            "<urn:cascade:this-version> <urn:example:catalog#dose> \"2.00\"^^<http://www.w3.org/2001/XMLSchema#decimal> .\n",
-        );
-        let name = ni_name(content.as_bytes());
-        let dose: Vec<String> = quads
-            .iter()
-            .filter(|quad| quad.predicate.as_str() == "urn:example:catalog#dose")
-            .map(|quad| format!("{} {}", quad.subject, quad.object))
-            .collect();
-        assert!(
-            dose.contains(&format!(
-                "<{name}> \"2.00\"^^<http://www.w3.org/2001/XMLSchema#decimal>"
-            )),
-            "{dose:?}"
-        );
-        assert!(!quads
-            .iter()
-            .any(|quad| quad.subject.to_string().contains("urn:example:draft:")));
-    }
-
-    #[test]
-    fn leaves_a_graph_without_a_version_as_the_mapping_wrote_it() {
-        let quads: Vec<Quad> = RdfParser::from_format(RdfFormat::NTriples)
-            .for_slice(
-                b"_:r <urn:example:code> \"2.00\"^^<http://www.w3.org/2001/XMLSchema#decimal> .\n",
-            )
-            .map(|quad| quad.expect("N-Triples"))
-            .collect();
-        let versioned = versioned(quads.clone()).expect("versioned");
-        assert_eq!(versioned.graph, quads);
-        assert!(versioned.versions.is_empty());
+                        )
+                        .as_bytes(),
+                    )
+                    .map(|quad| quad.expect("N-Triples"))
+                    .collect();
+                let graph = versioned(quads).expect("versioned").graph;
+                assert!(
+                    graph
+                        .iter()
+                        .any(|quad| quad.predicate.as_str() == "urn:example:next"),
+                    "{graph:?}"
+                );
+            }
+        }
     }
 }

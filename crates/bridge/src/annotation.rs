@@ -508,29 +508,39 @@ mod tests {
         )
     }
 
-    #[test]
-    fn keeps_two_executions_that_labelled_a_blank_node_alike_apart() {
-        let fused: BTreeSet<String> = [labelled("b0"), labelled("b0")]
-            .into_iter()
-            .map(|q| q.to_string())
-            .collect();
-        assert_eq!(fused.len(), 1, "the collision this guards against");
+    /// Converting a document · Loaded::accepts(), Loaded::convert(), Conversion
+    mod converting_a_document {
+        use super::*;
 
-        let mut one = Minted::default();
-        let mut two = Minted::default();
-        let apart: BTreeSet<String> = one
-            .apart([labelled("b0")])
-            .into_iter()
-            .chain(two.apart([labelled("b0")]))
-            .map(|q| q.to_string())
-            .collect();
-        assert_eq!(apart.len(), 2);
-    }
+        mod given_records_that_write_the_same_triple_or_label_a_blank_node_alike {
+            use super::*;
 
-    #[test]
-    fn keeps_one_execution_s_blank_node_one_node() {
-        let mut execution = Minted::default();
-        let renamed = execution.apart([labelled("b0"), labelled("b0")]);
-        assert_eq!(renamed[0].subject, renamed[1].subject);
+            #[test]
+            fn keeps_two_executions_that_labelled_a_blank_node_alike_apart() {
+                let fused: BTreeSet<String> = [labelled("b0"), labelled("b0")]
+                    .into_iter()
+                    .map(|q| q.to_string())
+                    .collect();
+                assert_eq!(fused.len(), 1, "the collision this guards against");
+
+                let mut one = Minted::default();
+                let mut two = Minted::default();
+                let apart: BTreeSet<String> = one
+                    .apart([labelled("b0")])
+                    .into_iter()
+                    .chain(two.apart([labelled("b0")]))
+                    .map(|q| q.to_string())
+                    .collect();
+                assert_eq!(apart.len(), 2);
+            }
+
+            /// keeps one execution's blank node one node
+            #[test]
+            fn keeps_one_execution_s_blank_node_one_node() {
+                let mut execution = Minted::default();
+                let renamed = execution.apart([labelled("b0"), labelled("b0")]);
+                assert_eq!(renamed[0].subject, renamed[1].subject);
+            }
+        }
     }
 }

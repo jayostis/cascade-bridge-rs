@@ -169,30 +169,57 @@ mod tests {
         values
     }
 
-    #[test]
-    fn reports_a_refinement_that_selects_other_than_one_node_of_the_record() {
-        let document = Record {
-            source: SOURCE,
-            selector: "",
-            selector_type: SelectorType::JsonPointer,
-        };
-        let record = r#"{"a": 1, "b": 2, "b": 3, "n": null}"#;
-        for (within, reported) in [("/a", false), ("/b", true), ("/n", false), ("/z", true)] {
-            let reports = Followed
-                .unresolved(&document, record, &finding("/0", within))
-                .expect("the reports");
-            assert_eq!(!reports.is_empty(), reported, "{within}");
+    /// Reading a JSON document as records · Loaded::convert(), Document::envelope
+    ///
+    /// A JSON document is lifted the same way. An envelope's record path says which objects are
+    /// records, and a record's selector is a JSON Pointer.
+    mod reading_a_json_document_as_records {
+        use super::*;
+
+        /// given a JSON Pointer
+        mod given_a_json_pointer {
+            use super::*;
+
+            #[test]
+            fn spells_alike_two_pointers_that_select_one_node() {
+                let document = r#"{"records": [{"given name": "Ann"}]}"#;
+                let spelled = Spelled::of(document);
+                let respelled = spelled.respelled(finding("/%72ecords/0", "/given name"));
+                assert!(respelled.missed.is_empty(), "{:?}", respelled.missed);
+                assert_eq!(values(&respelled.findings), ["/given%20name", "/records/0"]);
+                let missed = spelled.respelled(finding("/records/1", "/x")).missed;
+                assert_eq!(missed.len(), 1, "{missed:?}");
+            }
         }
     }
 
-    #[test]
-    fn spells_alike_two_pointers_that_select_one_node() {
-        let document = r#"{"records": [{"given name": "Ann"}]}"#;
-        let spelled = Spelled::of(document);
-        let respelled = spelled.respelled(finding("/%72ecords/0", "/given name"));
-        assert!(respelled.missed.is_empty(), "{:?}", respelled.missed);
-        assert_eq!(values(&respelled.findings), ["/given%20name", "/records/0"]);
-        let missed = spelled.respelled(finding("/records/1", "/x")).missed;
-        assert_eq!(missed.len(), 1, "{missed:?}");
+    /// Checking where a finding points · Conversion::findings()
+    ///
+    /// A finding's address is an XPath or a JSON Pointer within its record. The Bridge follows
+    /// every address it is given, and reports one that does not select exactly one node while
+    /// still producing the graph.
+    mod checking_where_a_finding_points {
+        use super::*;
+
+        /// given an address in a JSON record
+        mod given_an_address_in_a_json_record {
+            use super::*;
+
+            #[test]
+            fn reports_a_refinement_that_selects_other_than_one_node_of_the_record() {
+                let document = Record {
+                    source: SOURCE,
+                    selector: "",
+                    selector_type: SelectorType::JsonPointer,
+                };
+                let record = r#"{"a": 1, "b": 2, "b": 3, "n": null}"#;
+                for (within, reported) in [("/a", false), ("/b", true), ("/n", false), ("/z", true)] {
+                    let reports = Followed
+                        .unresolved(&document, record, &finding("/0", within))
+                        .expect("the reports");
+                    assert_eq!(!reports.is_empty(), reported, "{within}");
+                }
+            }
+        }
     }
 }

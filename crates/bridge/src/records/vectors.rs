@@ -121,94 +121,6 @@ fn names(query: &[u8], inputs: &[String]) -> Vec<Term> {
         .collect()
 }
 
-#[test]
-fn computes_every_naming_vector_that_names_a_query_with_that_query_run_by_oxigraph() {
-    let graph = manifest("tests/naming");
-    let listed = entries(&graph, BRIDGE_NAMING_TEST);
-    let (mut run, mut skipped) = (0, 0);
-    for entry in listed.iter() {
-        let action = node(&graph, entry, MF_ACTION);
-        let Some(query) = one(&graph, &action, QT_QUERY).expect(QT_QUERY) else {
-            let rule = only(&graph, entry, BRIDGE_NAMING_RULE);
-            assert!(
-                WITHOUT_QUERY
-                    .iter()
-                    .any(|named| rule.ends_with(&format!("#{named}"))),
-                "{} has no query but {rule} has one",
-                named(&graph, entry)
-            );
-            skipped += 1;
-            continue;
-        };
-        let head = objects(&graph, &action, BRIDGE_NAME_INPUTS).expect("inputs");
-        let inputs: Vec<String> = list(&graph, head.first())
-            .expect("a list")
-            .iter()
-            .map(term_value)
-            .collect();
-        let expected = objects(
-            &graph,
-            &node(&graph, entry, MF_RESULT),
-            BRIDGE_EXPECTED_NAME,
-        )
-        .expect("a name");
-        assert_eq!(
-            names(&file(&query), &inputs),
-            expected,
-            "{}",
-            named(&graph, entry)
-        );
-        run += 1;
-    }
-    assert!(run > 0, "no naming vector names a query");
-    assert_eq!(run + skipped, listed.len());
-}
-
-#[test]
-fn normalises_every_base_url_vector() {
-    let graph = manifest("tests/naming");
-    for entry in entries(&graph, BRIDGE_BASE_URL_NORMALISATION_TEST) {
-        let given = only(
-            &graph,
-            &node(&graph, &entry, MF_ACTION),
-            CASCADE_SERVER_BASE_URL,
-        );
-        let expected = only(
-            &graph,
-            &node(&graph, &entry, MF_RESULT),
-            CASCADE_SERVER_BASE_URL,
-        );
-        assert_eq!(
-            normalised_base_url(&given).expect(&given),
-            expected,
-            "{}",
-            named(&graph, &entry)
-        );
-    }
-}
-
-#[test]
-fn says_which_rule_refused_a_base_url_and_never_the_url() {
-    let graph = manifest("tests/naming");
-    let refusals = entries(&graph, BRIDGE_BASE_URL_REFUSAL_TEST);
-    assert!(!refusals.is_empty(), "the manifest lists no refusal");
-    for entry in refusals {
-        let name = named(&graph, &entry);
-        let given = only(
-            &graph,
-            &node(&graph, &entry, MF_ACTION),
-            CASCADE_SERVER_BASE_URL,
-        );
-        let refusal = normalised_base_url(&given).expect_err(&name);
-        assert_eq!(refusal.kind(), &ErrorKind::Facts, "{name}");
-        let said = refusal.to_string();
-        assert!(said.starts_with("a server base URL "), "{name}: {said}");
-        for part in std::iter::once(given.as_str()).chain(secret_parts(&given)) {
-            assert!(!echoes(&said, part), "{name} echoes {part:?}: {said}");
-        }
-    }
-}
-
 /// A URL's userinfo, host, query and fragment, each where present, split as RFC 3986's appendix B does.
 fn secret_parts(url: &str) -> Vec<&str> {
     let (rest, fragment) = url
@@ -270,40 +182,142 @@ fn lines(quads: &[Quad]) -> BTreeSet<String> {
     canonical_lines(quads.iter().cloned()).expect("canonical")
 }
 
-#[test]
-fn names_every_versioning_vector_of_the_specification() {
-    let graph = manifest("tests/versioning");
-    for entry in entries(&graph, BRIDGE_VERSIONING_TEST) {
-        let name = named(&graph, &entry);
-        let input = only(&graph, &node(&graph, &entry, MF_ACTION), BRIDGE_INPUT);
-        let result = node(&graph, &entry, MF_RESULT);
-        let produced = versioned(ntriples(&file(&input))).expect(&name);
+mod tests {
+    use super::*;
 
-        let expected = ntriples(&file(&only(&graph, &result, BRIDGE_EXPECTED_GRAPH)));
-        assert_eq!(lines(&produced.graph), lines(&expected), "{name}");
+    /// Naming records and their versions · Facts, Document::facts
+    mod naming_records_and_their_versions {
+        use super::*;
 
-        let expected_versions: Vec<(String, String)> =
-            objects(&graph, &result, BRIDGE_EXPECTED_VERSION)
-                .expect("versions")
-                .iter()
-                .filter_map(as_subject)
-                .map(|version| {
-                    let content = file(&only(&graph, &version, BRIDGE_CANONICAL_CONTENT));
-                    (
-                        only(&graph, &version, BRIDGE_EXPECTED_NAME),
-                        String::from_utf8(content).expect("UTF-8"),
+        /// given the specification's naming and versioning vectors
+        mod given_the_specification_s_naming_and_versioning_vectors {
+            use super::*;
+
+            #[test]
+            fn computes_every_naming_vector_that_names_a_query_with_that_query_run_by_oxigraph() {
+                let graph = manifest("tests/naming");
+                let listed = entries(&graph, BRIDGE_NAMING_TEST);
+                let (mut run, mut skipped) = (0, 0);
+                for entry in listed.iter() {
+                    let action = node(&graph, entry, MF_ACTION);
+                    let Some(query) = one(&graph, &action, QT_QUERY).expect(QT_QUERY) else {
+                        let rule = only(&graph, entry, BRIDGE_NAMING_RULE);
+                        assert!(
+                            WITHOUT_QUERY
+                                .iter()
+                                .any(|named| rule.ends_with(&format!("#{named}"))),
+                            "{} has no query but {rule} has one",
+                            named(&graph, entry)
+                        );
+                        skipped += 1;
+                        continue;
+                    };
+                    let head = objects(&graph, &action, BRIDGE_NAME_INPUTS).expect("inputs");
+                    let inputs: Vec<String> = list(&graph, head.first())
+                        .expect("a list")
+                        .iter()
+                        .map(term_value)
+                        .collect();
+                    let expected = objects(
+                        &graph,
+                        &node(&graph, entry, MF_RESULT),
+                        BRIDGE_EXPECTED_NAME,
                     )
-                })
-                .collect();
-        let produced_versions: Vec<(String, String)> = produced
-            .versions
-            .into_iter()
-            .map(|version| (version.name, version.canonical))
-            .collect();
-        let mut expected_versions = expected_versions;
-        let mut produced_versions = produced_versions;
-        expected_versions.sort();
-        produced_versions.sort();
-        assert_eq!(produced_versions, expected_versions, "{name}");
+                    .expect("a name");
+                    assert_eq!(
+                        names(&file(&query), &inputs),
+                        expected,
+                        "{}",
+                        named(&graph, entry)
+                    );
+                    run += 1;
+                }
+                assert!(run > 0, "no naming vector names a query");
+                assert_eq!(run + skipped, listed.len());
+            }
+
+            #[test]
+            fn normalises_every_base_url_vector() {
+                let graph = manifest("tests/naming");
+                for entry in entries(&graph, BRIDGE_BASE_URL_NORMALISATION_TEST) {
+                    let given = only(
+                        &graph,
+                        &node(&graph, &entry, MF_ACTION),
+                        CASCADE_SERVER_BASE_URL,
+                    );
+                    let expected = only(
+                        &graph,
+                        &node(&graph, &entry, MF_RESULT),
+                        CASCADE_SERVER_BASE_URL,
+                    );
+                    assert_eq!(
+                        normalised_base_url(&given).expect(&given),
+                        expected,
+                        "{}",
+                        named(&graph, &entry)
+                    );
+                }
+            }
+
+            #[test]
+            fn says_which_rule_refused_a_base_url_and_never_the_url() {
+                let graph = manifest("tests/naming");
+                let refusals = entries(&graph, BRIDGE_BASE_URL_REFUSAL_TEST);
+                assert!(!refusals.is_empty(), "the manifest lists no refusal");
+                for entry in refusals {
+                    let name = named(&graph, &entry);
+                    let given = only(
+                        &graph,
+                        &node(&graph, &entry, MF_ACTION),
+                        CASCADE_SERVER_BASE_URL,
+                    );
+                    let refusal = normalised_base_url(&given).expect_err(&name);
+                    assert_eq!(refusal.kind(), &ErrorKind::Facts, "{name}");
+                    let said = refusal.to_string();
+                    assert!(said.starts_with("a server base URL "), "{name}: {said}");
+                    for part in std::iter::once(given.as_str()).chain(secret_parts(&given)) {
+                        assert!(!echoes(&said, part), "{name} echoes {part:?}: {said}");
+                    }
+                }
+            }
+
+            #[test]
+            fn names_every_versioning_vector_of_the_specification() {
+                let graph = manifest("tests/versioning");
+                for entry in entries(&graph, BRIDGE_VERSIONING_TEST) {
+                    let name = named(&graph, &entry);
+                    let input = only(&graph, &node(&graph, &entry, MF_ACTION), BRIDGE_INPUT);
+                    let result = node(&graph, &entry, MF_RESULT);
+                    let produced = versioned(ntriples(&file(&input))).expect(&name);
+
+                    let expected = ntriples(&file(&only(&graph, &result, BRIDGE_EXPECTED_GRAPH)));
+                    assert_eq!(lines(&produced.graph), lines(&expected), "{name}");
+
+                    let expected_versions: Vec<(String, String)> =
+                        objects(&graph, &result, BRIDGE_EXPECTED_VERSION)
+                            .expect("versions")
+                            .iter()
+                            .filter_map(as_subject)
+                            .map(|version| {
+                                let content = file(&only(&graph, &version, BRIDGE_CANONICAL_CONTENT));
+                                (
+                                    only(&graph, &version, BRIDGE_EXPECTED_NAME),
+                                    String::from_utf8(content).expect("UTF-8"),
+                                )
+                            })
+                            .collect();
+                    let produced_versions: Vec<(String, String)> = produced
+                        .versions
+                        .into_iter()
+                        .map(|version| (version.name, version.canonical))
+                        .collect();
+                    let mut expected_versions = expected_versions;
+                    let mut produced_versions = produced_versions;
+                    expected_versions.sort();
+                    produced_versions.sort();
+                    assert_eq!(produced_versions, expected_versions, "{name}");
+                }
+            }
+        }
     }
 }

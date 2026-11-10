@@ -417,48 +417,57 @@ impl SchemaLoader for Preloaded {
 mod tests {
     use super::{key, utf8_declaration};
 
-    #[test]
-    fn names_a_file_iri_the_same_however_many_slashes_its_authority_was_written_with() {
-        assert_eq!(key("file:/a/b/c.xsd"), key("file:///a/b/c.xsd"));
-        assert_eq!(key("file:///a/b/../c.xsd"), key("file:///a/c.xsd"));
-        assert_eq!(key("urn:example:c.xsd"), "urn:example:c.xsd");
-    }
+    /// Validating a document against the adapter's XML Schema · Loaded::convert()
+    mod validating_a_document_against_the_adapter_s_xml_schema {
+        use super::*;
 
-    #[test]
-    fn names_an_iri_of_any_scheme_the_same_after_xsd_schema_resolved_it_as_a_path() {
-        assert_eq!(key("s3://b/a/x.xsd"), key("s3:/b/a/x.xsd"));
-        assert_eq!(key("s3://b/a/x.xsd"), key("/w/crates/bridge/s3:/b/a/x.xsd"));
-        assert_eq!(key("s3://b/a/x.xsd"), key("C:\\w\\s3:\\b\\a\\x.xsd"));
-        assert_eq!(key("file:///C:/a/x.xsd"), key("file:/C:/a/x.xsd"));
-        assert_eq!(
-            key("x-blob+v.1://b/a/x.xsd"),
-            key("/w/x-blob+v.1:/b/a/x.xsd")
-        );
-    }
+        mod given_how_a_schema_file_is_named {
+            use super::*;
 
-    #[test]
-    fn names_two_iris_apart_that_differ_only_before_a_colon_segment_of_their_path() {
-        assert_ne!(key("file:///a/v1/ab:/t.xsd"), key("file:///a/v2/ab:/t.xsd"));
-        assert_ne!(key("s3://x/ab:/t.xsd"), key("gs://y/ab:/t.xsd"));
-    }
+            #[test]
+            fn names_a_file_iri_the_same_however_many_slashes_its_authority_was_written_with() {
+                assert_eq!(key("file:/a/b/c.xsd"), key("file:///a/b/c.xsd"));
+                assert_eq!(key("file:///a/b/../c.xsd"), key("file:///a/c.xsd"));
+                assert_eq!(key("urn:example:c.xsd"), "urn:example:c.xsd");
+            }
 
-    #[test]
-    fn replaces_the_declaration_of_a_document_that_says_it_is_not_utf_8() {
-        assert_eq!(
-            utf8_declaration("<?xml version=\"1.0\" encoding=\"UTF-16\"?><r/>"),
-            "<?xml version=\"1.0\" encoding=\"UTF-8\"?><r/>"
-        );
-        assert_eq!(
-            utf8_declaration("<r/>"),
-            "<?xml version=\"1.0\" encoding=\"UTF-8\"?><r/>"
-        );
-    }
+            #[test]
+            fn names_an_iri_of_any_scheme_the_same_after_xsd_schema_resolved_it_as_a_path() {
+                assert_eq!(key("s3://b/a/x.xsd"), key("s3:/b/a/x.xsd"));
+                assert_eq!(key("s3://b/a/x.xsd"), key("/w/crates/bridge/s3:/b/a/x.xsd"));
+                assert_eq!(key("s3://b/a/x.xsd"), key("C:\\w\\s3:\\b\\a\\x.xsd"));
+                assert_eq!(key("file:///C:/a/x.xsd"), key("file:/C:/a/x.xsd"));
+                assert_eq!(
+                    key("x-blob+v.1://b/a/x.xsd"),
+                    key("/w/x-blob+v.1:/b/a/x.xsd")
+                );
+            }
 
-    #[test]
-    fn keeps_a_leading_instruction_whose_target_only_begins_with_xml() {
-        assert_eq!(
-            utf8_declaration("<?xml-stylesheet href=\"s.xsl\"?><r/>"),
-            "<?xml version=\"1.0\" encoding=\"UTF-8\"?><?xml-stylesheet href=\"s.xsl\"?><r/>"
-        );
+            #[test]
+            fn names_two_iris_apart_that_differ_only_before_a_colon_segment_of_their_path() {
+                assert_ne!(key("file:///a/v1/ab:/t.xsd"), key("file:///a/v2/ab:/t.xsd"));
+                assert_ne!(key("s3://x/ab:/t.xsd"), key("gs://y/ab:/t.xsd"));
+            }
+
+            #[test]
+            fn replaces_the_declaration_of_a_document_that_says_it_is_not_utf_8() {
+                assert_eq!(
+                    utf8_declaration("<?xml version=\"1.0\" encoding=\"UTF-16\"?><r/>"),
+                    "<?xml version=\"1.0\" encoding=\"UTF-8\"?><r/>"
+                );
+                assert_eq!(
+                    utf8_declaration("<r/>"),
+                    "<?xml version=\"1.0\" encoding=\"UTF-8\"?><r/>"
+                );
+            }
+
+            #[test]
+            fn keeps_a_leading_instruction_whose_target_only_begins_with_xml() {
+                assert_eq!(
+                    utf8_declaration("<?xml-stylesheet href=\"s.xsl\"?><r/>"),
+                    "<?xml version=\"1.0\" encoding=\"UTF-8\"?><?xml-stylesheet href=\"s.xsl\"?><r/>"
+                );
+            }
+        }
     }
 }
