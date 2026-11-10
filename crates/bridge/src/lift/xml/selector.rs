@@ -81,8 +81,10 @@ mod tests {
                 assert_eq!(selectors(br#"<item id="9"/>"#, "item"), ["/item"]);
             }
 
+            /// returns the document's own selector, else the envelope's root element, else any element
             #[test]
-            fn selects_the_element_the_envelope_describes_where_the_document_has_none() {
+            fn returns_the_document_s_own_selector_else_the_envelope_s_root_element_else_any_element(
+            ) {
                 assert_eq!(
                     document_selector(None, Some("catalog")),
                     "/catalog",

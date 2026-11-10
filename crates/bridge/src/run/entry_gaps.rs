@@ -181,9 +181,10 @@ mod tests {
                 assert_eq!(literal.datatype().as_str(), XSD_INTEGER);
             }
 
-            /// names the path as sh value the same string the entry's source path carries
+            /// reports a path once, valued with the entry's source path, however many nodes carry it
             #[test]
-            fn names_the_path_as_sh_value_the_same_string_the_entry_s_source_path_carries() {
+            fn reports_a_path_once_valued_with_the_entry_s_source_path_however_many_nodes_carry_it()
+            {
                 let found = findings(&tiny(), "every-verdict.xml");
                 let mut paths: Vec<String> = reported(&found)
                     .into_iter()
@@ -197,9 +198,9 @@ mod tests {
                 );
             }
 
-            /// gives a reported gap's finding the gap as its body, and `oa:classifying` as its motivation
+            /// gives a reported gap's finding the gap as its body, `oa:classifying` as its motivation and the input file as its source
             #[test]
-            fn gives_a_reported_gap_s_finding_the_gap_as_its_body_and_oa_classifying_as_its_motivation(
+            fn gives_a_reported_gap_s_finding_the_gap_as_its_body_oa_classifying_as_its_motivation_and_the_input_file_as_its_source(
             ) {
                 let found = findings(&tiny(), "every-verdict.xml");
                 assert_eq!(
@@ -369,7 +370,7 @@ mod tests {
             use super::*;
 
             #[test]
-            fn emits_nothing_for_a_gap_of_a_kind_true_of_what_the_record_holds_at_the_path() {
+            fn writes_nothing_for_a_gap_of_a_kind_true_of_only_some_of_the_occurrences_at_a_path() {
                 for kind in ["carriedWithLoss", "valueNotMapped", "schemaRuleUnnamed"] {
                     let declared = with_gaps(&gap_scheme(&[
                         concept("noteHasNoTerm", kind, None),
@@ -432,7 +433,7 @@ mod tests {
             }
 
             #[test]
-            fn emits_nothing_for_a_verdict_that_names_no_gap() {
+            fn writes_nothing_for_a_verdict_that_names_no_gap() {
                 let no_gap = with_accounting(&accounting(&[
                     stated("/item/@id", "carried", Some("ex:noteHasNoTerm")),
                     stated("/item/@internal", "ignored", Some("ex:noteHasNoTerm")),
@@ -540,7 +541,7 @@ mod tests {
             use super::*;
 
             #[test]
-            fn refuses_an_unparseable_gap_scheme() {
+            fn refuses_a_gap_scheme_that_does_not_parse() {
                 let refusal = refused(
                     &with_gaps(UNPARSEABLE),
                     "two.xml",

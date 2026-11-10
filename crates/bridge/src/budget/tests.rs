@@ -48,9 +48,10 @@ mod telling_whose_failure_an_error_is {
     mod kind {
         use super::*;
 
-        /// returns `Bridge` for a stopped convert, whichever stage explains the error after it
+        /// returns `Bridge` for a stopped convert, and the explaining stage's kind for any other fault
         #[test]
-        fn returns_bridge_for_a_stopped_convert_whichever_stage_explains_the_error_after_it() {
+        fn returns_bridge_for_a_stopped_convert_and_the_explaining_stage_s_kind_for_any_other_fault(
+        ) {
             let spent = Watch::new(Budgets {
                 time: Duration::ZERO,
                 ..Budgets::default()
@@ -84,7 +85,7 @@ mod stopping_a_convert_at_its_budgets {
         use super::*;
 
         #[test]
-        fn stops_a_convert_past_its_time_budget_at_its_next_reading_of_the_clock() {
+        fn stops_a_convert_past_its_time_budget_at_its_next_check_of_the_time() {
             let watch = Watch::new(Budgets {
                 time: Duration::ZERO,
                 ..Budgets::default()
@@ -177,7 +178,7 @@ mod stopping_a_convert_at_its_budgets {
         use super::*;
 
         #[test]
-        fn returns_the_conversion_and_names_no_budget() {
+        fn reports_a_convert_within_its_budgets_as_never_stopped_and_names_no_budget() {
             let watch = Watch::default();
             assert!(!(0..3 * PERIOD).any(|_| watch.pulse()));
             assert!(watch.outgrown(QUERY).is_none());

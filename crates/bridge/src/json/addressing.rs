@@ -181,7 +181,7 @@ mod tests {
             use super::*;
 
             #[test]
-            fn spells_alike_two_pointers_that_select_one_node() {
+            fn spells_a_pointer_as_this_bridge_writes_it_and_reports_one_that_selects_no_node() {
                 let document = r#"{"records": [{"given name": "Ann"}]}"#;
                 let spelled = Spelled::of(document);
                 let respelled = spelled.respelled(finding("/%72ecords/0", "/given name"));

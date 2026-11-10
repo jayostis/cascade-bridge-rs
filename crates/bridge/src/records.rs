@@ -515,7 +515,8 @@ mod tests {
             }
 
             #[test]
-            fn names_a_version_every_mapping_writes_as_a_specialization_of_the_same_record() {
+            fn reads_one_version_where_a_mapping_writes_the_same_specialization_of_a_record_twice()
+            {
                 let quads: Vec<Quad> = RdfParser::from_format(RdfFormat::NTriples)
                     .for_slice(
                         format!("<urn:example:v> {OF} <urn:example:record> .\n<urn:example:v> {OF} <urn:example:record> .\n")
@@ -649,8 +650,9 @@ mod tests {
                 );
             }
 
+            /// removes a dropped version, its arrival and the references to it, and keeps the kept version's facts
             #[test]
-            fn leaves_nothing_of_a_dropped_version_behind_neither_a_reference_to_it_nor_what_hung_off_its_arrival(
+            fn removes_a_dropped_version_its_arrival_and_the_references_to_it_and_keeps_the_kept_version_s_facts(
             ) {
                 let quads: Vec<Quad> = RdfParser::from_format(RdfFormat::NTriples)
                     .for_slice(

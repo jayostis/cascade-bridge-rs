@@ -85,8 +85,10 @@ mod tests {
                 assert!(refused.contains("not inside the adapter"), "{refused:?}");
             }
 
+            /// reads a file from its own map only, and refuses the other map's files and any path leaving either
             #[test]
-            fn reads_each_map_for_what_it_holds_and_refuses_what_is_in_neither() {
+            fn reads_a_file_from_its_own_map_only_and_refuses_the_other_map_s_files_and_any_path_leaving_either(
+            ) {
                 let resolver = tiny_with_vocabularies();
                 let vocabularies = resolver
                     .vocabularies()

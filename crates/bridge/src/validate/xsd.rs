@@ -450,7 +450,7 @@ mod tests {
             }
 
             #[test]
-            fn replaces_the_declaration_of_a_document_that_says_it_is_not_utf_8() {
+            fn gives_a_document_a_utf_8_declaration_in_place_of_another_or_where_it_had_none() {
                 assert_eq!(
                     utf8_declaration("<?xml version=\"1.0\" encoding=\"UTF-16\"?><r/>"),
                     "<?xml version=\"1.0\" encoding=\"UTF-8\"?><r/>"

@@ -227,7 +227,7 @@ mod tests {
             }
 
             #[test]
-            fn names_the_innermost_running_stage_as_the_one_a_query_runs_in() {
+            fn names_the_stage_entered_last_of_those_running_as_the_one_a_query_runs_in() {
                 let watch = Stopwatch::new(true);
                 assert_eq!(
                     watch.during(Stage::Mapping, || watch

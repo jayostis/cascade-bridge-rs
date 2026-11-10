@@ -55,7 +55,7 @@ mod reading_a_json_document_as_records {
         }
 
         #[test]
-        fn records_where_each_value_stands_in_the_text() {
+        fn gives_a_value_the_span_of_its_text_in_the_document() {
             let text = r#"{"records": [ {"a": 1} ]}"#;
             let node = parse(text).expect("parsed");
             let record = node.at(&[0, 0]).expect("the record");

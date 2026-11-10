@@ -28,8 +28,10 @@ mod tests {
         mod given_a_findings_query {
             use super::*;
 
+            /// writes a namespaced document and its record by local name and namespace in a finding's selector
             #[test]
-            fn names_a_namespaced_document_element_of_a_finding_about_the_document_itself() {
+            fn writes_a_namespaced_document_and_its_record_by_local_name_and_namespace_in_a_finding_s_selector(
+            ) {
                 let values = values(&converted(&namespaced(), "two.xml").findings);
                 let document =
                     format!("/*[local-name()='catalog' and namespace-uri()='{CATALOG}']");

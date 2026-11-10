@@ -628,7 +628,7 @@ mod measuring_a_load_and_a_convert {
         }
 
         #[test]
-        fn counts_the_rows_a_mapping_answered() {
+        fn reports_a_nonzero_row_count_for_the_item_mapping() {
             let (_, queries) = profiled_queries();
             let item = queries
                 .iter()

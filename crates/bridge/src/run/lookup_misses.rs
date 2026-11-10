@@ -328,9 +328,9 @@ mod tests {
         mod given_the_finding_s_body_and_severity {
             use super::*;
 
-            /// gives a lookup finding the gap the entry's lookup names as its body, and `oa:classifying` as its motivation
+            /// gives a lookup finding the gap the entry's lookup names as its body, `oa:classifying` as its motivation and the input file as its source
             #[test]
-            fn gives_a_lookup_finding_the_gap_the_entry_s_lookup_names_as_its_body_and_oa_classifying_as_its_motivation(
+            fn gives_a_lookup_finding_the_gap_the_entry_s_lookup_names_as_its_body_oa_classifying_as_its_motivation_and_the_input_file_as_its_source(
             ) {
                 let found = findings(&notes(), "lookup-a-value-at-three-nodes.xml");
                 let annotation = about(&found, "Retired");

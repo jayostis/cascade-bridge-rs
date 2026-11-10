@@ -898,7 +898,8 @@ mod choosing_how_queries_are_executed {
         }
 
         #[test]
-        fn lowers_each_construct_a_mapping_query_uses_and_answers_as_the_general_evaluator_does() {
+        fn answers_each_construct_a_mapping_query_uses_with_rows_and_as_the_general_evaluator_does()
+        {
             let silent: Vec<_> = LOWERED
                 .iter()
                 .filter(|(_, query)| !answers_alike(query))
@@ -911,7 +912,8 @@ mod choosing_how_queries_are_executed {
         }
 
         #[test]
-        fn evaluates_each_builtin_to_the_value_the_general_evaluator_gives() {
+        fn answers_each_builtin_as_the_general_evaluator_does_and_names_the_three_whose_answer_is_empty(
+        ) {
             let mut dropped = Vec::new();
             for expression in [
                 "STR(?v)",
@@ -993,7 +995,8 @@ mod choosing_how_queries_are_executed {
         }
 
         #[test]
-        fn offers_every_tuple_of_an_answer_where_one_leaves_a_key_the_row_binds_unbound() {
+        fn returns_the_tuples_of_an_answer_that_agree_with_the_bound_key_and_those_that_leave_it_unbound(
+        ) {
             let term = |name: &str| {
                 Rc::new(Term::from(NamedNode::new_unchecked(format!(
                     "urn:t#{name}"
@@ -1127,7 +1130,7 @@ mod choosing_how_queries_are_executed {
         use super::*;
 
         #[test]
-        fn gives_a_query_up_where_a_value_is_one_no_builtin_covers() {
+        fn gives_each_query_up_where_its_value_or_its_order_is_one_the_plan_cannot_settle() {
             let store = graph();
             for (construct, query) in GIVEN_UP {
                 assert_eq!(

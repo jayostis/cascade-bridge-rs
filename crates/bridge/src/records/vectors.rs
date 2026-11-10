@@ -260,7 +260,8 @@ mod tests {
             }
 
             #[test]
-            fn says_which_rule_refused_a_base_url_and_never_the_url() {
+            fn refuses_a_base_url_with_a_facts_sentence_that_never_echoes_the_url_or_its_secret_parts(
+            ) {
                 let graph = manifest("tests/naming");
                 let refusals = entries(&graph, BRIDGE_BASE_URL_REFUSAL_TEST);
                 assert!(!refusals.is_empty(), "the manifest lists no refusal");
@@ -282,7 +283,8 @@ mod tests {
             }
 
             #[test]
-            fn names_every_versioning_vector_of_the_specification() {
+            fn reduces_every_versioning_vector_to_its_expected_graph_and_to_its_expected_version_names_and_content(
+            ) {
                 let graph = manifest("tests/versioning");
                 for entry in entries(&graph, BRIDGE_VERSIONING_TEST) {
                     let name = named(&graph, &entry);

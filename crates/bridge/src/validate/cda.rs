@@ -314,7 +314,7 @@ mod tests {
             use super::*;
 
             #[test]
-            fn holds_each_third_party_file_as_published_but_for_the_cpt_descriptors_removed() {
+            fn holds_exactly_the_listed_third_party_files_each_with_its_recorded_sha_256_digest() {
                 let published = [
                     (
                         "conformance/allergies-section.xml",

@@ -131,8 +131,10 @@ mod tests {
         mod convert {
             use super::*;
 
+            /// produces the one-rooted document's graph and no address report for a document with two roots
             #[test]
-            fn produces_the_graph_for_a_document_no_tree_can_be_built_from() {
+            fn produces_the_one_rooted_document_s_graph_and_no_address_report_for_a_document_with_two_roots(
+            ) {
                 let two_rooted = converted(
                     &variant(
                         "fixtures/in/two.xml",
@@ -198,7 +200,7 @@ mod tests {
             }
 
             #[test]
-            fn reports_an_address_two_findings_of_one_record_share_once() {
+            fn reports_an_address_two_findings_of_one_record_share_once_for_each_record() {
                 let shared = converted(
                     &variant(NOTE_QUERY, NOTE, "rdf:value \"nowhere\""),
                     "order.xml",

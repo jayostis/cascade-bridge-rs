@@ -74,7 +74,8 @@ mod tests {
             }
 
             #[test]
-            fn decodes_nothing_where_no_character_is_left_once_whitespace_is_removed() {
+            fn decodes_padded_base64_to_its_text_and_nothing_where_no_character_is_left_once_whitespace_is_removed(
+            ) {
                 assert_eq!(decoded(""), None);
                 assert_eq!(decoded(" \n\t\r "), None);
                 assert_eq!(decoded("aGk=").as_deref(), Some("hi"));

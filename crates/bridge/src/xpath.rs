@@ -726,7 +726,8 @@ mod tests {
             }
 
             #[test]
-            fn selects_no_node_for_an_address_that_leaves_the_record() {
+            fn selects_no_node_for_an_address_that_leaves_the_record_and_spells_one_inside_it_alike_taken_or_alone(
+            ) {
                 let whole = tree(
                     r#"<catalog><item>said<!-- aside --><note a="b"/></item><item/></catalog>"#,
                 );
@@ -840,7 +841,7 @@ mod tests {
             use super::*;
 
             #[test]
-            fn reaches_each_record_without_evaluating_its_selector() {
+            fn evaluates_an_address_once_for_each_record_it_follows_and_reports_none_unresolved() {
                 let document =
                     b"<catalog><item><note/></item><item><note/></item><item><note/></item></catalog>";
                 let followed = Followed::default();

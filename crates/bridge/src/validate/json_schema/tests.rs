@@ -108,7 +108,7 @@ mod validating_a_json_document_against_its_schema {
         }
 
         #[test]
-        fn reports_an_applicator_whose_subschema_is_false_where_the_applicator_stands() {
+        fn reports_an_applicator_whose_subschema_is_false_at_the_place_of_the_applicator_itself() {
             let schema = r#"{"properties": {"inner": {"properties": {"a": {}}, "additionalProperties": false}}, "additionalProperties": false}"#;
             assert_eq!(
                 findings(schema, r#"{"inner": {"a": 1, "b": 2}, "extra": 3}"#),
@@ -202,7 +202,8 @@ mod validating_a_json_document_against_its_schema {
         }
 
         #[test]
-        fn resolves_a_ref_against_the_id_of_the_subschema_it_stands_in_on_every_validation() {
+        fn resolves_a_ref_against_the_id_of_the_subschema_containing_it_and_remembers_the_refs_it_followed_on_every_validation(
+        ) {
             let package = files(&[
                 (
                     "schema.json",

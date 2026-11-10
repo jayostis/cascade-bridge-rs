@@ -236,7 +236,8 @@ mod tests {
             }
 
             #[test]
-            fn gives_an_annotation_targeting_the_record_itself_a_record_selector_of_its_own() {
+            fn gives_each_annotation_targeting_the_record_itself_its_own_target_and_selector_and_names_the_document_as_source(
+            ) {
                 let findings = findings_through(&whole_record(), "order.xml");
                 assert_eq!(annotations(&findings).len(), 4);
 

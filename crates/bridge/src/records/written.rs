@@ -150,9 +150,9 @@ mod tests {
         mod given_the_facts_a_host_supplies {
             use super::*;
 
-            /// loads the facts the document's name and the record's selector into each record's dataset
+            /// loads the facts the document's server and name and the record's selector into each record's dataset
             #[test]
-            fn loads_the_facts_the_document_s_name_and_the_record_s_selector_into_each_record_s_dataset(
+            fn loads_the_facts_the_document_s_server_and_name_and_the_record_s_selector_into_each_record_s_dataset(
             ) {
                 let resolver = reading(
                     "?s ex:server ?server ; ex:document ?document ; ex:at ?at .",
@@ -446,7 +446,7 @@ CONSTRUCT {{ [] ex:holds ?id }} WHERE {{ ?item a fx:root, xyz:item ; xyz:id ?id 
             use super::*;
 
             #[test]
-            fn writes_the_same_graph_byte_for_byte_in_every_run() {
+            fn writes_the_same_quads_in_the_same_order_in_two_conversions() {
                 let resolver = versioned().with(
                     "fixtures/facts/catalog.ttl",
                     "@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .

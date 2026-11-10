@@ -123,9 +123,9 @@ mod tests {
         mod convert_profiled {
             use super::*;
 
-            /// times each stage within the convert, where a plain convert times none
             #[test]
-            fn times_each_stage_within_the_convert_where_a_plain_convert_times_none() {
+            fn times_every_stage_and_query_within_the_convert_and_times_nothing_where_profiling_is_off(
+            ) {
                 let resolver = tiny_with_vocabularies();
                 let prepared = prepared_skipping(&resolver, &[]);
                 let input = Input::of(&resolver, "two.xml");

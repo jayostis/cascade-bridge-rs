@@ -202,7 +202,8 @@ mod tests {
             use super::*;
 
             #[test]
-            fn reports_a_path_the_accounting_omits_at_its_first_occurrence_in_the_record() {
+            fn reports_a_path_the_accounting_omits_as_an_info_classifying_annotation_at_its_first_occurrence_with_no_count(
+            ) {
                 let findings = findings(&tiny(), "unaccounted-child.xml");
                 assert_eq!(
                     census(&findings),
@@ -422,8 +423,8 @@ mod tests {
             use super::*;
 
             #[test]
-            fn reports_nothing_for_a_record_every_path_of_which_has_an_entry_whatever_its_verdict()
-            {
+            fn reports_nothing_for_a_record_whose_every_path_has_an_entry_and_exactly_the_path_of_a_struck_out_entry(
+            ) {
                 assert_eq!(census(&findings(&tiny(), "every-verdict.xml")), Vec::new());
 
                 for (path, within) in EVERY_VERDICT {
@@ -503,7 +504,7 @@ mod tests {
             }
 
             #[test]
-            fn refuses_an_unparseable_accounting_where_an_absent_one_is_read_in_silence() {
+            fn refuses_an_accounting_that_does_not_parse_where_an_absent_one_is_read_in_silence() {
                 assert_eq!(census(&findings(&unaccounted(), "two.xml")), Vec::new());
 
                 let Err(refusal) = conversion(&with_accounting(UNPARSEABLE), "two.xml") else {
@@ -527,7 +528,7 @@ mod tests {
             }
 
             #[test]
-            fn accounts_for_no_path_with_an_empty_accounting_where_an_absent_one_accounts_for_every_path(
+            fn reports_every_path_of_a_record_for_an_empty_accounting_where_an_absent_one_reports_none(
             ) {
                 assert_eq!(census(&findings(&unaccounted(), "two.xml")), Vec::new());
 

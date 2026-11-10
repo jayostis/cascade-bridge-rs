@@ -171,9 +171,9 @@ mod tests {
         mod given_a_record_s_graph {
             use super::*;
 
-            /// makes one finding of the result a record's graph failed a shape on
             #[test]
-            fn makes_one_finding_of_the_result_a_record_s_graph_failed_a_shape_on() {
+            fn makes_one_finding_of_a_failed_shape_result_and_still_produces_the_graph_the_shape_refused(
+            ) {
                 let (conversion, document) =
                     read_against_the_vocabulary("output-fails-a-shape.xml");
                 assert_eq!(
@@ -258,7 +258,7 @@ mod tests {
             }
 
             #[test]
-            fn refuses_a_mapping_writing_the_old_attribution_shape_and_lets_through_the_roles_on_an_association(
+            fn reports_prov_qualified_attribution_as_undeclared_on_each_record_and_nothing_for_a_qualified_association_with_roles(
             ) {
                 let undeclared = |written: &str| -> Vec<String> {
                     let resolver = Variant::of(tiny_with_vocabularies()).replacing_exactly(

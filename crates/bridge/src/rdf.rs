@@ -274,7 +274,7 @@ mod tests {
     /// Writing the graph and the findings · Conversion::graph(), Conversion::findings(), Format
     ///
     /// A conversion is written as Turtle or N-Triples, byte for byte the same in every run.
-    /// Findings can be written relative to the file they will stand in, so a folder of results
+    /// Findings can be written relative to the file they will be saved in, so a folder of results
     /// can be moved.
     mod writing_the_graph_and_the_findings {
         use super::*;
@@ -284,7 +284,7 @@ mod tests {
             use super::*;
 
             #[test]
-            fn emits_no_reference_that_resolves_anywhere_but_the_iri_it_was_made_from() {
+            fn writes_no_reference_that_resolves_anywhere_but_the_iri_it_was_made_from() {
                 for iri in [
                     // A dot segment, which the reader removes a second time and so
                     // arrives at a file the graph never named.

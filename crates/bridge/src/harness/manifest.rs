@@ -20,6 +20,19 @@ fn run() -> Vec<crate::harness::EntryResult> {
     run_manifest(&adapter, &resolver, RunOptions::default()).expect("manifest")
 }
 
+fn run_with_vocabularies() -> Vec<crate::harness::EntryResult> {
+    let resolver = fixtures::tiny_with_vocabularies();
+    let adapter = load_adapter(&resolver).expect("adapter");
+    run_manifest(&adapter, &resolver, RunOptions::default()).expect("manifest")
+}
+
+fn outcomes_of(results: &[crate::harness::EntryResult]) -> BTreeMap<&str, &str> {
+    results
+        .iter()
+        .map(|r| (r.name.as_str(), r.outcome.as_str()))
+        .collect()
+}
+
 /// A property the specification gives at most one value, written twice in the
 /// tiny adapter: `written` is the one value the adapter carries, found in
 /// `file` `times` times, and `doubled` adds a second.
@@ -239,23 +252,17 @@ mod tests {
             use super::*;
 
             #[test]
-            fn reaches_every_outcome_and_fails_exactly_the_entries_built_to_fail() {
-                let results = run();
-                let outcomes: BTreeMap<&str, &str> = results
-                    .iter()
-                    .map(|r| (r.name.as_str(), r.outcome.as_str()))
-                    .collect();
+            fn gives_each_entry_of_the_manifest_the_outcome_it_is_built_to_have() {
+                let results = run_with_vocabularies();
                 assert_eq!(
-                    outcomes,
+                    outcomes_of(&results),
                     BTreeMap::from([
                         ("pass", "passed"),
                         ("graph-fail", "failed"),
                         ("findings-fail", "failed"),
                         ("findings-repeated", "passed"),
                         ("census", "passed"),
-                        // This resolver was given no checkout, so the vocabulary that
-                        // draws the entry's one expected finding is not read.
-                        ("shapes", "failed"),
+                        ("shapes", "passed"),
                         ("input-only", "cantTell"),
                         ("dataset", "untested"),
                     ])
@@ -263,7 +270,14 @@ mod tests {
             }
 
             #[test]
-            fn times_each_entry_and_names_the_profiles_this_bridge_offers() {
+            fn fails_the_shapes_entry_where_no_vocabulary_was_given() {
+                let results = run();
+                assert_eq!(outcomes_of(&results).get("shapes"), Some(&"failed"));
+            }
+
+            /// times at least one entry and offers only the `sparql-1.1` profile
+            #[test]
+            fn times_at_least_one_entry_and_offers_only_the_sparql_1_1_profile() {
                 let results = run();
                 assert!(results.iter().any(|r| r.elapsed > Duration::ZERO));
                 assert_eq!(
