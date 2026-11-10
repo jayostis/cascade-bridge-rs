@@ -159,6 +159,14 @@ pub fn conversion(resolver: &dyn Resolver, input: &str) -> Result<Conversion> {
     conversion_under(resolver, input, Executor::default())
 }
 
+/// The refusal's sentence; `unrefused` says what it would mean if the conversion went through.
+pub fn refused(resolver: &dyn Resolver, input: &str, unrefused: &str) -> String {
+    match conversion(resolver, input) {
+        Ok(_) => panic!("{unrefused}"),
+        Err(refusal) => refusal.to_string(),
+    }
+}
+
 pub fn conversion_under(
     resolver: &dyn Resolver,
     input: &str,

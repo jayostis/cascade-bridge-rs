@@ -1,7 +1,6 @@
 use crate::fixtures::{
-    accounting, address, annotations, concept, conversion, count, entry, findings, gap_scheme,
-    node, says, tiny, Variant, ACCOUNTING, ACCOUNTING_PREAMBLE, CONCEPT_MAP, GAP_SCHEME, NOTE_GAP,
-    OA, SH,
+    accounting, address, annotations, concept, count, entry, findings, gap_scheme, node, refused,
+    says, tiny, Variant, ACCOUNTING, ACCOUNTING_PREAMBLE, CONCEPT_MAP, GAP_SCHEME, NOTE_GAP, OA, SH,
 };
 use oxrdf::{Quad, Term};
 
@@ -340,10 +339,11 @@ fn stands_a_lookup_finding_beside_the_gap_the_same_entry_names_and_the_query_con
 #[test]
 fn refuses_an_entry_declaring_a_lookup_in_and_no_gap_for_its_misses() {
     let half = declaring(accounting(&[entry("/item/note", "consumed", &[LOOKUP_IN])]));
-    let Err(refusal) = conversion(&half, "two.xml") else {
-        panic!("a map with no gap to report into is read as an entry declaring no lookup");
-    };
-    let refusal = refusal.to_string();
+    let refusal = refused(
+        &half,
+        "two.xml",
+        "a map with no gap to report into is read as an entry declaring no lookup",
+    );
     assert!(refusal.contains("/item/note"), "{refusal}");
 }
 
@@ -354,10 +354,11 @@ fn refuses_an_entry_naming_a_gap_for_misses_and_no_map_to_look_in() {
         "consumed",
         &[LOOKUP_NAMES_GAP],
     )]));
-    let Err(refusal) = conversion(&half, "two.xml") else {
-        panic!("a gap with no map to miss in is read as an entry declaring no lookup");
-    };
-    let refusal = refusal.to_string();
+    let refusal = refused(
+        &half,
+        "two.xml",
+        "a gap with no map to miss in is read as an entry declaring no lookup",
+    );
     assert!(refusal.contains("/item/note"), "{refusal}");
 }
 
@@ -368,10 +369,11 @@ fn refuses_an_entry_whose_lookup_names_a_gap_the_gap_scheme_does_not_declare() {
         "consumed",
         &[LOOKUP_IN, "bridge:lookupNamesGap ex:noGapAnyoneDeclared"],
     )]));
-    let Err(refusal) = conversion(&unwritten, "two.xml") else {
-        panic!("a gap nothing declares is read as a gap a miss can be bodied at");
-    };
-    let refusal = refusal.to_string();
+    let refusal = refused(
+        &unwritten,
+        "two.xml",
+        "a gap nothing declares is read as a gap a miss can be bodied at",
+    );
     assert!(
         refusal.contains("/item/note") && refusal.contains("noGapAnyoneDeclared"),
         "{refusal}"
@@ -390,10 +392,11 @@ fn refuses_an_entry_whose_lookup_names_a_gap_of_a_kind_other_than_value_not_mapp
             GAP_SCHEME,
             gap_scheme(&[concept("statusOutsideTheTable", kind, None)]),
         );
-        let Err(refusal) = conversion(&mistyped, "two.xml") else {
-            panic!("a lookup reports a gap of kind {kind}, which is true of something else");
-        };
-        let refusal = refusal.to_string();
+        let refusal = refused(
+            &mistyped,
+            "two.xml",
+            &format!("a lookup reports a gap of kind {kind}, which is true of something else"),
+        );
         assert!(refusal.contains("/item/note"), "{kind}: {refusal}");
     }
 }
@@ -409,10 +412,11 @@ fn refuses_an_entry_declaring_two_maps_or_two_gaps_for_its_misses() {
             "consumed",
             &[LOOKUP_IN, LOOKUP_NAMES_GAP, twice],
         )]));
-        let Err(refusal) = conversion(&both, "two.xml") else {
-            panic!("an entry declaring {twice} is read at whichever the parse saw last");
-        };
-        let refusal = refusal.to_string();
+        let refusal = refused(
+            &both,
+            "two.xml",
+            &format!("an entry declaring {twice} is read at whichever the parse saw last"),
+        );
         assert!(refusal.contains("/item/note"), "{refusal}");
     }
 }
@@ -423,10 +427,11 @@ const UNPARSEABLE: &str = "@prefix skos: <http://www.w3.org/2004/02/skos/core#\n
 fn refuses_a_concept_map_that_does_not_parse() {
     let broken =
         declaring(accounting(&[looks_up("/item/note", "consumed")])).with(CONCEPT_MAP, UNPARSEABLE);
-    let Err(refusal) = conversion(&broken, "two.xml") else {
-        panic!("a map that is not Turtle is read as a scheme holding no notation at all");
-    };
-    let refusal = refusal.to_string();
+    let refusal = refused(
+        &broken,
+        "two.xml",
+        "a map that is not Turtle is read as a scheme holding no notation at all",
+    );
     assert!(
         refusal.contains("/item/note") && refusal.contains(CONCEPT_MAP),
         "{refusal}"
@@ -441,10 +446,11 @@ fn refuses_a_concept_map_holding_two_concept_schemes_or_none() {
     ] {
         let wrong = declaring(accounting(&[looks_up("/item/note", "consumed")]))
             .with(CONCEPT_MAP, concept_map(scheme, &[maps("current")]));
-        let Err(refusal) = conversion(&wrong, "two.xml") else {
-            panic!("a file holding {scheme:?} is read as though one scheme in it were the lookup");
-        };
-        let refusal = refusal.to_string();
+        let refusal = refused(
+            &wrong,
+            "two.xml",
+            &format!("a file holding {scheme:?} is read as though one scheme in it were the lookup"),
+        );
         assert!(
             refusal.contains("/item/note") && refusal.contains(CONCEPT_MAP),
             "{refusal}"

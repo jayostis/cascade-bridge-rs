@@ -1,6 +1,6 @@
 use crate::fixtures::{
-    accounting, address, annotations, concept, conversion, count, entry, findings, gap_scheme,
-    node, one, says, step, tiny, with_accounting, Variant, ACCOUNTING, ACCOUNTING_PREAMBLE, BRIDGE,
+    accounting, address, annotations, concept, count, entry, findings, gap_scheme, node, one,
+    refused, says, step, tiny, with_accounting, Variant, ACCOUNTING, ACCOUNTING_PREAMBLE, BRIDGE,
     CASCADE, CRATE, GAPS_PREAMBLE, GAP_SCHEME, NOTE_GAP, OA, PATH_NOT_ACCOUNTED, SH, XSD_INTEGER,
 };
 use crate::resolver::Resolver;
@@ -420,20 +420,22 @@ const UNPARSEABLE: &str = "@prefix skos: <http://www.w3.org/2004/02/skos/core#\n
 
 #[test]
 fn refuses_an_unparseable_gap_scheme() {
-    let Err(refusal) = conversion(&with_gaps(UNPARSEABLE), "two.xml") else {
-        panic!("a gap scheme that is not Turtle is read as a scheme declaring nothing");
-    };
-    let refusal = refusal.to_string();
+    let refusal = refused(
+        &with_gaps(UNPARSEABLE),
+        "two.xml",
+        "a gap scheme that is not Turtle is read as a scheme declaring nothing",
+    );
     assert!(refusal.contains(GAP_SCHEME), "{refusal}");
 }
 
 #[test]
 fn refuses_a_gap_scheme_the_crate_names_and_nothing_answers_to() {
     let missing = Variant::of(tiny()).replacing_exactly(CRATE, GAP_SCHEME, UNWRITTEN, 1);
-    let Err(refusal) = conversion(&missing, "two.xml") else {
-        panic!("a crate that says what it does not carry and cannot show it is read in silence");
-    };
-    let refusal = refusal.to_string();
+    let refusal = refused(
+        &missing,
+        "two.xml",
+        "a crate that says what it does not carry and cannot show it is read in silence",
+    );
     assert!(refusal.contains(UNWRITTEN), "{refusal}");
 }
 
@@ -449,10 +451,11 @@ fn refuses_a_gap_declaring_a_severity_the_specification_does_not_name() {
     let catastrophic = with_gaps(&scheme_but_for(
         "ex:noteHasNoTerm a skos:Concept ;\n  skos:inScheme ex:gaps ;\n  skos:broader bridge:noPredicate ;\n  sh:resultSeverity ex:Catastrophic .\n",
     ));
-    let Err(refusal) = conversion(&catastrophic, "two.xml") else {
-        panic!("a severity outside the three is carried into a finding the profile refuses");
-    };
-    let refusal = refusal.to_string();
+    let refusal = refused(
+        &catastrophic,
+        "two.xml",
+        "a severity outside the three is carried into a finding the profile refuses",
+    );
     assert!(refusal.contains("Catastrophic"), "{refusal}");
 }
 
@@ -461,10 +464,11 @@ fn refuses_a_gap_declaring_two_severities() {
     let both = with_gaps(&scheme_but_for(
         "ex:noteHasNoTerm a skos:Concept ;\n  skos:inScheme ex:gaps ;\n  skos:broader bridge:noPredicate ;\n  sh:resultSeverity sh:Warning, sh:Violation .\n",
     ));
-    let Err(refusal) = conversion(&both, "two.xml") else {
-        panic!("a gap declaring two severities is judged at whichever one the parse saw last");
-    };
-    let refusal = refusal.to_string();
+    let refusal = refused(
+        &both,
+        "two.xml",
+        "a gap declaring two severities is judged at whichever one the parse saw last",
+    );
     assert!(refusal.contains("noteHasNoTerm"), "{refusal}");
 }
 
@@ -473,10 +477,11 @@ fn refuses_a_gap_declaring_a_severity_that_is_no_iri() {
     let quoted = with_gaps(&scheme_but_for(
         "ex:noteHasNoTerm a skos:Concept ;\n  skos:inScheme ex:gaps ;\n  skos:broader bridge:noPredicate ;\n  sh:resultSeverity \"sh:Warning\" .\n",
     ));
-    let Err(refusal) = conversion(&quoted, "two.xml") else {
-        panic!("a severity that is not an IRI is dropped, and the gap reports at sh:Info");
-    };
-    let refusal = refusal.to_string();
+    let refusal = refused(
+        &quoted,
+        "two.xml",
+        "a severity that is not an IRI is dropped, and the gap reports at sh:Info",
+    );
     assert!(refusal.contains("noteHasNoTerm"), "{refusal}");
 }
 
@@ -485,10 +490,11 @@ fn refuses_a_gap_the_scheme_declares_with_no_kind() {
     let kindless = with_gaps(&scheme_but_for(
         "ex:noteHasNoTerm a skos:Concept ;\n  skos:inScheme ex:gaps ;\n  sh:resultSeverity sh:Warning .\n",
     ));
-    let Err(refusal) = conversion(&kindless, "two.xml") else {
-        panic!("a gap with no skos:broader is read as a gap of a kind that does not report");
-    };
-    let refusal = refusal.to_string();
+    let refusal = refused(
+        &kindless,
+        "two.xml",
+        "a gap with no skos:broader is read as a gap of a kind that does not report",
+    );
     assert!(refusal.contains("noteHasNoTerm"), "{refusal}");
 }
 
@@ -499,10 +505,11 @@ fn refuses_an_entry_naming_a_gap_the_scheme_does_not_declare() {
         stated("/item/title", "carried", None),
         stated("/item/note", "noHome", Some("ex:noGapAnyoneDeclared")),
     ]));
-    let Err(refusal) = conversion(&unwritten, "two.xml") else {
-        panic!("a gap nothing declares is read as a gap of a kind that does not report");
-    };
-    let refusal = refusal.to_string();
+    let refusal = refused(
+        &unwritten,
+        "two.xml",
+        "a gap nothing declares is read as a gap of a kind that does not report",
+    );
     assert!(refusal.contains("noGapAnyoneDeclared"), "{refusal}");
 }
 
@@ -511,10 +518,11 @@ fn refuses_a_verdict_that_is_no_iri() {
     let quoted = with_accounting(&format!(
         "{ACCOUNTING_PREAMBLE}\n[] a bridge:PathEntry ;\n   bridge:sourcePath \"/item/note\" ;\n   bridge:verdict \"noHome\" .\n"
     ));
-    let Err(refusal) = conversion(&quoted, "two.xml") else {
-        panic!("a verdict that is not an IRI is dropped, and its entry accounts for the path");
-    };
-    let refusal = refusal.to_string();
+    let refusal = refused(
+        &quoted,
+        "two.xml",
+        "a verdict that is not an IRI is dropped, and its entry accounts for the path",
+    );
     assert!(refusal.contains(ACCOUNTING), "{refusal}");
 }
 
@@ -523,10 +531,11 @@ fn refuses_a_named_gap_that_is_no_iri() {
     let quoted = with_accounting(&format!(
         "{ACCOUNTING_PREAMBLE}\n[] a bridge:PathEntry ;\n   bridge:sourcePath \"/item/note\" ;\n   bridge:verdict bridge:noHome ;\n   bridge:namesGap \"ex:noteHasNoTerm\" .\n"
     ));
-    let Err(refusal) = conversion(&quoted, "two.xml") else {
-        panic!("a gap that is not an IRI is dropped, and its entry reports nothing");
-    };
-    let refusal = refusal.to_string();
+    let refusal = refused(
+        &quoted,
+        "two.xml",
+        "a gap that is not an IRI is dropped, and its entry reports nothing",
+    );
     assert!(refusal.contains(ACCOUNTING), "{refusal}");
 }
 
@@ -535,10 +544,11 @@ fn refuses_a_gap_declaring_two_kinds() {
     let both = with_gaps(&scheme_but_for(
         "ex:noteHasNoTerm a skos:Concept ;\n  skos:inScheme ex:gaps ;\n  skos:broader bridge:noPredicate, bridge:carriedWithLoss .\n",
     ));
-    let Err(refusal) = conversion(&both, "two.xml") else {
-        panic!("a gap declaring two kinds reports, or does not, by whichever the parse saw last");
-    };
-    let refusal = refusal.to_string();
+    let refusal = refused(
+        &both,
+        "two.xml",
+        "a gap declaring two kinds reports, or does not, by whichever the parse saw last",
+    );
     assert!(refusal.contains("noteHasNoTerm"), "{refusal}");
 }
 
@@ -547,10 +557,11 @@ fn refuses_an_entry_declaring_two_verdicts() {
     let both = with_accounting(&format!(
         "{ACCOUNTING_PREAMBLE}\n[] a bridge:PathEntry ;\n   bridge:sourcePath \"/item/note\" ;\n   bridge:verdict bridge:carried, bridge:noHome ;\n   bridge:namesGap ex:noteHasNoTerm .\n"
     ));
-    let Err(refusal) = conversion(&both, "two.xml") else {
-        panic!("an entry declaring two verdicts is judged at whichever one the parse saw last");
-    };
-    let refusal = refusal.to_string();
+    let refusal = refused(
+        &both,
+        "two.xml",
+        "an entry declaring two verdicts is judged at whichever one the parse saw last",
+    );
     assert!(refusal.contains("/item/note"), "{refusal}");
 }
 
@@ -559,10 +570,11 @@ fn refuses_an_entry_naming_two_gaps() {
     let both = with_accounting(&format!(
         "{ACCOUNTING_PREAMBLE}\n[] a bridge:PathEntry ;\n   bridge:sourcePath \"/item/note\" ;\n   bridge:verdict bridge:noHome ;\n   bridge:namesGap ex:noteHasNoTerm, ex:itemHasNoTitle .\n"
     ));
-    let Err(refusal) = conversion(&both, "two.xml") else {
-        panic!("an entry naming two gaps reports whichever one the parse saw last");
-    };
-    let refusal = refusal.to_string();
+    let refusal = refused(
+        &both,
+        "two.xml",
+        "an entry naming two gaps reports whichever one the parse saw last",
+    );
     assert!(refusal.contains("/item/note"), "{refusal}");
 }
 
@@ -610,10 +622,11 @@ fn refuses_a_source_path_that_is_no_literal_wherever_it_stands() {
     let addressed = with_accounting(&format!(
         "{ACCOUNTING_PREAMBLE}\nex:notAnEntry bridge:sourcePath <urn:example:catalog#note> .\n"
     ));
-    let Err(refusal) = conversion(&addressed, "two.xml") else {
-        panic!("a path that is no literal is dropped, and the census reports the path it named");
-    };
-    let refusal = refusal.to_string();
+    let refusal = refused(
+        &addressed,
+        "two.xml",
+        "a path that is no literal is dropped, and the census reports the path it named",
+    );
     assert!(refusal.contains(ACCOUNTING), "{refusal}");
 }
 
