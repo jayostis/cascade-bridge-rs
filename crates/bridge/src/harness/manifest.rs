@@ -269,13 +269,15 @@ mod tests {
                 );
             }
 
+            /// without a vocabulary nothing resolves, so the shapes check produces no annotation
+            /// and the entry fails: its expected finding goes missing
             #[test]
-            fn fails_the_shapes_entry_where_no_vocabulary_was_given() {
+            fn fails_the_shapes_entry_whose_finding_goes_missing_without_a_vocabulary() {
                 let results = run();
                 assert_eq!(outcomes_of(&results).get("shapes"), Some(&"failed"));
                 let shapes = results.iter().find(|r| r.name == "shapes").expect("shapes");
                 assert!(
-                    shapes.description.contains("no vocabulary was given"),
+                    shapes.description.contains("1 finding(s) missing"),
                     "{}",
                     shapes.description
                 );
