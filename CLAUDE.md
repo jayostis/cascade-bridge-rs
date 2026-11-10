@@ -25,6 +25,8 @@ So:
 - **No reasoning in files.** Why a change was made, and the alternative it did
   not take, go in the commit message.
 - **Deleting prose is always in scope**, in any change, and preferred to editing it.
+- **A test `mod`'s `///` is its heading and description on the tests page, and a
+  test's `///` its title only where the name cannot spell it.**
 
 ## The rules
 

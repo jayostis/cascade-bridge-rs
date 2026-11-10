@@ -58,7 +58,15 @@ jobs:
       - run: sh package/build.sh --fast
         working-directory: ${{ github.event.repository.name }}
       - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
-      - run: cargo test --locked -p cascade-bridge-cli --test node_host --test specification_vector -- --include-ignored
+      - run: node --test .github/scripts/junit-properties.test.mjs
+        working-directory: ${{ github.event.repository.name }}
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest@0.9.149
+      - run: cargo nextest run --locked --profile ci
+        working-directory: ${{ github.event.repository.name }}
+      - run: cargo nextest run --locked --profile ci-hosts -p cascade-bridge-cli --test node_host --test specification_vector --run-ignored all
+        if: ${{ !cancelled() }}
         working-directory: ${{ github.event.repository.name }}
       - run: node --test package/tests/
         working-directory: ${{ github.event.repository.name }}
@@ -80,3 +88,29 @@ jobs:
           done
           exit "$failed"
         working-directory: ${{ github.event.repository.name }}
+      - name: the report the tests page reads
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p report
+          node .github/scripts/junit-properties.mjs report/junit.xml target/nextest/ci/junit.xml target/nextest/ci-hosts/junit.xml
+          cp crates/spec.json report/
+        working-directory: ${{ github.event.repository.name }}
+      - uses: actions/checkout@v7
+        if: ${{ !cancelled() }}
+        with:
+          repository: jayostis/cascade-runtime-js
+          path: .runtime-js
+          sparse-checkout: |
+            scripts
+            packages/site/src
+          persist-credentials: false
+      - name: the tests read as a specification
+        if: ${{ !cancelled() }}
+        run: node ../.runtime-js/scripts/spec-shape.mjs report/junit.xml crates/spec.json
+        working-directory: ${{ github.event.repository.name }}
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: unit-tests
+          path: ${{ github.event.repository.name }}/report/
+          if-no-files-found: error
