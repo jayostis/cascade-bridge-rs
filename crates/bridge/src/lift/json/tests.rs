@@ -10,13 +10,13 @@ fn envelope(root: &str, value: Option<&str>, records: &str) -> Admission {
     }
 }
 
-fn units(text: &str, reading: &Reading<'_>, paths: Paths) -> Vec<Unit> {
+fn records(text: &str, reading: &Reading<'_>, paths: Paths) -> Vec<Unit> {
     let mut lift = lift(text, reading, paths).expect("the lift");
-    let mut units = Vec::new();
-    while let Some(unit) = Lift::next_unit(&mut lift).expect("a unit") {
-        units.push(unit);
+    let mut records = Vec::new();
+    while let Some(record) = Lift::next_unit(&mut lift).expect("a record") {
+        records.push(record);
     }
-    units
+    records
 }
 
 #[test]
@@ -46,7 +46,7 @@ fn reads_a_document_in_an_envelope_naming_its_member_s_value_before_one_naming_n
     let text = r#"{"kind": "set", "records": [{"a": "1"}, {"a": "2"}]}"#;
     let lift = lift(text, &reading, Paths::Dropped).expect("the lift");
     assert_eq!(admitting(&lift, &reading), Some(2));
-    let selectors: Vec<String> = units(text, &reading, Paths::Dropped)
+    let selectors: Vec<String> = records(text, &reading, Paths::Dropped)
         .iter()
         .map(Unit::selector)
         .collect();
@@ -64,10 +64,10 @@ fn reads_a_document_in_the_envelope_named_whether_or_not_it_admits_it() {
         named: Some(1),
     };
     let text = r#"{"kind": "set", "records": [{"a": "1"}]}"#;
-    let units = units(text, &reading, Paths::Dropped);
-    assert_eq!(units.len(), 1);
-    assert_eq!(units[0].selector(), "");
-    assert_eq!(units[0].text, text);
+    let records = records(text, &reading, Paths::Dropped);
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].selector(), "");
+    assert_eq!(records[0].text, text);
 }
 
 #[test]
@@ -79,7 +79,7 @@ fn splits_nothing_where_no_envelope_admits_the_document() {
         envelopes: vec![&set],
         named: None,
     };
-    assert!(units(
+    assert!(records(
         r#"{"kind": "list", "records": [{}]}"#,
         &reading,
         Paths::Dropped
@@ -100,8 +100,8 @@ fn counts_an_array_s_items_at_its_path_and_addresses_the_first() {
         valued: HashSet::from(["/status".to_owned()]),
     };
     let text = r#"{"id": "r", "status": ["a", "B", "B"], "ext": [{"u": 1}, {"u": 2}], "gone": null, "a/b": []}"#;
-    let units = units(text, &reading, paths);
-    let occurrences: Vec<(&str, Option<&str>, usize)> = units[0]
+    let records = records(text, &reading, paths);
+    let occurrences: Vec<(&str, Option<&str>, usize)> = records[0]
         .occurrences()
         .iter()
         .map(|o| (o.path.as_str(), o.within.as_deref(), o.count))
@@ -115,7 +115,7 @@ fn counts_an_array_s_items_at_its_path_and_addresses_the_first() {
             ("/ext/u", Some("/ext/0/u"), 2),
         ]
     );
-    let values: Vec<(&str, Option<&str>, usize)> = units[0]
+    let values: Vec<(&str, Option<&str>, usize)> = records[0]
         .values()
         .iter()
         .map(|v| (v.value.as_str(), v.within.as_deref(), v.count))

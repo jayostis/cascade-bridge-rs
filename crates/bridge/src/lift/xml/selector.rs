@@ -3,7 +3,7 @@ use super::{document_selector, lift_slice};
 fn selectors(xml: &[u8], record: &str) -> Vec<String> {
     lift_slice(xml, Some(record))
         .expect("lift")
-        .map(|unit| unit.expect("unit").selector())
+        .map(|found| found.expect("record").selector())
         .collect()
 }
 

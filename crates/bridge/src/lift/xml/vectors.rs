@@ -67,11 +67,11 @@ fn document_element(xml: &[u8]) -> String {
 
 fn lift_whole(xml: &[u8], breaking: &[String]) -> BTreeSet<String> {
     let mut lift = lift_slice_breaking(xml, Some(&document_element(xml)), breaking).expect("lift");
-    let unit = lift
+    let record = lift
         .next_unit()
-        .expect("unit")
+        .expect("record")
         .expect("the document element");
-    lines(&unit.store)
+    lines(&record.store)
 }
 
 fn assert_graph(what: &str, produced: BTreeSet<String>, expected: BTreeSet<String>) {
@@ -142,7 +142,7 @@ _:item <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/faca
 _:item <http://sparql.xyz/facade-x/data/id> "2" .
 "#;
 
-/// Each unit keeps its type triple, its slot and its attributes; a child holding text is left out.
+/// Each record keeps its type triple, its slot and its attributes; a child holding text is left out.
 const SKELETON: &str = r#"
 _:set <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/ns/root> .
 _:set <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/set> .
@@ -160,19 +160,19 @@ fn lifts_each_unit_with_the_unit_as_root_and_keeps_only_its_attributes_and_child
 ) {
     let xml = br#"<set n="2"><item id="1"><t>x</t></item><item id="2"/></set>"#;
     let mut lift = lift_slice(xml, Some("item")).expect("lift");
-    let mut units = Vec::new();
-    while let Some(unit) = lift.next_unit().expect("unit") {
-        units.push(lines(&unit.store));
+    let mut records = Vec::new();
+    while let Some(record) = lift.next_unit().expect("record") {
+        records.push(lines(&record.store));
     }
-    assert_eq!(units.len(), 2);
+    assert_eq!(records.len(), 2);
     assert_graph(
-        "the first unit",
-        units.remove(0),
+        "the first record",
+        records.remove(0),
         parsed(FIRST_UNIT.as_bytes()),
     );
     assert_graph(
-        "the second unit",
-        units.remove(0),
+        "the second record",
+        records.remove(0),
         parsed(SECOND_UNIT.as_bytes()),
     );
     assert_graph(
@@ -198,10 +198,10 @@ fn refuses_a_document_ending_with_an_element_still_open_before_its_skeleton_is_r
 #[test]
 fn treats_a_document_whose_element_is_the_unit_as_one_unit() {
     let mut lift = lift_slice(br#"<item id="9"/>"#, Some("item")).expect("lift");
-    let unit = lift.next_unit().expect("unit").expect("one unit");
+    let record = lift.next_unit().expect("record").expect("one record");
     assert_graph(
-        "the one unit",
-        lines(&unit.store),
+        "the one record",
+        lines(&record.store),
         parsed(
             br#"
 _:item <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/ns/root> .
@@ -251,13 +251,13 @@ fn normalises_an_attribute_value_as_xml_does_whatever_the_checkout() {
 fn writes_a_record_out_with_the_comments_and_instructions_it_held() {
     let document =
         b"<catalog><!-- before --><item>before<!-- inside --><?say it?>after<e/></item></catalog>";
-    let unit = lift_slice(document, Some("item"))
+    let record = lift_slice(document, Some("item"))
         .expect("lift")
         .next()
-        .expect("a unit")
-        .expect("a unit");
+        .expect("a record")
+        .expect("a record");
     assert_eq!(
-        unit.text,
+        record.text,
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?><item>before<!-- inside --><?say it?>after<e></e></item>"
     );
 }
