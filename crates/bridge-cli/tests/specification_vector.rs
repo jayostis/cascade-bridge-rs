@@ -10,16 +10,27 @@ fn specification() -> PathBuf {
     }
 }
 
-#[test]
-#[ignore = "reads a checkout of jayostis/cascade-bridge-spec beside this one"]
-fn reproduces_every_finding_the_specification_s_synthetic_adapter_expects() {
-    passes_every_entry_of("synthetic-adapter");
-}
+/// Passing the specification's own adapters · cascade-bridge test
+///
+/// The Bridge specification ships two small adapters whose test manifests hold an entry of every
+/// test type. A Bridge that passes them judges an adapter's tests as the specification says, so
+/// these run the whole of each through `test`.
+mod passing_the_specifications_adapters {
+    use super::*;
 
-#[test]
-#[ignore = "reads a checkout of jayostis/cascade-bridge-spec beside this one"]
-fn reproduces_every_finding_the_specification_s_synthetic_json_adapter_expects() {
-    passes_every_entry_of("synthetic-json-adapter");
+    /// passes every entry of the synthetic XML adapter that a Bridge can judge
+    #[test]
+    #[ignore = "reads a checkout of jayostis/cascade-bridge-spec beside this one"]
+    fn passes_every_entry_of_the_synthetic_xml_adapter_that_a_bridge_can_judge() {
+        passes_every_entry_of("synthetic-adapter");
+    }
+
+    /// passes every entry of the synthetic JSON adapter that a Bridge can judge
+    #[test]
+    #[ignore = "reads a checkout of jayostis/cascade-bridge-spec beside this one"]
+    fn passes_every_entry_of_the_synthetic_json_adapter_that_a_bridge_can_judge() {
+        passes_every_entry_of("synthetic-json-adapter");
+    }
 }
 
 fn passes_every_entry_of(synthetic: &str) {

@@ -265,6 +265,13 @@
       ]
     },
     {
+      "term": "triple",
+      "definition": "one statement of a graph, made of three parts: what it is about, what it says of it and the value it gives.",
+      "aliases": [
+        "triples"
+      ]
+    },
+    {
       "term": "Turtle",
       "definition": "a W3C text format for writing a graph; the command writes its graph and its findings in it unless `--format ntriples` asks otherwise.",
       "vocabulary": "https://www.w3.org/TR/turtle/"
