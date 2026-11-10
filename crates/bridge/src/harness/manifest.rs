@@ -269,8 +269,6 @@ mod tests {
                 );
             }
 
-            /// without a vocabulary nothing resolves, so the shapes check produces no annotation
-            /// and the entry fails: its expected finding goes missing
             #[test]
             fn fails_the_shapes_entry_whose_finding_goes_missing_without_a_vocabulary() {
                 let results = run();
