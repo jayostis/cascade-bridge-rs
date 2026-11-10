@@ -2,18 +2,15 @@
 // names each aggregate at random per parse, so two runs already differ in their bytes.
 mod common;
 
-use cascade_bridge::oxrdf::{NamedOrBlankNode, Quad, Term};
-use cascade_bridge::oxrdfio::{RdfFormat, RdfParser};
+use cascade_bridge::oxrdf::Quad;
+use cascade_bridge::oxrdfio::RdfFormat;
 use common::{
-    canonical, canonical_lines, copied_to, names, read_at_its_own_iri, scratch, tiny, vocabularies,
-    BASE, MAX_LENGTH,
+    canonical, canonical_lines, copied_to, map_of, names, outcomes, read_at_its_own_iri, results,
+    scratch, tiny, vocabularies, BASE, MAX_LENGTH,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
-
-const EARL: &str = "http://www.w3.org/ns/earl#";
-const DCT_TITLE: &str = "http://purl.org/dc/terms/title";
 
 fn workspace() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -429,45 +426,6 @@ fn an_adapter_under_a_folder_named_with_a_space_a_non_ascii_letter_and_sub_delim
     converts_as_the_native_command_does(&adapter, "two.xml", &["--vocabularies", &vocabularies]);
 }
 
-fn outcomes(report: &Path) -> BTreeMap<String, String> {
-    let quads: Vec<_> = RdfParser::from_format(RdfFormat::Turtle)
-        .for_slice(&std::fs::read(report).expect("the written report"))
-        .map(|quad| quad.expect("a parsed report"))
-        .collect();
-    let object = |subject: &NamedOrBlankNode, predicate: &str| -> Option<Term> {
-        quads
-            .iter()
-            .find(|q| &q.subject == subject && q.predicate.as_str() == predicate)
-            .map(|q| q.object.clone())
-    };
-    let as_subject = |term: Term| match term {
-        Term::NamedNode(n) => Some(NamedOrBlankNode::from(n)),
-        Term::BlankNode(b) => Some(NamedOrBlankNode::from(b)),
-        _ => None,
-    };
-    quads
-        .iter()
-        .filter(|q| q.predicate.as_str() == format!("{EARL}test"))
-        .map(|q| {
-            let test = match &q.object {
-                Term::NamedNode(n) => n.as_str().to_owned(),
-                other => match object(&as_subject(other.clone()).expect("a node"), DCT_TITLE) {
-                    Some(Term::Literal(title)) => title.value().to_owned(),
-                    _ => panic!("an anonymous test with no title"),
-                },
-            };
-            let result = object(&q.subject, &format!("{EARL}result"))
-                .and_then(as_subject)
-                .expect("a result");
-            let outcome = match object(&result, &format!("{EARL}outcome")) {
-                Some(Term::NamedNode(n)) => n.as_str().to_owned(),
-                _ => panic!("a result with no outcome"),
-            };
-            (test, outcome)
-        })
-        .collect()
-}
-
 #[test]
 fn the_node_host_reports_the_outcome_the_native_command_reports_for_each_entry() {
     let scratch = scratch();
@@ -586,70 +544,6 @@ fn a_mapping_neither_host_can_read_is_named_once_by_each_and_both_exit_alike() {
             assert_eq!(said.matches(&iri).count(), 1, "{said}");
         }
     }
-}
-
-fn files_under(
-    root: &Path,
-    directory: &Path,
-    into: &mut serde_json::Map<String, serde_json::Value>,
-) {
-    for entry in std::fs::read_dir(directory).expect("a directory") {
-        let path = entry.expect("an entry").path();
-        let key = path
-            .strip_prefix(root)
-            .expect("under the root")
-            .to_string_lossy()
-            .replace('\\', "/");
-        if path.is_dir() {
-            files_under(root, &path, into);
-        } else {
-            into.insert(key, serde_json::json!(path.to_string_lossy()));
-        }
-    }
-}
-
-fn map_of(directory: &Path, iri: &str, withheld: &[&str]) -> serde_json::Value {
-    let mut files = serde_json::Map::new();
-    files_under(directory, directory, &mut files);
-    files.retain(|key, _| !withheld.iter().any(|left| key.starts_with(left)));
-    serde_json::json!({ "iri": iri, "files": files })
-}
-
-/// The answers, kinds and graphs a results directory holds, each graph canonicalised.
-fn results(directory: &Path) -> BTreeMap<String, String> {
-    let mut held = BTreeMap::new();
-    for case in std::fs::read_dir(directory).expect("the results") {
-        let case = case.expect("a case").path();
-        for written in std::fs::read_dir(&case).expect("a case's results") {
-            let written = written.expect("a result").path();
-            let name = format!(
-                "{}/{}",
-                case.file_name().expect("a case name").to_string_lossy(),
-                written.file_name().expect("a file name").to_string_lossy()
-            );
-            let bytes = std::fs::read(&written).expect("a result");
-            let said = match written.extension().and_then(|e| e.to_str()) {
-                Some("json") => {
-                    let mut answer: serde_json::Value =
-                        serde_json::from_slice(&bytes).expect("a JSON result");
-                    if let Some(failure) = answer.get_mut("failure") {
-                        failure
-                            .as_object_mut()
-                            .expect("a failure")
-                            .remove("message");
-                    }
-                    answer.to_string()
-                }
-                Some("report") => format!("{:?}", outcomes(&written)),
-                _ => format!(
-                    "{:?}",
-                    canonical(&bytes, RdfFormat::Turtle, "https://example.org/base")
-                ),
-            };
-            held.insert(name, said);
-        }
-    }
-    held
 }
 
 #[test]
