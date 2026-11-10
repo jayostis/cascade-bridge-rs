@@ -912,7 +912,7 @@ mod running_an_adapters_tests {
         assert_eq!(
             stdout.lines().last(),
             Some("4 passed, 2 failed, 1 cantTell, 1 untested"),
-            "{stdout}"
+            "the entry whose expected findings only the vocabulary draws passes: {stdout}"
         );
     }
 
@@ -1100,6 +1100,14 @@ mod measuring_a_conversion {
                     line.contains(" run(s), ") && line.contains(" row(s), "),
                     "{line}"
                 );
+                let time = line
+                    .split(" row(s), ")
+                    .nth(1)
+                    .and_then(|rest| rest.split(" s, ").next());
+                assert!(
+                    time.is_some_and(|seconds| seconds.parse::<f64>().is_ok()),
+                    "its time in seconds: {line}"
+                );
                 assert!(
                     line.ends_with("compiled") || line.contains("evaluated"),
                     "{line}"
@@ -1255,7 +1263,15 @@ mod telling_why_a_command_stopped {
         /// refuses `--format rdfxml`
         #[test]
         fn refuses_a_format_it_does_not_write() {
-            refused_with_the_usage(&["convert", &adapter(), "document.xml", "--format", "rdfxml"]);
+            let run =
+                cascade_bridge(&["convert", &adapter(), "document.xml", "--format", "rdfxml"]);
+            let stderr = String::from_utf8_lossy(&run.stderr);
+            assert_eq!(run.status.code(), Some(2), "{stderr}");
+            assert!(run.stdout.is_empty());
+            assert!(
+                stderr.contains("--format turtle|ntriples"),
+                "the refusal names the formats it does write: {stderr}"
+            );
         }
 
         /// refuses `--memory-budget-mib 0`

@@ -83,16 +83,91 @@ export function said(doc, name) {
   };
 }
 
-/** The `///` lines directly above the item on `at`, an attribute between them and it skipped, without their marker. */
+/** The first line of the attribute that ends on `line`, a multi-line one included, or `line` when it ends none. */
+function attributeStart(lines, line) {
+  for (let up = line; up >= 0 && up > line - 20; up -= 1) {
+    const text = (lines[up] ?? "").trim();
+    if (text.startsWith("#[")) return up;
+    if (up !== line && /[;{}]$/.test(text)) return line;
+  }
+  return line;
+}
+
+/**
+ * The `///` lines directly above the item on `at`, without their marker; an attribute (of several lines too) and a `//` or
+ * `////` comment between them and it are skipped.
+ */
 function docOf(lines, at) {
   const doc = [];
   for (let line = at - 1; line >= 0; line -= 1) {
     const text = (lines[line] ?? "").trim();
-    if (text.startsWith("///")) doc.unshift(text.slice(3).replace(/^ /, ""));
-    else if (!text.startsWith("#[")) break;
+    if (text.startsWith("///") && !text.startsWith("////"))
+      doc.unshift(text.slice(3).replace(/^ /, ""));
+    else if (text.startsWith("//") || text.startsWith("#[")) continue;
+    else if (text.endsWith("]")) {
+      const start = attributeStart(lines, line);
+      if (start === line) break;
+      line = start;
+    } else break;
   }
   return doc;
 }
+
+const RAW_STRING = /^b?r(#*)"/;
+
+/**
+ * Which lines of a file begin inside a string, a raw string or a block comment, where a `}` or a `mod` is text, not code.
+ */
+function insideText(lines) {
+  const inside = new Array(lines.length).fill(false);
+  let closing; // what ends the string or comment the scan is in, none in code
+  let depth = 0; // block comments nest
+  for (let at = 0; at < lines.length; at += 1) {
+    inside[at] = closing !== undefined;
+    const text = lines[at] ?? "";
+    for (let column = 0; column < text.length; column += 1) {
+      const rest = text.slice(column);
+      if (closing === "*/") {
+        if (rest.startsWith("/*")) {
+          depth += 1;
+          column += 1;
+        } else if (rest.startsWith("*/")) {
+          depth -= 1;
+          column += 1;
+          if (depth === 0) closing = undefined;
+        }
+      } else if (closing === "escaped") {
+        if (rest.startsWith("\\")) column += 1;
+        else if (rest.startsWith('"')) closing = undefined;
+      } else if (closing !== undefined) {
+        if (rest.startsWith(closing)) {
+          column += closing.length - 1;
+          closing = undefined;
+        }
+      } else if (rest.startsWith("//")) break;
+      else if (rest.startsWith("/*")) {
+        closing = "*/";
+        depth = 1;
+        column += 1;
+      } else if (RAW_STRING.test(rest) && !/\w/.test(text[column - 1] ?? "")) {
+        const raw = RAW_STRING.exec(rest);
+        closing = `"${raw?.[1] ?? ""}`;
+        column += (raw?.[0].length ?? 1) - 1;
+      } else if (rest.startsWith('"')) closing = "escaped";
+      else if (rest.startsWith("'")) {
+        const literal = /^'(?:\\(?:u\{[^}]*\}|x[\da-fA-F]{2}|.)|[^\\'])'/.exec(rest);
+        if (literal !== null) column += literal[0].length - 1;
+      }
+    }
+  }
+  return inside;
+}
+
+const textOf = new WeakMap();
+const insideTextOf = (lines) => {
+  if (!textOf.has(lines)) textOf.set(lines, insideText(lines));
+  return textOf.get(lines) ?? [];
+};
 
 const modRule = (depth, name) =>
   new RegExp(`^ {${4 * depth}}(?:pub(?:\\([^)]*\\))? )?mod ${name}(?: \\{|;)`);
@@ -104,10 +179,11 @@ const fnRule = (depth, name) =>
 /**
  * The `mod`s and the `fn` a case's path names, each with its file, its 1-based line and its doc, outermost first; none when
  * the source does not hold it. rustfmt indents a `mod`'s items by four spaces and closes it at the `mod`'s own indent, so
- * the lines between are found without counting braces, which strings in the tests hold unbalanced. `mod x;` goes on in
- * `x.rs` or `x/mod.rs` beside the file, under the file's own name unless it is the binary's first.
+ * the lines between are found without counting braces, passing over lines that begin inside a string or a block comment.
+ * `mod x;` goes on in `x.rs` or `x/mod.rs` beside the file, under the file's own name unless it is the binary's first.
+ * `visited` is given every file the walk read, which is how a case it could not place is tied to a shaped file.
  */
-export function placed(binary, path, linesOf) {
+export function placed(binary, path, linesOf, visited = []) {
   let file = binary;
   let directory = dirname(binary);
   let lines = linesOf(file);
@@ -115,12 +191,14 @@ export function placed(binary, path, linesOf) {
   let to = lines?.length ?? 0;
   let depth = 0;
   const found = [];
+  visited.push(file);
   for (const [at, name] of path.entries()) {
     if (lines === undefined || !/^\w+$/.test(name)) return undefined;
+    const text = insideTextOf(lines);
     const last = at === path.length - 1;
     const rule = last ? fnRule(depth, name) : modRule(depth, name);
     let line = from;
-    while (line < to && !rule.test(lines[line] ?? "")) line += 1;
+    while (line < to && (text[line] || !rule.test(lines[line] ?? ""))) line += 1;
     if (line === to) return undefined;
     found.push({ name, file, line: line + 1, doc: docOf(lines, line) });
     if (last) return found;
@@ -130,6 +208,7 @@ export function placed(binary, path, linesOf) {
         existsSync(one),
       );
       if (file === undefined) return undefined;
+      visited.push(file);
       lines = linesOf(file);
       from = 0;
       to = lines?.length ?? 0;
@@ -138,7 +217,7 @@ export function placed(binary, path, linesOf) {
       const closing = `${" ".repeat(4 * depth)}}`;
       from = line + 1;
       to = from;
-      while (to < lines.length && !(lines[to] ?? "").startsWith(closing)) to += 1;
+      while (to < lines.length && (text[to] || !(lines[to] ?? "").startsWith(closing))) to += 1;
       depth += 1;
     }
   }
@@ -209,12 +288,13 @@ export function merged(reports, { binaries, root, shaped }) {
           const classname = attributes.get("classname") ?? "";
           const name = attributes.get("name") ?? "";
           const binary = binaries.get(classname);
+          const visited = [];
           const found =
             binary === undefined
               ? undefined
-              : placed(binary, name.split("::"), linesOf);
+              : placed(binary, name.split("::"), linesOf, visited);
           if (found === undefined) {
-            if (binary !== undefined && shaped.has(relative(root, binary).replaceAll("\\", "/")))
+            if (visited.some((file) => shaped.has(relative(root, file).replaceAll("\\", "/"))))
               unplaced.push(`${classname} ${name}`);
             return element;
           }

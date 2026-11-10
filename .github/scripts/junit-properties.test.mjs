@@ -58,6 +58,36 @@ mod converting_a_document {
 fn stands_alone() {}
 `;
 
+const ODD = `/// A documented one
+// a plain comment
+#[test]
+fn with_a_comment_between() {}
+
+/// Documented too
+#[cfg_attr(
+    feature = "x",
+    ignore
+)]
+#[test]
+fn with_a_long_attribute() {}
+
+//// not a doc
+#[test]
+fn with_four_slashes() {}
+
+mod holds_strings {
+    const JSON: &str = "{
+}
+";
+    const RAW: &str = r#"{
+}
+"#;
+
+    #[test]
+    fn after_the_strings() {}
+}
+`;
+
 const report = (name, suites) =>
   `<?xml version="1.0" encoding="UTF-8"?>\n<testsuites name="${name}" tests="3" failures="1" errors="0" time="0.5">\n${suites}</testsuites>\n`;
 const suite = (name, cases) =>
@@ -82,6 +112,7 @@ describe("a crate on disk", () => {
       ["crates/a/src/naming/tests.rs", NAMING_TESTS],
       ["crates/a/tests/cli.rs", COMMAND],
       ["crates/a/tests/other.rs", "#[test]\nfn is_not_listed() {}\n"],
+      ["crates/a/tests/odd.rs", ODD],
     ]) {
       mkdirSync(join(root, file, ".."), { recursive: true });
       writeFileSync(join(root, file), text);
@@ -96,6 +127,7 @@ describe("a crate on disk", () => {
               target("crate_a", ["lib"], "src/lib.rs"),
               target("cli", ["test"], "tests/cli.rs"),
               target("other", ["test"], "tests/other.rs"),
+              target("odd", ["test"], "tests/odd.rs"),
               target("crate-a", ["bin"], "src/main.rs"),
             ],
           },
@@ -108,7 +140,7 @@ describe("a crate on disk", () => {
 
   describe("binariesOf(metadata)", () => {
     it("names a library by its package, a test by both, and a bin by its kind", () => {
-      assert.deepEqual([...options.binaries.keys()], ["crate-a", "crate-a::cli", "crate-a::other", "crate-a::bin/crate-a"]);
+      assert.deepEqual([...options.binaries.keys()], ["crate-a", "crate-a::cli", "crate-a::other", "crate-a::odd", "crate-a::bin/crate-a"]);
     });
   });
 
@@ -206,6 +238,42 @@ describe("a crate on disk", () => {
       assert.deepEqual(unplaced, ["crate-a::cli converting_a_document::with_no_out::is_gone", "crate-a::cli no_such_module::leaf"]);
       assert.deepEqual(propertiesOf(xml, "is_not_in_the_source"), []);
       assert.deepEqual(propertiesOf(xml, "has_no_binary"), []);
+    });
+
+    it("names a case its scan cannot place when its module path falls under any shaped file, a library's included", () => {
+      const shaped = { ...options, shaped: new Set(["crates/a/src/naming/tests.rs"]) };
+      const { unplaced } = merged(
+        [report("nextest-run", suite("crate-a", passing("crate-a", "naming::tests::made_by_a_macro") + passing("crate-a", "naming::tests::naming_a_record::when_it_has_a_pipe::keeps_the_base")))],
+        shaped,
+      );
+      assert.deepEqual(unplaced, ["crate-a naming::tests::made_by_a_macro"]);
+    });
+
+    it("keeps the doc of an item across a plain comment and a multi-line attribute, and reads four slashes as no doc", () => {
+      const { xml } = merged(
+        [
+          report(
+            "nextest-run",
+            suite(
+              "crate-a::odd",
+              ["with_a_comment_between", "with_a_long_attribute", "with_four_slashes"].map((name) => passing("crate-a::odd", name)).join(""),
+            ),
+          ),
+        ],
+        options,
+      );
+      assert.deepEqual(propertiesOf(xml, "with_a_comment_between").slice(1, 3), [["line", "4"], ["title", "A documented one"]]);
+      assert.deepEqual(propertiesOf(xml, "with_a_long_attribute").slice(1, 3), [["line", "12"], ["title", "Documented too"]]);
+      assert.deepEqual(propertiesOf(xml, "with_four_slashes").slice(1, 3), [["line", "16"], ["title", "with four slashes"]]);
+    });
+
+    it("does not end a module at a `}` that a string or raw string holds at the module's indent", () => {
+      const { xml, unplaced } = merged(
+        [report("nextest-run", suite("crate-a::odd", passing("crate-a::odd", "holds_strings::after_the_strings")))],
+        { ...options, shaped: new Set(["crates/a/tests/odd.rs"]) },
+      );
+      assert.deepEqual(unplaced, []);
+      assert.deepEqual(propertiesOf(xml, "holds_strings::after_the_strings").slice(1, 2), [["line", "27"]]);
     });
 
     it("refuses a report that is not nextest's", () => {
