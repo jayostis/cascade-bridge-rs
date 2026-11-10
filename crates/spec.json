@@ -1,0 +1,292 @@
+{
+  "about": "The Cascade Bridge for Rust, which converts a health document into a graph of records with an adapter. This page is what its command, cascade-bridge, and its Node host do for whoever runs them.",
+  "shaped": [
+    "bridge-cli/tests/cli.rs",
+    "bridge-cli/tests/file_iri.rs",
+    "bridge-cli/tests/node_host.rs",
+    "bridge-cli/tests/specification_vector.rs"
+  ],
+  "capabilities": [
+    "Converting a document with an adapter · cascade-bridge convert",
+    "Writing a conversion's findings to a file · --findings",
+    "Validating against a checkout of the vocabulary · --vocabularies",
+    "Running an adapter's tests · cascade-bridge test",
+    "Reading how an adapter's queries will run · cascade-bridge explain",
+    "Measuring a conversion · --profile, --skip",
+    "Telling why a command stopped · cascade-bridge",
+    "Naming a file by its IRI · file_iri(), path_to_file_iri(), file_iri_to_path()",
+    "Running the commands on Node · hosts/node/cascade-bridge.mjs",
+    "Answering a calls file for conformance · cascade-bridge library",
+    "Measuring conversions for the benchmark · hosts/node/bench.mjs",
+    "Passing the specification's own adapters · cascade-bridge test"
+  ],
+  "build": [
+    "The package's imports, held to the allowlist · package/check-imports.mjs"
+  ],
+  "glossary": [
+    {
+      "term": "adapter",
+      "definition": "here, a folder that teaches the Bridge one source format: its `ro-crate-metadata.json`, the schema of the source, the SPARQL queries that map it, and a test manifest with fixtures.",
+      "aliases": [
+        "adapters"
+      ]
+    },
+    {
+      "term": "allowlist",
+      "definition": "the list, `package/imports.txt`, of the functions the WebAssembly module may import from its host."
+    },
+    {
+      "term": "authority",
+      "definition": "the part of an IRI between `//` and the next `/`: empty in `file:///C:/dev`, a server's name in `file://server/share`."
+    },
+    {
+      "term": "Bridge",
+      "definition": "the Cascade Bridge: the engine that runs adapters. This repository is the one written in Rust."
+    },
+    {
+      "term": "budget",
+      "definition": "a limit a caller puts on a conversion's time or memory; a conversion that outgrows it is stopped.",
+      "aliases": [
+        "budgets"
+      ]
+    },
+    {
+      "term": "calls file",
+      "definition": "a JSON file listing calls to make on the Bridge's library, case by case; the Bridge specification's tooling writes one to test a Bridge.",
+      "aliases": [
+        "calls files"
+      ]
+    },
+    {
+      "term": "checkout",
+      "definition": "a copy of a git repository's files in a folder.",
+      "aliases": [
+        "checkouts"
+      ]
+    },
+    {
+      "term": "compiled",
+      "definition": "said of a query the Bridge turned into a plan of its own instead of evaluating it generally.",
+      "aliases": [
+        "compiles",
+        "compile",
+        "compiler"
+      ]
+    },
+    {
+      "term": "detect query",
+      "definition": "the query an adapter names as `bridge:detectQuery`, which answers whether a document is one the adapter claims."
+    },
+    {
+      "term": "document",
+      "definition": "one file in a source format, such as an XML or JSON export, that an adapter converts.",
+      "aliases": [
+        "documents"
+      ]
+    },
+    {
+      "term": "EARL",
+      "definition": "the W3C's Evaluation and Report Language, a vocabulary for writing test results as a graph.",
+      "vocabulary": "https://www.w3.org/TR/EARL10-Schema/"
+    },
+    {
+      "term": "engine",
+      "definition": "the Bridge's library, the part that converts; a host calls it."
+    },
+    {
+      "term": "entry",
+      "definition": "one test of an adapter's test manifest: an input, what is expected of it, and the type of test that says how to judge it.",
+      "aliases": [
+        "entries"
+      ]
+    },
+    {
+      "term": "envelope",
+      "definition": "a way an adapter declares of reading a document into records (for one item, for a list of them); an adapter may declare several, each named by an IRI in its `ro-crate-metadata.json`.",
+      "aliases": [
+        "envelopes"
+      ]
+    },
+    {
+      "term": "executor",
+      "definition": "which way the Bridge runs an adapter's queries: `compiled` (its own plans), `spareval` (the general evaluator) or `both`.",
+      "aliases": [
+        "executors"
+      ]
+    },
+    {
+      "term": "facts",
+      "definition": "here, what a caller knows about a document that the document does not say, such as where it was pulled from, given beside it as a Turtle file with `--facts`."
+    },
+    {
+      "term": "finding",
+      "definition": "here, one thing a conversion noticed about a document and did not put in the graph: a part of the source the mapping could not carry over, or something the vocabulary's shapes refuse.",
+      "aliases": [
+        "findings"
+      ]
+    },
+    {
+      "term": "general evaluator",
+      "definition": "the stock SPARQL evaluator the Bridge falls back to for a query it cannot compile; correct, and slower."
+    },
+    {
+      "term": "graph",
+      "definition": "a set of statements in RDF; a conversion's output is one.",
+      "aliases": [
+        "graphs"
+      ]
+    },
+    {
+      "term": "host",
+      "definition": "here, a program that reads folders and files and hands their bytes to the Bridge's engine, which touches no filesystem itself: the native command and the Node script are the two.",
+      "aliases": [
+        "hosts"
+      ]
+    },
+    {
+      "term": "index",
+      "definition": "here, the lookup structure a compiled query builds over a document before it runs; the general evaluator builds none."
+    },
+    {
+      "term": "IRI",
+      "definition": "an identifier in the form of a web address, such as `file:///C:/dev/adapter/`.",
+      "aliases": [
+        "IRIs"
+      ]
+    },
+    {
+      "term": "library",
+      "definition": "what the Bridge offers a program that loads it: five operations (describe, load, ask, convert, test), bytes in and bytes out. `cascade-bridge library` is the command that makes calls on it from a file."
+    },
+    {
+      "term": "map",
+      "definition": "here, the files of a folder as the engine is given them: each file's bytes under its path inside the folder.",
+      "aliases": [
+        "maps"
+      ]
+    },
+    {
+      "term": "mapping",
+      "definition": "a SPARQL query of an adapter that turns part of a source document into statements of the graph.",
+      "aliases": [
+        "mappings"
+      ]
+    },
+    {
+      "term": "measure",
+      "definition": "one number a benchmark run writes, under a name, with a kind: `clock` (a time), `cost` (a count of work done) or `output` (a count of what came out)."
+    },
+    {
+      "term": "N-Triples",
+      "definition": "a W3C text format that writes a graph one statement to a line, every IRI in full.",
+      "vocabulary": "https://www.w3.org/TR/n-triples/"
+    },
+    {
+      "term": "outcome",
+      "definition": "how an entry ended, in EARL's words: `passed`, `failed`, `cantTell` (the Bridge cannot judge this type of test), `untested` (not run) or `inapplicable`.",
+      "aliases": [
+        "outcomes"
+      ]
+    },
+    {
+      "term": "percent-encoded",
+      "definition": "written as `%` and two hexadecimal digits for each byte, as a space is written `%20` in an IRI."
+    },
+    {
+      "term": "plan",
+      "definition": "here, the steps the Bridge compiled a SPARQL query into, which it runs in place of evaluating the query generally.",
+      "aliases": [
+        "plans"
+      ]
+    },
+    {
+      "term": "prefix",
+      "definition": "a short name declared for the start of an IRI, so `sh:Violation` stands for `http://www.w3.org/ns/shacl#Violation`.",
+      "aliases": [
+        "prefixes"
+      ]
+    },
+    {
+      "term": "profile",
+      "definition": "here, how the package was built (`release` or a faster-to-build variant), which a benchmark result records. Not `--profile`, the flag, which is code."
+    },
+    {
+      "term": "record",
+      "definition": "here, one unit of a source document that an adapter converts on its own, such as one item of a catalog or one entry of a clinical document."
+    },
+    {
+      "term": "report",
+      "definition": "here, the result of `test` written as EARL: one outcome for each entry of the adapter's test manifest."
+    },
+    {
+      "term": "results directory",
+      "definition": "the folder `library` writes into: for the call at position n of a case, `<case>/<n>.json` and, where the call returned them, `<n>.graph`, `<n>.findings` or `<n>.report`."
+    },
+    {
+      "term": "SERVICE pattern",
+      "definition": "the clause of SPARQL that sends part of a query to another server; the Bridge fetches nothing, so it refuses a query holding one."
+    },
+    {
+      "term": "shapes",
+      "definition": "the vocabulary's requirements on what a record, a judgment or a file of a pod must state, written in SHACL, the W3C language for checking data.",
+      "vocabulary": "https://www.w3.org/TR/shacl/"
+    },
+    {
+      "term": "SPARQL",
+      "definition": "the W3C language for querying a graph."
+    },
+    {
+      "term": "stage",
+      "definition": "one step of loading an adapter or converting a document that the Bridge times apart: reading the queries, lifting the document, mapping, serialising.",
+      "aliases": [
+        "stages"
+      ]
+    },
+    {
+      "term": "sub-delimiters",
+      "definition": "the characters ``!$&'()*+,;=``, which an IRI may hold unencoded."
+    },
+    {
+      "term": "tally",
+      "definition": "the last line `test` prints: how many entries ended with each outcome."
+    },
+    {
+      "term": "test manifest",
+      "definition": "the file of an adapter that lists its tests.",
+      "aliases": [
+        "test manifests"
+      ]
+    },
+    {
+      "term": "trap",
+      "definition": "a fault that stops a WebAssembly module at once, as a panic stops a native program.",
+      "aliases": [
+        "traps"
+      ]
+    },
+    {
+      "term": "Turtle",
+      "definition": "a W3C text format for writing a graph; the command writes its graph and its findings in it unless `--format ntriples` asks otherwise.",
+      "vocabulary": "https://www.w3.org/TR/turtle/"
+    },
+    {
+      "term": "usage",
+      "definition": "the lines a command prints to say which commands and flags it takes."
+    },
+    {
+      "term": "vocabulary",
+      "definition": "cascade-vocabulary, the project that defines the words health data is written in, the requirements every pod meets, and a set of ready-made questions.",
+      "vocabulary": "https://ns.cascadeprotocol.org/cascade#",
+      "aliases": [
+        "vocabularies"
+      ]
+    },
+    {
+      "term": "WebAssembly",
+      "definition": "a portable binary format; the Bridge's engine built as WebAssembly runs under Node and in a browser.",
+      "aliases": [
+        "wasm"
+      ]
+    }
+  ]
+}
