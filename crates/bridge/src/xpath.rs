@@ -674,196 +674,227 @@ mod tests {
             .collect()
     }
 
-    #[test]
-    fn reads_character_data_either_side_of_a_reference_as_one_text_node() {
-        let tree = tree("<c>NG_016761.1:g.12726T&gt;G</c>");
-        assert_eq!(kinds(&tree), [NodeKind::Text]);
-        assert_eq!(said(&tree), ["NG_016761.1:g.12726T>G"]);
-    }
+    /// Checking where a finding points · Conversion::findings()
+    mod checking_where_a_finding_points {
+        use super::*;
 
-    #[test]
-    fn reads_character_data_either_side_of_a_section_as_one_text_node() {
-        let tree = tree("<c>Re<![CDATA[ti]]>r&#101;d</c>");
-        assert_eq!(kinds(&tree), [NodeKind::Text]);
-        assert_eq!(said(&tree), ["Retired"]);
-    }
+        mod given_how_an_address_is_spelled {
+            use super::*;
 
-    #[test]
-    fn reads_character_data_either_side_of_a_comment_as_two_text_nodes() {
-        let tree = tree("<c>Re<![CDATA[ti]]>r<!-- said twice -->&#101;d</c>");
-        assert_eq!(
-            kinds(&tree),
-            [NodeKind::Text, NodeKind::Comment, NodeKind::Text]
-        );
-        assert_eq!(said(&tree), ["Retir", " said twice ", "ed"]);
-    }
+            #[test]
+            fn spells_a_record_as_the_lift_wrote_its_selector() {
+                let document =
+                    br#"<s:set xmlns:s="urn:example:set"><g><s:item/><s:item/></g><g><item/></g></s:set>"#;
+                let units: Vec<crate::lift::Unit> =
+                    crate::lift::xml::lift_slice(document, Some("item"))
+                        .expect("the lift")
+                        .map(|unit| unit.expect("a unit"))
+                        .collect();
+                assert_eq!(units.len(), 3);
+                let tree = tree(std::str::from_utf8(document).expect("utf-8"));
+                for unit in &units {
+                    let selector = unit.selector();
+                    let at =
+                        selects(&tree, DOCUMENT, &selector).unwrap_or_else(|| panic!("{selector}"));
+                    assert_eq!(tree.spell_absolute(at).as_deref(), Some(selector.as_str()));
+                }
+            }
 
-    #[test]
-    fn reads_character_data_either_side_of_an_instruction_as_two_text_nodes() {
-        let tree = tree("<c>Retir<?say it twice?>ed</c>");
-        assert_eq!(
-            kinds(&tree),
-            [
-                NodeKind::Text,
-                NodeKind::ProcessingInstruction,
-                NodeKind::Text
-            ]
-        );
-        assert_eq!([said(&tree)[0], said(&tree)[2]], ["Retir", "ed"]);
-    }
+            #[test]
+            fn spells_the_node_an_address_reaches_however_it_was_written() {
+                let tree = tree(
+                    r#"<catalog><item>said<!-- aside --><?say again?><note a="b">text</note></item><item/></catalog>"#,
+                );
+                let record = selects(&tree, DOCUMENT, "/catalog/item[1]").expect("the record");
+                for (written, spelled) in [
+                    ("note[1]/text()", "note[1]/text()[1]"),
+                    ("note/text()[1]", "note[1]/text()[1]"),
+                    ("text()", "text()[1]"),
+                    ("comment()", "comment()[1]"),
+                    ("processing-instruction()", "processing-instruction()[1]"),
+                    ("note/@a", "note[1]/@a"),
+                    (".", "."),
+                    ("self::item", "."),
+                ] {
+                    let at = selects(&tree, record, written).unwrap_or_else(|| panic!("{written}"));
+                    assert_eq!(
+                        tree.spell_relative(at, record).as_deref(),
+                        Some(spelled),
+                        "{written}"
+                    );
+                }
+            }
 
-    #[test]
-    fn counts_a_text_node_made_only_of_space_as_a_node() {
-        let tree = tree("<c>\n  <a/>\n</c>");
-        assert_eq!(
-            kinds(&tree),
-            [NodeKind::Text, NodeKind::Element, NodeKind::Text]
-        );
-    }
+            #[test]
+            fn selects_no_node_for_an_address_that_leaves_the_record_and_spells_one_inside_it_alike_taken_or_alone(
+            ) {
+                let whole = tree(
+                    r#"<catalog><item>said<!-- aside --><note a="b"/></item><item/></catalog>"#,
+                );
+                let record = selects(&whole, DOCUMENT, "/catalog/item[1]").expect("the record");
+                // Taken out of the document or read alone, a record is one tree.
+                let taken = whole.record(record);
+                let alone = tree(r#"<item>said<!-- aside --><note a="b"/></item>"#);
+                for written in [
+                    "..",
+                    "/",
+                    "../item[2]",
+                    "following-sibling::item[1]",
+                    "/catalog/item[1]/note[1]",
+                    "ancestor::catalog",
+                ] {
+                    assert_eq!(selects(&taken, taken.element, written), None, "{written}");
+                    assert_eq!(selects(&alone, alone.element, written), None, "{written}");
+                }
+                for (written, spelled) in [
+                    (".", "."),
+                    ("note[1]/@a", "note[1]/@a"),
+                    ("comment()", "comment()[1]"),
+                    ("text()", "text()[1]"),
+                ] {
+                    let at = selects(&taken, taken.element, written)
+                        .unwrap_or_else(|| panic!("{written}"));
+                    assert_eq!(
+                        taken.spell_relative(at, taken.element).as_deref(),
+                        Some(spelled),
+                        "{written}"
+                    );
+                    let at = selects(&alone, alone.element, written)
+                        .unwrap_or_else(|| panic!("{written}"));
+                    assert_eq!(
+                        alone.spell_relative(at, alone.element).as_deref(),
+                        Some(spelled),
+                        "{written}"
+                    );
+                }
+            }
 
-    #[test]
-    fn spells_a_record_as_the_lift_wrote_its_selector() {
-        let document =
-            br#"<s:set xmlns:s="urn:example:set"><g><s:item/><s:item/></g><g><item/></g></s:set>"#;
-        let units: Vec<crate::lift::Unit> = crate::lift::xml::lift_slice(document, Some("item"))
-            .expect("the lift")
-            .map(|unit| unit.expect("a unit"))
-            .collect();
-        assert_eq!(units.len(), 3);
-        let tree = tree(std::str::from_utf8(document).expect("utf-8"));
-        for unit in &units {
-            let selector = unit.selector();
-            let at = selects(&tree, DOCUMENT, &selector).unwrap_or_else(|| panic!("{selector}"));
-            assert_eq!(tree.spell_absolute(at).as_deref(), Some(selector.as_str()));
+            #[test]
+            fn spells_an_attribute_of_a_record_by_the_element_that_carries_it() {
+                let tree = tree(r#"<item><label colour="red"/><label colour="blue"/></item>"#);
+                let at = selects(&tree, tree.element, "label[2]/@colour").expect("the attribute");
+                assert_eq!(
+                    tree.spell_relative(at, tree.element).as_deref(),
+                    Some("label[2]/@colour")
+                );
+            }
+        }
+
+        mod given_character_data_around_markup {
+            use super::*;
+
+            #[test]
+            fn reads_character_data_either_side_of_a_reference_as_one_text_node() {
+                let tree = tree("<c>NG_016761.1:g.12726T&gt;G</c>");
+                assert_eq!(kinds(&tree), [NodeKind::Text]);
+                assert_eq!(said(&tree), ["NG_016761.1:g.12726T>G"]);
+            }
+
+            #[test]
+            fn reads_character_data_either_side_of_a_section_as_one_text_node() {
+                let tree = tree("<c>Re<![CDATA[ti]]>r&#101;d</c>");
+                assert_eq!(kinds(&tree), [NodeKind::Text]);
+                assert_eq!(said(&tree), ["Retired"]);
+            }
+
+            #[test]
+            fn reads_character_data_either_side_of_a_comment_as_two_text_nodes() {
+                let tree = tree("<c>Re<![CDATA[ti]]>r<!-- said twice -->&#101;d</c>");
+                assert_eq!(
+                    kinds(&tree),
+                    [NodeKind::Text, NodeKind::Comment, NodeKind::Text]
+                );
+                assert_eq!(said(&tree), ["Retir", " said twice ", "ed"]);
+            }
+
+            #[test]
+            fn reads_character_data_either_side_of_an_instruction_as_two_text_nodes() {
+                let tree = tree("<c>Retir<?say it twice?>ed</c>");
+                assert_eq!(
+                    kinds(&tree),
+                    [
+                        NodeKind::Text,
+                        NodeKind::ProcessingInstruction,
+                        NodeKind::Text
+                    ]
+                );
+                assert_eq!([said(&tree)[0], said(&tree)[2]], ["Retir", "ed"]);
+            }
+
+            #[test]
+            fn counts_a_text_node_made_only_of_space_as_a_node() {
+                let tree = tree("<c>\n  <a/>\n</c>");
+                assert_eq!(
+                    kinds(&tree),
+                    [NodeKind::Text, NodeKind::Element, NodeKind::Text]
+                );
+            }
         }
     }
 
-    #[test]
-    fn spells_the_node_an_address_reaches_however_it_was_written() {
-        let tree = tree(
-            r#"<catalog><item>said<!-- aside --><?say again?><note a="b">text</note></item><item/></catalog>"#,
-        );
-        let record = selects(&tree, DOCUMENT, "/catalog/item[1]").expect("the record");
-        for (written, spelled) in [
-            ("note[1]/text()", "note[1]/text()[1]"),
-            ("note/text()[1]", "note[1]/text()[1]"),
-            ("text()", "text()[1]"),
-            ("comment()", "comment()[1]"),
-            ("processing-instruction()", "processing-instruction()[1]"),
-            ("note/@a", "note[1]/@a"),
-            (".", "."),
-            ("self::item", "."),
-        ] {
-            let at = selects(&tree, record, written).unwrap_or_else(|| panic!("{written}"));
-            assert_eq!(
-                tree.spell_relative(at, record).as_deref(),
-                Some(spelled),
-                "{written}"
-            );
-        }
-    }
+    /// Workings no caller sees · crates/bridge/src
+    mod workings_no_caller_sees {
+        use super::*;
 
-    #[test]
-    fn selects_no_node_for_an_address_that_leaves_the_record() {
-        let whole =
-            tree(r#"<catalog><item>said<!-- aside --><note a="b"/></item><item/></catalog>"#);
-        let record = selects(&whole, DOCUMENT, "/catalog/item[1]").expect("the record");
-        // Taken out of the document or read alone, a record is one tree.
-        let taken = whole.record(record);
-        let alone = tree(r#"<item>said<!-- aside --><note a="b"/></item>"#);
-        for written in [
-            "..",
-            "/",
-            "../item[2]",
-            "following-sibling::item[1]",
-            "/catalog/item[1]/note[1]",
-            "ancestor::catalog",
-        ] {
-            assert_eq!(selects(&taken, taken.element, written), None, "{written}");
-            assert_eq!(selects(&alone, alone.element, written), None, "{written}");
-        }
-        for (written, spelled) in [
-            (".", "."),
-            ("note[1]/@a", "note[1]/@a"),
-            ("comment()", "comment()[1]"),
-            ("text()", "text()[1]"),
-        ] {
-            let at = selects(&taken, taken.element, written).unwrap_or_else(|| panic!("{written}"));
-            assert_eq!(
-                taken.spell_relative(at, taken.element).as_deref(),
-                Some(spelled),
-                "{written}"
-            );
-            let at = selects(&alone, alone.element, written).unwrap_or_else(|| panic!("{written}"));
-            assert_eq!(
-                alone.spell_relative(at, alone.element).as_deref(),
-                Some(spelled),
-                "{written}"
-            );
-        }
-    }
+        /// `xpath`
+        mod xpath {
+            use super::*;
 
-    #[test]
-    fn reaches_each_record_without_evaluating_its_selector() {
-        let document =
-            b"<catalog><item><note/></item><item><note/></item><item><note/></item></catalog>";
-        let followed = Followed::default();
-        let units: Vec<crate::lift::Unit> = crate::lift::xml::lift_slice(document, Some("item"))
-            .expect("the lift")
-            .map(|unit| unit.expect("a unit"))
-            .collect();
-        assert_eq!(units.len(), 3);
-        let findings = refining("note[1]");
-        EVALUATED.with(|count| count.set(0));
-        for unit in &units {
-            let selector = unit.selector();
-            let record = Record {
-                source: "urn:example:catalog",
-                selector: &selector,
-                selector_type: SelectorType::XPath,
-            };
-            assert!(followed
-                .unresolved(&record, &unit.text, &findings)
-                .expect("the reports")
-                .is_empty());
-        }
-        assert_eq!(EVALUATED.with(std::cell::Cell::get), units.len());
-    }
+            #[test]
+            fn evaluates_an_address_once_for_each_record_it_follows_and_reports_none_unresolved() {
+                let document =
+                    b"<catalog><item><note/></item><item><note/></item><item><note/></item></catalog>";
+                let followed = Followed::default();
+                let records: Vec<crate::lift::Unit> =
+                    crate::lift::xml::lift_slice(document, Some("item"))
+                        .expect("the lift")
+                        .map(|lifted| lifted.expect("a record"))
+                        .collect();
+                assert_eq!(records.len(), 3);
+                let findings = refining("note[1]");
+                EVALUATED.with(|count| count.set(0));
+                for lifted in &records {
+                    let selector = lifted.selector();
+                    let record = Record {
+                        source: "urn:example:catalog",
+                        selector: &selector,
+                        selector_type: SelectorType::XPath,
+                    };
+                    assert!(followed
+                        .unresolved(&record, &lifted.text, &findings)
+                        .expect("the reports")
+                        .is_empty());
+                }
+                assert_eq!(EVALUATED.with(std::cell::Cell::get), records.len());
+            }
 
-    #[test]
-    fn parses_an_address_once_however_many_records_are_followed_for_it() {
-        let document =
-            b"<catalog><item><note/></item><item><note/></item><item><note/></item></catalog>";
-        let followed = Followed::default();
-        let units: Vec<crate::lift::Unit> = crate::lift::xml::lift_slice(document, Some("item"))
-            .expect("the lift")
-            .map(|unit| unit.expect("a unit"))
-            .collect();
-        assert_eq!(units.len(), 3);
-        let findings = refining("note[1]");
-        PARSED.with(|count| count.set(0));
-        for unit in &units {
-            let selector = unit.selector();
-            let record = Record {
-                source: "urn:example:catalog",
-                selector: &selector,
-                selector_type: SelectorType::XPath,
-            };
-            assert!(followed
-                .unresolved(&record, &unit.text, &findings)
-                .expect("the reports")
-                .is_empty());
+            #[test]
+            fn parses_an_address_once_however_many_records_are_followed_for_it() {
+                let document =
+                    b"<catalog><item><note/></item><item><note/></item><item><note/></item></catalog>";
+                let followed = Followed::default();
+                let units: Vec<crate::lift::Unit> =
+                    crate::lift::xml::lift_slice(document, Some("item"))
+                        .expect("the lift")
+                        .map(|unit| unit.expect("a unit"))
+                        .collect();
+                assert_eq!(units.len(), 3);
+                let findings = refining("note[1]");
+                PARSED.with(|count| count.set(0));
+                for unit in &units {
+                    let selector = unit.selector();
+                    let record = Record {
+                        source: "urn:example:catalog",
+                        selector: &selector,
+                        selector_type: SelectorType::XPath,
+                    };
+                    assert!(followed
+                        .unresolved(&record, &unit.text, &findings)
+                        .expect("the reports")
+                        .is_empty());
+                }
+                assert_eq!(PARSED.with(std::cell::Cell::get), 1);
+            }
         }
-        assert_eq!(PARSED.with(std::cell::Cell::get), 1);
-    }
-
-    #[test]
-    fn spells_an_attribute_of_a_record_by_the_element_that_carries_it() {
-        let tree = tree(r#"<item><label colour="red"/><label colour="blue"/></item>"#);
-        let at = selects(&tree, tree.element, "label[2]/@colour").expect("the attribute");
-        assert_eq!(
-            tree.spell_relative(at, tree.element).as_deref(),
-            Some("label[2]/@colour")
-        );
     }
 }

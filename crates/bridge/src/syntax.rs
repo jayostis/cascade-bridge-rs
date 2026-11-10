@@ -179,40 +179,50 @@ pub(crate) fn refinements(findings: &[Quad]) -> BTreeSet<String> {
 mod tests {
     use super::Syntax;
 
-    #[test]
-    fn lifts_as_xml_an_xml_media_type_or_one_with_the_xml_suffix() {
-        for named in [
-            "application/xml",
-            "text/xml",
-            "application/hl7-sda+xml",
-            "Application/XML; charset=UTF-8",
-        ] {
-            assert_eq!(Syntax::of(Some(named)).ok(), Some(Syntax::Xml), "{named}");
-        }
-    }
+    /// Loading an adapter from maps of files · load(), Named, Files, Loaded
+    mod loading_an_adapter_from_maps_of_files {
+        use super::*;
 
-    #[test]
-    fn lifts_as_json_the_json_media_type_or_one_with_the_json_suffix() {
-        for named in [
-            "application/json",
-            "application/fhir+json",
-            "Application/JSON; charset=utf-8",
-        ] {
-            assert_eq!(Syntax::of(Some(named)).ok(), Some(Syntax::Json), "{named}");
-        }
-    }
+        /// given the adapter's source media type
+        mod given_the_adapter_s_source_media_type {
+            use super::*;
 
-    #[test]
-    fn refuses_a_media_type_of_no_syntax_this_bridge_lifts() {
-        for named in ["text/plain", "application/xml-dtd", "application/xmlish"] {
-            let refusal = Syntax::of(Some(named)).expect_err(named).to_string();
-            assert!(refusal.contains(named), "{refusal}");
-        }
-    }
+            #[test]
+            fn lifts_as_xml_an_xml_media_type_or_one_with_the_xml_suffix() {
+                for named in [
+                    "application/xml",
+                    "text/xml",
+                    "application/hl7-sda+xml",
+                    "Application/XML; charset=UTF-8",
+                ] {
+                    assert_eq!(Syntax::of(Some(named)).ok(), Some(Syntax::Xml), "{named}");
+                }
+            }
 
-    #[test]
-    fn refuses_an_adapter_that_names_no_source_media_type() {
-        let refusal = Syntax::of(None).expect_err("refused").to_string();
-        assert!(refusal.contains("bridge:sourceMediaType"), "{refusal}");
+            #[test]
+            fn lifts_as_json_the_json_media_type_or_one_with_the_json_suffix() {
+                for named in [
+                    "application/json",
+                    "application/fhir+json",
+                    "Application/JSON; charset=utf-8",
+                ] {
+                    assert_eq!(Syntax::of(Some(named)).ok(), Some(Syntax::Json), "{named}");
+                }
+            }
+
+            #[test]
+            fn refuses_a_media_type_of_no_syntax_this_bridge_lifts() {
+                for named in ["text/plain", "application/xml-dtd", "application/xmlish"] {
+                    let refusal = Syntax::of(Some(named)).expect_err(named).to_string();
+                    assert!(refusal.contains(named), "{refusal}");
+                }
+            }
+
+            #[test]
+            fn refuses_an_adapter_that_names_no_source_media_type() {
+                let refusal = Syntax::of(None).expect_err("refused").to_string();
+                assert!(refusal.contains("bridge:sourceMediaType"), "{refusal}");
+            }
+        }
     }
 }

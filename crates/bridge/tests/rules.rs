@@ -77,21 +77,6 @@ fn unpinned(manifest: &str) -> Vec<String> {
     offenders
 }
 
-#[test]
-fn pins_every_dependency_to_an_exact_version_or_a_git_rev() {
-    let manifests = std::iter::once(workspace())
-        .chain(members())
-        .map(|directory| directory.join("Cargo.toml"));
-    let mut offenders = Vec::new();
-    for manifest in manifests {
-        let text = std::fs::read_to_string(&manifest).expect("read Cargo.toml");
-        for line in unpinned(&text) {
-            offenders.push(format!("{}: {line}", manifest.display()));
-        }
-    }
-    assert_eq!(offenders, Vec::<String>::new());
-}
-
 fn must_pass_with() -> Vec<String> {
     let text =
         std::fs::read_to_string(workspace().join("compatibility.json")).expect("compatibility");
@@ -153,94 +138,124 @@ fn files_naming(name: &str) -> Vec<String> {
     naming
 }
 
-#[test]
-fn meets_a_real_adapter_only_through_the_compatibility_run() {
-    let adapters = must_pass_with();
-    assert!(!adapters.is_empty(), "compatibility.json names no adapter");
-    let offenders: Vec<(String, String)> = adapters
-        .iter()
-        .flat_map(|adapter| {
-            files_naming(adapter)
-                .into_iter()
-                .map(move |file| (file, adapter.clone()))
-        })
-        .collect();
-    assert_eq!(offenders, Vec::<(String, String)>::new());
-}
-
-#[test]
-fn meets_the_specification_s_synthetic_adapter_only_through_its_vector() {
-    let offenders: Vec<String> = files_naming("fixtures/synthetic-adapter")
-        .into_iter()
-        .filter(|file| file != "crates/bridge-cli/tests/specification_vector.rs" && file != file!())
-        .collect();
-    assert_eq!(offenders, Vec::<String>::new());
-}
-
 const TEST_FIXTURES: &str = "fixtures.rs";
 
 fn source_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src")
 }
 
-#[test]
-fn names_no_filesystem_outside_its_test_fixtures() {
-    let mut offenders = Vec::new();
-    let mut stack = vec![source_dir()];
-    while let Some(directory) = stack.pop() {
-        for entry in std::fs::read_dir(&directory).expect("read src") {
-            let path = entry.expect("entry").path();
-            if path.is_dir() {
-                stack.push(path);
-                continue;
-            }
-            if path.extension().is_none_or(|e| e != "rs") {
-                continue;
-            }
-            if path.file_name().is_some_and(|n| n == TEST_FIXTURES) {
-                continue;
-            }
-            let text = std::fs::read_to_string(&path).expect("read module");
-            for forbidden in ["std::fs", "std::path"] {
-                if text.contains(forbidden) {
-                    offenders.push(format!("{}: {forbidden}", path.display()));
-                }
-            }
-        }
-    }
-    assert_eq!(offenders, Vec::<String>::new());
-}
+/// Rules this repository keeps · crates/bridge/tests/rules.rs
+///
+/// Checks of the repository itself, which `CLAUDE.md` cites by name.
+mod rules_this_repository_keeps {
+    use super::*;
 
-#[test]
-fn names_the_sentence_body_nowhere_in_the_crates() {
-    // Written in parts, so this test is not itself what it looks for.
-    let sentence = concat!("Textual", "Body");
-    let crates = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("the crates directory")
-        .to_owned();
-    let mut naming = Vec::new();
-    let mut stack = vec![crates.clone()];
-    while let Some(directory) = stack.pop() {
-        for entry in std::fs::read_dir(&directory).expect("read a directory") {
-            let path = entry.expect("entry").path();
-            if path.is_dir() {
-                if path.file_name().is_some_and(|name| name == "target") {
-                    continue;
+    /// given the repository's files
+    mod given_the_repository_s_files {
+        use super::*;
+
+        #[test]
+        fn pins_every_dependency_to_an_exact_version_or_a_git_rev() {
+            let manifests = std::iter::once(workspace())
+                .chain(members())
+                .map(|directory| directory.join("Cargo.toml"));
+            let mut offenders = Vec::new();
+            for manifest in manifests {
+                let text = std::fs::read_to_string(&manifest).expect("read Cargo.toml");
+                for line in unpinned(&text) {
+                    offenders.push(format!("{}: {line}", manifest.display()));
                 }
-                stack.push(path);
-                continue;
             }
-            let bytes = std::fs::read(&path).expect("read a file");
-            if String::from_utf8_lossy(&bytes).contains(sentence) {
-                naming.push(path.display().to_string());
+            assert_eq!(offenders, Vec::<String>::new());
+        }
+
+        #[test]
+        fn meets_a_real_adapter_only_through_the_compatibility_run() {
+            let adapters = must_pass_with();
+            assert!(!adapters.is_empty(), "compatibility.json names no adapter");
+            let offenders: Vec<(String, String)> = adapters
+                .iter()
+                .flat_map(|adapter| {
+                    files_naming(adapter)
+                        .into_iter()
+                        .map(move |file| (file, adapter.clone()))
+                })
+                .collect();
+            assert_eq!(offenders, Vec::<(String, String)>::new());
+        }
+
+        /// meets the specification's synthetic adapter only through its vector
+        #[test]
+        fn meets_the_specification_s_synthetic_adapter_only_through_its_vector() {
+            let offenders: Vec<String> = files_naming("fixtures/synthetic-adapter")
+                .into_iter()
+                .filter(|file| {
+                    file != "crates/bridge-cli/tests/specification_vector.rs" && file != file!()
+                })
+                .collect();
+            assert_eq!(offenders, Vec::<String>::new());
+        }
+
+        #[test]
+        fn names_no_filesystem_outside_its_test_fixtures() {
+            let mut offenders = Vec::new();
+            let mut stack = vec![source_dir()];
+            while let Some(directory) = stack.pop() {
+                for entry in std::fs::read_dir(&directory).expect("read src") {
+                    let path = entry.expect("entry").path();
+                    if path.is_dir() {
+                        stack.push(path);
+                        continue;
+                    }
+                    if path.extension().is_none_or(|e| e != "rs") {
+                        continue;
+                    }
+                    if path.file_name().is_some_and(|n| n == TEST_FIXTURES) {
+                        continue;
+                    }
+                    let text = std::fs::read_to_string(&path).expect("read module");
+                    for forbidden in ["std::fs", "std::path"] {
+                        if text.contains(forbidden) {
+                            offenders.push(format!("{}: {forbidden}", path.display()));
+                        }
+                    }
+                }
             }
+            assert_eq!(offenders, Vec::<String>::new());
+        }
+
+        #[test]
+        fn names_the_sentence_body_nowhere_in_the_crates() {
+            // Written in parts, so this test is not itself what it looks for.
+            let sentence = concat!("Textual", "Body");
+            let crates = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .expect("the crates directory")
+                .to_owned();
+            let mut naming = Vec::new();
+            let mut stack = vec![crates.clone()];
+            while let Some(directory) = stack.pop() {
+                for entry in std::fs::read_dir(&directory).expect("read a directory") {
+                    let path = entry.expect("entry").path();
+                    if path.is_dir() {
+                        if path.file_name().is_some_and(|name| name == "target") {
+                            continue;
+                        }
+                        stack.push(path);
+                        continue;
+                    }
+                    let bytes = std::fs::read(&path).expect("read a file");
+                    if String::from_utf8_lossy(&bytes).contains(sentence) {
+                        naming.push(path.display().to_string());
+                    }
+                }
+            }
+            naming.sort();
+            assert!(
+                naming.is_empty(),
+                "{sentence} is named in {}: {naming:?}",
+                crates.display()
+            );
         }
     }
-    naming.sort();
-    assert!(
-        naming.is_empty(),
-        "{sentence} is named in {}: {naming:?}",
-        crates.display()
-    );
 }

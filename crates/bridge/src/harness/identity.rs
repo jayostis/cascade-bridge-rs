@@ -34,71 +34,84 @@ fn judged_as(adapter: Variant, manifest: String) -> (String, String) {
     (result.outcome.as_str().to_owned(), result.description)
 }
 
-#[test]
-fn passes_where_two_documents_name_one_record_and_the_result_says_they_are_one() {
-    let (outcome, said) = judged_as(
-        versioned(),
-        relation(
-            &conversion("two.xml", Some("/catalog/item[1]")),
-            &conversion("output-fails-a-shape.xml", None),
-            true,
-        ),
-    );
-    assert_eq!(outcome, "passed", "{said}");
-    assert!(said.contains("urn:example:item:1"), "{said}");
-}
+mod tests {
+    use super::*;
 
-#[test]
-fn passes_where_two_records_of_one_document_are_two_and_the_result_says_so() {
-    let (outcome, said) = judged_as(
-        versioned(),
-        relation(
-            &conversion("two.xml", Some("/catalog/item[1]")),
-            &conversion("two.xml", Some("/catalog/item[2]")),
-            false,
-        ),
-    );
-    assert_eq!(outcome, "passed", "{said}");
-}
+    /// Running an adapter's test manifest · test(), TestOptions, TestReport
+    mod running_an_adapter_s_test_manifest {
+        use super::*;
 
-#[test]
-fn fails_where_the_names_break_the_relation_the_result_states() {
-    let (outcome, said) = judged_as(
-        versioned(),
-        relation(
-            &conversion("two.xml", Some("/catalog/item[1]")),
-            &conversion("two.xml", Some("/catalog/item[2]")),
-            true,
-        ),
-    );
-    assert_eq!(outcome, "failed", "{said}");
-    assert!(said.contains("must be one record"), "{said}");
-}
+        mod given_an_identity_entry {
+            use super::*;
 
-#[test]
-fn fails_a_conversion_that_names_other_than_one_record() {
-    let (outcome, said) = judged_as(
-        versioned(),
-        relation(
-            &conversion("two.xml", None),
-            &conversion("output-fails-a-shape.xml", None),
-            true,
-        ),
-    );
-    assert_eq!(outcome, "failed", "{said}");
-    assert!(said.contains("names 2 record(s)"), "{said}");
+            #[test]
+            fn passes_where_two_documents_name_one_record_and_the_result_says_they_are_one() {
+                let (outcome, said) = judged_as(
+                    versioned(),
+                    relation(
+                        &conversion("two.xml", Some("/catalog/item[1]")),
+                        &conversion("output-fails-a-shape.xml", None),
+                        true,
+                    ),
+                );
+                assert_eq!(outcome, "passed", "{said}");
+                assert!(said.contains("urn:example:item:1"), "{said}");
+            }
 
-    let (outcome, said) = judged_as(
-        Variant::of(tiny()),
-        relation(
-            &conversion("output-fails-a-shape.xml", None),
-            &conversion("output-fails-a-shape.xml", None),
-            true,
-        ),
-    );
-    assert_eq!(
-        outcome, "failed",
-        "a record no version arrived for is named by nothing"
-    );
-    assert!(said.contains("names 0 record(s)"), "{said}");
+            #[test]
+            fn passes_where_two_records_of_one_document_are_two_and_the_result_says_so() {
+                let (outcome, said) = judged_as(
+                    versioned(),
+                    relation(
+                        &conversion("two.xml", Some("/catalog/item[1]")),
+                        &conversion("two.xml", Some("/catalog/item[2]")),
+                        false,
+                    ),
+                );
+                assert_eq!(outcome, "passed", "{said}");
+            }
+
+            #[test]
+            fn fails_where_the_names_break_the_relation_the_result_states() {
+                let (outcome, said) = judged_as(
+                    versioned(),
+                    relation(
+                        &conversion("two.xml", Some("/catalog/item[1]")),
+                        &conversion("two.xml", Some("/catalog/item[2]")),
+                        true,
+                    ),
+                );
+                assert_eq!(outcome, "failed", "{said}");
+                assert!(said.contains("must be one record"), "{said}");
+            }
+
+            #[test]
+            fn fails_a_conversion_that_names_other_than_one_record() {
+                let (outcome, said) = judged_as(
+                    versioned(),
+                    relation(
+                        &conversion("two.xml", None),
+                        &conversion("output-fails-a-shape.xml", None),
+                        true,
+                    ),
+                );
+                assert_eq!(outcome, "failed", "{said}");
+                assert!(said.contains("names 2 record(s)"), "{said}");
+
+                let (outcome, said) = judged_as(
+                    Variant::of(tiny()),
+                    relation(
+                        &conversion("output-fails-a-shape.xml", None),
+                        &conversion("output-fails-a-shape.xml", None),
+                        true,
+                    ),
+                );
+                assert_eq!(
+                    outcome, "failed",
+                    "a record no version arrived for is named by nothing"
+                );
+                assert!(said.contains("names 0 record(s)"), "{said}");
+            }
+        }
+    }
 }

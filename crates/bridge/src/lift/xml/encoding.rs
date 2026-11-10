@@ -36,30 +36,46 @@ fn utf16be_with_bom(text: &str) -> Vec<u8> {
     bytes
 }
 
-#[test]
-fn a_utf16_document_lifts_to_the_graph_of_its_utf8_twin() {
-    let utf8 = DOCUMENT.replace("UTF-16", "UTF-8");
-    let expected = lift(utf8.as_bytes());
-    let text: Vec<String> = skeleton(utf8.as_bytes())
-        .into_iter()
-        .filter_map(|quad| match quad.object {
-            Term::Literal(literal) => Some(literal.value().to_owned()),
-            _ => None,
-        })
-        .collect();
-    assert!(
-        text.iter().any(|value| value == "café — three children"),
-        "{text:?}"
-    );
+mod tests {
+    use super::*;
 
-    assert_eq!(lift(&utf16le_with_bom(DOCUMENT)), expected);
-    assert_eq!(lift(&utf16be_with_bom(DOCUMENT)), expected);
-}
+    /// Reading an XML document as records · Loaded::convert()
+    mod reading_an_xml_document_as_records {
+        use super::*;
 
-#[test]
-fn a_utf8_byte_order_mark_is_not_a_character_of_the_document() {
-    let utf8 = DOCUMENT.replace("UTF-16", "UTF-8");
-    let mut with_mark = vec![0xEF, 0xBB, 0xBF];
-    with_mark.extend_from_slice(utf8.as_bytes());
-    assert_eq!(lift(&with_mark), lift(utf8.as_bytes()));
+        /// given a document's encoding
+        mod given_a_document_s_encoding {
+            use super::*;
+
+            /// lifts a UTF-16 document to the graph of its UTF-8 twin
+            #[test]
+            fn lifts_a_utf_16_document_to_the_graph_of_its_utf_8_twin() {
+                let utf8 = DOCUMENT.replace("UTF-16", "UTF-8");
+                let expected = lift(utf8.as_bytes());
+                let text: Vec<String> = skeleton(utf8.as_bytes())
+                    .into_iter()
+                    .filter_map(|quad| match quad.object {
+                        Term::Literal(literal) => Some(literal.value().to_owned()),
+                        _ => None,
+                    })
+                    .collect();
+                assert!(
+                    text.iter().any(|value| value == "café — three children"),
+                    "{text:?}"
+                );
+
+                assert_eq!(lift(&utf16le_with_bom(DOCUMENT)), expected);
+                assert_eq!(lift(&utf16be_with_bom(DOCUMENT)), expected);
+            }
+
+            /// reads a UTF-8 byte order mark as no character of the document
+            #[test]
+            fn reads_a_utf_8_byte_order_mark_as_no_character_of_the_document() {
+                let utf8 = DOCUMENT.replace("UTF-16", "UTF-8");
+                let mut with_mark = vec![0xEF, 0xBB, 0xBF];
+                with_mark.extend_from_slice(utf8.as_bytes());
+                assert_eq!(lift(&with_mark), lift(utf8.as_bytes()));
+            }
+        }
+    }
 }

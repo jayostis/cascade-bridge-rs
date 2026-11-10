@@ -143,42 +143,6 @@ const BOUND: &[(&str, &str, &[&str], &[&str])] = &[
     ),
 ];
 
-#[test]
-fn works_out_what_a_pattern_binds_in_every_row_and_in_some_row() {
-    let wrong: Vec<_> = BOUND
-        .iter()
-        .filter_map(|&(construct, patterns, certain, maybe)| {
-            let (found_certain, found_maybe) = with_scope(patterns, |_, names, frame| {
-                (
-                    named(names, &frame.bound.certain),
-                    named(names, &frame.bound.maybe),
-                )
-            });
-            (found_certain != strings(certain) || found_maybe != strings(maybe)).then_some((
-                construct,
-                found_certain,
-                found_maybe,
-            ))
-        })
-        .collect();
-    assert!(wrong.is_empty(), "{wrong:#?}");
-}
-
-#[test]
-fn declines_nothing_where_a_group_reads_what_it_binds_or_what_only_the_groups_around_it_bind_and_it_does_not(
-) {
-    for patterns in [
-        "?i :id ?v . { ?x :key ?k FILTER(?v = \"1\") }",
-        "?i a :Item . { ?x :key ?k FILTER NOT EXISTS { ?i :name \"alpha\" } }",
-        "?i :id ?v . { ?i :id ?v FILTER(?v = \"1\") }",
-        "?i a :Item . OPTIONAL { ?i :name ?n FILTER(?n != \"x\") }",
-    ] {
-        let text = format!("{PREFIXES} CONSTRUCT {{ ?i :p ?i }} WHERE {{ {patterns} }}");
-        let query = SparqlParser::new().parse_query(&text).expect("a query");
-        assert_eq!(compile(&query).err(), None, "{patterns}");
-    }
-}
-
 /// (construct, patterns, what the first filter reads as unbound)
 const HIDDEN: &[(&str, &str, &[&str])] = &[
     (
@@ -202,22 +166,6 @@ const HIDDEN: &[(&str, &str, &[&str])] = &[
         &[],
     ),
 ];
-
-#[test]
-fn works_out_what_a_filter_reads_as_unbound() {
-    let wrong: Vec<_> = HIDDEN
-        .iter()
-        .filter_map(|&(construct, patterns, hidden)| {
-            let found = with_scope(patterns, |scoped, names, _| {
-                let filter = *filters(scoped).first().expect("a filter");
-                let conjunct = filter.conjuncts.first().expect("a conjunct");
-                named(names, conjunct.hidden.as_ref().expect("not declined"))
-            });
-            (found != strings(hidden)).then_some((construct, found))
-        })
-        .collect();
-    assert!(wrong.is_empty(), "{wrong:#?}");
-}
 
 type Bind = (bool, bool);
 
@@ -251,33 +199,95 @@ const BINDS: &[(&str, &str, &[Bind])] = &[
     ),
 ];
 
-#[test]
-fn works_out_where_a_bind_joins_and_where_it_binds_in_every_row() {
-    let wrong: Vec<_> = BINDS
-        .iter()
-        .filter_map(|&(construct, patterns, expected)| {
-            let found = with_scope(patterns, |scoped, _, _| {
-                extends(scoped)
-                    .iter()
-                    .map(|extend| (extend.joins, extend.certainly))
-                    .collect::<Vec<_>>()
-            });
-            (found != expected).then_some((construct, found))
-        })
-        .collect();
-    assert!(wrong.is_empty(), "{wrong:#?}");
-}
+/// Workings no caller sees · crates/bridge/src
+///
+/// Checks of private functions whose outcome no public function shows. They are not part of the
+/// contract.
+mod workings_no_caller_sees {
+    use super::*;
 
-#[test]
-fn starts_an_exists_body_with_the_row_it_runs_on_less_what_is_hidden() {
-    let slots = <[usize]>::to_vec;
-    let frame = Frame::within_exists(&Scope {
-        certain: [0, 1].into_iter().collect(),
-        maybe: [0, 1, 2].into_iter().collect(),
-        hidden: [1].into_iter().collect(),
-    });
-    assert_eq!(frame.bound.certain.iter().collect::<Vec<_>>(), slots(&[0]));
-    assert_eq!(frame.bound.maybe.iter().collect::<Vec<_>>(), slots(&[0, 2]));
-    assert_eq!(frame.row.iter().collect::<Vec<_>>(), slots(&[0, 2]));
-    assert!(frame.bound.own.iter().next().is_none());
+    /// `scope`
+    mod scope {
+        use super::*;
+
+        #[test]
+        fn works_out_what_a_pattern_binds_in_every_row_and_in_some_row() {
+            let wrong: Vec<_> = BOUND
+                .iter()
+                .filter_map(|&(construct, patterns, certain, maybe)| {
+                    let (found_certain, found_maybe) = with_scope(patterns, |_, names, frame| {
+                        (
+                            named(names, &frame.bound.certain),
+                            named(names, &frame.bound.maybe),
+                        )
+                    });
+                    (found_certain != strings(certain) || found_maybe != strings(maybe))
+                        .then_some((construct, found_certain, found_maybe))
+                })
+                .collect();
+            assert!(wrong.is_empty(), "{wrong:#?}");
+        }
+
+        #[test]
+        fn declines_nothing_where_a_group_reads_what_it_binds_or_what_only_the_groups_around_it_bind_and_it_does_not(
+        ) {
+            for patterns in [
+                "?i :id ?v . { ?x :key ?k FILTER(?v = \"1\") }",
+                "?i a :Item . { ?x :key ?k FILTER NOT EXISTS { ?i :name \"alpha\" } }",
+                "?i :id ?v . { ?i :id ?v FILTER(?v = \"1\") }",
+                "?i a :Item . OPTIONAL { ?i :name ?n FILTER(?n != \"x\") }",
+            ] {
+                let text = format!("{PREFIXES} CONSTRUCT {{ ?i :p ?i }} WHERE {{ {patterns} }}");
+                let query = SparqlParser::new().parse_query(&text).expect("a query");
+                assert_eq!(compile(&query).err(), None, "{patterns}");
+            }
+        }
+
+        #[test]
+        fn works_out_what_a_filter_reads_as_unbound() {
+            let wrong: Vec<_> = HIDDEN
+                .iter()
+                .filter_map(|&(construct, patterns, hidden)| {
+                    let found = with_scope(patterns, |scoped, names, _| {
+                        let filter = *filters(scoped).first().expect("a filter");
+                        let conjunct = filter.conjuncts.first().expect("a conjunct");
+                        named(names, conjunct.hidden.as_ref().expect("not declined"))
+                    });
+                    (found != strings(hidden)).then_some((construct, found))
+                })
+                .collect();
+            assert!(wrong.is_empty(), "{wrong:#?}");
+        }
+
+        #[test]
+        fn works_out_where_a_bind_joins_and_where_it_binds_in_every_row() {
+            let wrong: Vec<_> = BINDS
+                .iter()
+                .filter_map(|&(construct, patterns, expected)| {
+                    let found = with_scope(patterns, |scoped, _, _| {
+                        extends(scoped)
+                            .iter()
+                            .map(|extend| (extend.joins, extend.certainly))
+                            .collect::<Vec<_>>()
+                    });
+                    (found != expected).then_some((construct, found))
+                })
+                .collect();
+            assert!(wrong.is_empty(), "{wrong:#?}");
+        }
+
+        #[test]
+        fn starts_an_exists_body_with_the_row_it_runs_on_less_what_is_hidden() {
+            let slots = <[usize]>::to_vec;
+            let frame = Frame::within_exists(&Scope {
+                certain: [0, 1].into_iter().collect(),
+                maybe: [0, 1, 2].into_iter().collect(),
+                hidden: [1].into_iter().collect(),
+            });
+            assert_eq!(frame.bound.certain.iter().collect::<Vec<_>>(), slots(&[0]));
+            assert_eq!(frame.bound.maybe.iter().collect::<Vec<_>>(), slots(&[0, 2]));
+            assert_eq!(frame.row.iter().collect::<Vec<_>>(), slots(&[0, 2]));
+            assert!(frame.bound.own.iter().next().is_none());
+        }
+    }
 }

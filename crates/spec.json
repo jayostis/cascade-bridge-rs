@@ -4,9 +4,74 @@
     "bridge-cli/tests/cli.rs",
     "bridge-cli/tests/file_iri.rs",
     "bridge-cli/tests/node_host.rs",
-    "bridge-cli/tests/specification_vector.rs"
+    "bridge-cli/tests/specification_vector.rs",
+    "bridge/src/annotation.rs",
+    "bridge/src/budget/tests.rs",
+    "bridge/src/compiled/scope/tests.rs",
+    "bridge/src/compiled/tests.rs",
+    "bridge/src/harness.rs",
+    "bridge/src/harness/identity.rs",
+    "bridge/src/harness/manifest.rs",
+    "bridge/src/json/addressing.rs",
+    "bridge/src/json/tests.rs",
+    "bridge/src/lift/attachment.rs",
+    "bridge/src/lift/json/tests.rs",
+    "bridge/src/lift/json/vectors.rs",
+    "bridge/src/lift/xml/encoding.rs",
+    "bridge/src/lift/xml/selector.rs",
+    "bridge/src/lift/xml/vectors.rs",
+    "bridge/src/measure.rs",
+    "bridge/src/query.rs",
+    "bridge/src/rdf.rs",
+    "bridge/src/rdf/serialising.rs",
+    "bridge/src/records.rs",
+    "bridge/src/records/vectors.rs",
+    "bridge/src/records/written.rs",
+    "bridge/src/resolver/boundary.rs",
+    "bridge/src/run.rs",
+    "bridge/src/run/adapter_files.rs",
+    "bridge/src/run/address.rs",
+    "bridge/src/run/entry_gaps.rs",
+    "bridge/src/run/fetching.rs",
+    "bridge/src/run/finding_bodies.rs",
+    "bridge/src/run/findings.rs",
+    "bridge/src/run/json_source.rs",
+    "bridge/src/run/lookup_misses.rs",
+    "bridge/src/run/output_validation.rs",
+    "bridge/src/run/selector.rs",
+    "bridge/src/run/skips.rs",
+    "bridge/src/run/source_accounting.rs",
+    "bridge/src/run/validation.rs",
+    "bridge/src/syntax.rs",
+    "bridge/src/validate/cda.rs",
+    "bridge/src/validate/json_schema/tests.rs",
+    "bridge/src/validate/xsd.rs",
+    "bridge/src/xpath.rs",
+    "bridge/tests/library.rs",
+    "bridge/tests/rules.rs"
   ],
   "capabilities": [
+    "Describing an adapter before loading it · describe(), Description",
+    "Loading an adapter from maps of files · load(), Named, Files, Loaded",
+    "Keeping a query from fetching · load()",
+    "Converting a document · Loaded::accepts(), Loaded::convert(), Conversion",
+    "Reading an XML document as records · Loaded::convert()",
+    "Reading a JSON document as records · Loaded::convert(), Document::envelope",
+    "Naming records and their versions · Facts, Document::facts",
+    "Findings about a document · Conversion::findings()",
+    "Checking where a finding points · Conversion::findings()",
+    "Validating a document against the adapter's XML Schema · Loaded::convert()",
+    "Validating a JSON document against its schema · Loaded::convert()",
+    "Accounting for every path of a source record · Conversion::findings()",
+    "Reporting the gaps an adapter declares · Conversion::findings()",
+    "Reporting values a concept map lacks · Conversion::findings()",
+    "Validating the graph against the vocabulary · Loaded::convert(), Conversion::unvalidated",
+    "Writing the graph and the findings · Conversion::graph(), Conversion::findings(), Format",
+    "Telling whose failure an error is · Error, ErrorKind",
+    "Stopping a convert at its budgets · Budgets, ConvertOptions, Loaded::convert_with()",
+    "Choosing how queries are executed · Executor, Loaded::explain(), Fallback",
+    "Measuring a load and a convert · load_skipping(), Loaded::convert_profiled(), Stage, Skip",
+    "Running an adapter's test manifest · test(), TestOptions, TestReport",
     "Converting a document with an adapter · cascade-bridge convert",
     "Writing a conversion's findings to a file · --findings",
     "Validating against a checkout of the vocabulary · --vocabularies",
@@ -21,9 +86,19 @@
     "Passing the specification's own adapters · cascade-bridge test"
   ],
   "build": [
-    "The package's imports, held to the allowlist · package/check-imports.mjs"
+    "The package's imports, held to the allowlist · package/check-imports.mjs",
+    "Rules this repository keeps · crates/bridge/tests/rules.rs",
+    "Third-party test documents, as published · crates/bridge/tests/cda",
+    "Workings no caller sees · crates/bridge/src"
   ],
   "glossary": [
+    {
+      "term": "accounting entry",
+      "definition": "one line of the source accounting: a source path and its verdict.",
+      "aliases": [
+        "accounting entries"
+      ]
+    },
     {
       "term": "adapter",
       "definition": "here, a folder that teaches the Bridge one source format: its `ro-crate-metadata.json`, the schema of the source, the SPARQL queries that map it, and a test manifest with fixtures.",
@@ -32,12 +107,44 @@
       ]
     },
     {
+      "term": "address",
+      "definition": "here, a finding's selector and its refinement together: the place in the document it is about.",
+      "aliases": [
+        "addresses"
+      ]
+    },
+    {
       "term": "allowlist",
       "definition": "the list, `package/imports.txt`, of the functions the WebAssembly module may import from its host."
     },
     {
+      "term": "applicator",
+      "definition": "a JSON Schema keyword that applies other schemas to a value, such as `properties` or `items`.",
+      "aliases": [
+        "applicators"
+      ]
+    },
+    {
+      "term": "arrival",
+      "definition": "here, the node that says how a version reached the pod: its document, its selector and the import.",
+      "aliases": [
+        "arrivals"
+      ]
+    },
+    {
       "term": "authority",
       "definition": "the part of an IRI between `//` and the next `/`: empty in `file:///C:/dev`, a server's name in `file://server/share`."
+    },
+    {
+      "term": "blank node",
+      "definition": "a node of a graph that has no IRI of its own, written `_:` and a label in Turtle.",
+      "aliases": [
+        "blank nodes"
+      ]
+    },
+    {
+      "term": "body",
+      "definition": "what a finding says: an IRI naming the rule or gap."
     },
     {
       "term": "Bridge",
@@ -51,11 +158,22 @@
       ]
     },
     {
+      "term": "builtin",
+      "definition": "a function SPARQL defines, such as `STR` or `CONCAT`.",
+      "aliases": [
+        "builtins"
+      ]
+    },
+    {
       "term": "calls file",
       "definition": "a JSON file listing calls to make on the Bridge's library, case by case; the Bridge specification's tooling writes one to test a Bridge.",
       "aliases": [
         "calls files"
       ]
+    },
+    {
+      "term": "census",
+      "definition": "the Bridge's count of every path a record carries, held against the accounting."
     },
     {
       "term": "checkout",
@@ -65,12 +183,34 @@
       ]
     },
     {
+      "term": "committed adapter",
+      "definition": "the tiny adapter as checked in, with no file rewritten by the test."
+    },
+    {
       "term": "compiled",
       "definition": "said of a query the Bridge turned into a plan of its own instead of evaluating it generally.",
       "aliases": [
         "compiles",
         "compile",
         "compiler"
+      ]
+    },
+    {
+      "term": "concept map",
+      "definition": "a file of the adapter listing the source's values and the concept each maps to."
+    },
+    {
+      "term": "crate",
+      "definition": "here, the adapter's `ro-crate-metadata.json` (an RO-Crate), which names every file of the adapter. Not a Rust crate.",
+      "aliases": [
+        "crates"
+      ]
+    },
+    {
+      "term": "declines",
+      "definition": "of the compiler: does not compile a query, which the general evaluator then runs.",
+      "aliases": [
+        "declined"
       ]
     },
     {
@@ -90,8 +230,12 @@
       "vocabulary": "https://www.w3.org/TR/EARL10-Schema/"
     },
     {
+      "term": "ECMA 262",
+      "definition": "ECMAScript, the standard that defines the regular expressions JavaScript and JSON Schema use."
+    },
+    {
       "term": "engine",
-      "definition": "the Bridge's library, the part that converts; a host calls it."
+      "definition": "here, the Bridge's library, the part that converts; a host calls it."
     },
     {
       "term": "entry",
@@ -126,8 +270,31 @@
       ]
     },
     {
+      "term": "findings query",
+      "definition": "a query of an adapter that constructs findings."
+    },
+    {
+      "term": "gap",
+      "definition": "a path the vocabulary has no term for yet, as the adapter's gap scheme declares it, with a kind and a severity.",
+      "aliases": [
+        "gaps"
+      ]
+    },
+    {
+      "term": "gap scheme",
+      "definition": "the adapter's file of the gaps it declares."
+    },
+    {
       "term": "general evaluator",
       "definition": "the stock SPARQL evaluator the Bridge falls back to for a query it cannot compile; correct, and slower."
+    },
+    {
+      "term": "gives up",
+      "definition": "of a plan: stops on data it cannot answer rightly, and the general evaluator answers instead.",
+      "aliases": [
+        "given up",
+        "give-ups"
+      ]
     },
     {
       "term": "graph",
@@ -144,6 +311,13 @@
       ]
     },
     {
+      "term": "identity entry",
+      "definition": "a test entry that says whether two records are one.",
+      "aliases": [
+        "identity entries"
+      ]
+    },
+    {
       "term": "index",
       "definition": "here, the lookup structure a compiled query builds over a document before it runs; the general evaluator builds none."
     },
@@ -155,8 +329,49 @@
       ]
     },
     {
+      "term": "join",
+      "definition": "the combining of two sets of answers by the values they share.",
+      "aliases": [
+        "joins"
+      ]
+    },
+    {
+      "term": "JSON Pointer",
+      "definition": "the IETF syntax (RFC 6901) that names a value of a JSON document by its path, such as `/items/1`."
+    },
+    {
+      "term": "label",
+      "definition": "here, the name a blank node carries in the text of a graph, such as `_:b0`.",
+      "aliases": [
+        "labels",
+        "labelled"
+      ]
+    },
+    {
       "term": "library",
       "definition": "what the Bridge offers a program that loads it: five operations (describe, load, ask, convert, test), bytes in and bytes out. `load` takes an adapter's files, and a vocabulary's, and holds them for the calls after it, so a `convert` made before any `load` has nothing to work with. `cascade-bridge library` is the command that makes calls on it from a file."
+    },
+    {
+      "term": "lift",
+      "definition": "the generic graph the Bridge makes of a record's XML or JSON, which the mappings query.",
+      "aliases": [
+        "lifts",
+        "lifted"
+      ]
+    },
+    {
+      "term": "literal",
+      "definition": "a plain value in a graph or a query, such as a string or a number, as against a name that is an IRI.",
+      "aliases": [
+        "literals"
+      ]
+    },
+    {
+      "term": "lookup",
+      "definition": "here, an accounting entry's naming of a concept map that its path's values are looked up in.",
+      "aliases": [
+        "lookups"
+      ]
     },
     {
       "term": "map",
@@ -177,6 +392,28 @@
       "definition": "one number a benchmark run writes, under a name, with a kind: `clock` (a time), `cost` (a count of work done) or `output` (a count of what came out)."
     },
     {
+      "term": "mebibyte",
+      "definition": "a megabyte counted in powers of two: 1,048,576 bytes.",
+      "aliases": [
+        "mebibytes"
+      ]
+    },
+    {
+      "term": "MINUS",
+      "definition": "the SPARQL pattern that removes the answers that match another pattern."
+    },
+    {
+      "term": "miss",
+      "definition": "a value a record holds that the concept map lacks.",
+      "aliases": [
+        "misses"
+      ]
+    },
+    {
+      "term": "motivation",
+      "definition": "why a finding was written, as Web Annotation names it (`oa:classifying`)."
+    },
+    {
       "term": "N-Triples",
       "definition": "a W3C text format that writes a graph one statement to a line, every IRI in full.",
       "vocabulary": "https://www.w3.org/TR/n-triples/"
@@ -187,6 +424,10 @@
       "aliases": [
         "outcomes"
       ]
+    },
+    {
+      "term": "Oxigraph",
+      "definition": "the SPARQL engine the Bridge is built on; its evaluator is the general evaluator."
     },
     {
       "term": "percent-encoded",
@@ -211,8 +452,20 @@
       "definition": "here, how the package was built (`release` or a faster-to-build variant), which a benchmark result records. Not `--profile`, the flag, which is code."
     },
     {
+      "term": "prologue",
+      "definition": "the start of a SPARQL query, which declares its prefixes and base IRI."
+    },
+    {
       "term": "record",
       "definition": "here, one unit of a source document that an adapter converts on its own, such as one item of a catalog or one entry of a clinical document."
+    },
+    {
+      "term": "refinement",
+      "definition": "the second part of a finding's address: the step from the record down to the node.",
+      "aliases": [
+        "refines",
+        "refined"
+      ]
     },
     {
       "term": "report",
@@ -223,8 +476,26 @@
       "definition": "the folder `library` writes into: for the call at position n of a case, `<case>/<n>.json` and, where the call returned them, `<n>.graph`, `<n>.findings` or `<n>.report`."
     },
     {
+      "term": "row",
+      "definition": "one answer of a SPARQL query: the values it gives its variables.",
+      "aliases": [
+        "rows"
+      ]
+    },
+    {
+      "term": "selector",
+      "definition": "where a record or a node stands in its document, as an XPath (XML) or a JSON Pointer (JSON).",
+      "aliases": [
+        "selectors"
+      ]
+    },
+    {
       "term": "SERVICE pattern",
       "definition": "the clause of SPARQL that sends part of a query to another server; the Bridge fetches nothing, so it refuses a query holding one."
+    },
+    {
+      "term": "severity",
+      "definition": "how much a finding matters, as SHACL names it: `sh:Info`, `sh:Warning`, `sh:Violation`."
     },
     {
       "term": "shapes",
@@ -232,8 +503,23 @@
       "vocabulary": "https://www.w3.org/TR/shacl/"
     },
     {
+      "term": "skeleton",
+      "definition": "the lift of the document around its records: the attributes and childless children of the elements above them."
+    },
+    {
+      "term": "source accounting",
+      "definition": "an adapter's list of every path of the source format and what the adapter does with it.",
+      "aliases": [
+        "accounting"
+      ]
+    },
+    {
       "term": "SPARQL",
       "definition": "the W3C language for querying a graph."
+    },
+    {
+      "term": "specification",
+      "definition": "the Cascade Bridge Specification, which says what every Bridge must do; its vectors are inputs with the output every Bridge must give."
     },
     {
       "term": "stage",
@@ -243,8 +529,29 @@
       ]
     },
     {
+      "term": "step",
+      "definition": "here, one `name[index]` part of an XPath.",
+      "aliases": [
+        "steps"
+      ]
+    },
+    {
       "term": "sub-delimiters",
       "definition": "the characters ``!$&'()*+,;=``, which an IRI may hold unencoded."
+    },
+    {
+      "term": "surrogate",
+      "definition": "half of a pair of UTF-16 code units that together write one character; alone, it is no character.",
+      "aliases": [
+        "surrogates"
+      ]
+    },
+    {
+      "term": "table",
+      "definition": "here, a small graph that every record of a document shares, which a query of the adapter constructs once from the document.",
+      "aliases": [
+        "tables"
+      ]
     },
     {
       "term": "tally",
@@ -258,11 +565,23 @@
       ]
     },
     {
+      "term": "tilde",
+      "definition": "the character `~`, which a JSON Pointer writes `~0`."
+    },
+    {
+      "term": "tiny adapter",
+      "definition": "the small adapter in `crates/bridge/tests/tiny-adapter` that these tests convert with (and `tiny-json-adapter`)."
+    },
+    {
       "term": "trap",
       "definition": "a fault that stops a WebAssembly module at once, as a panic stops a native program.",
       "aliases": [
         "traps"
       ]
+    },
+    {
+      "term": "tree",
+      "definition": "the compiled executor's index of one record's lift."
     },
     {
       "term": "triple",
@@ -277,8 +596,37 @@
       "vocabulary": "https://www.w3.org/TR/turtle/"
     },
     {
+      "term": "unbound",
+      "definition": "of a SPARQL variable: given no value by the pattern."
+    },
+    {
       "term": "usage",
       "definition": "the lines a command prints to say which commands and flags it takes."
+    },
+    {
+      "term": "userinfo",
+      "definition": "the part of a URL before its host: `user:password@`."
+    },
+    {
+      "term": "vector",
+      "definition": "an input and the exact output the specification fixes for it.",
+      "aliases": [
+        "vectors"
+      ]
+    },
+    {
+      "term": "verdict",
+      "definition": "here, what an accounting entry says the adapter does with its path.",
+      "aliases": [
+        "verdicts"
+      ]
+    },
+    {
+      "term": "version",
+      "definition": "what a record says at one time.",
+      "aliases": [
+        "versions"
+      ]
     },
     {
       "term": "vocabulary",
@@ -294,6 +642,29 @@
       "aliases": [
         "wasm"
       ]
+    },
+    {
+      "term": "well formed",
+      "definition": "of XML: following the syntax rules, whether or not a schema accepts it."
+    },
+    {
+      "term": "whitespace",
+      "definition": "spaces, tabs and line breaks."
+    },
+    {
+      "term": "xlink",
+      "definition": "the W3C namespace for links between parts of XML documents, such as `xlink:href`."
+    },
+    {
+      "term": "XML Schema",
+      "definition": "the W3C language that says which documents of a format are valid; its files end in `.xsd`.",
+      "aliases": [
+        "XSD"
+      ]
+    },
+    {
+      "term": "XPath",
+      "definition": "the W3C language that names a node of an XML document by its path, such as `/catalog/item[1]`."
     }
   ]
 }

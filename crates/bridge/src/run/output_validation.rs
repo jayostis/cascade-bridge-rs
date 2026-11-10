@@ -101,133 +101,6 @@ fn code_too_long(document: &str) -> Finding {
     )
 }
 
-#[test]
-fn makes_one_finding_of_the_result_a_record_s_graph_failed_a_shape_on() {
-    let (conversion, document) = read_against_the_vocabulary("output-fails-a-shape.xml");
-    assert_eq!(
-        output_findings(&conversion.findings),
-        [code_too_long(&document)]
-    );
-    assert!(
-        conversion
-            .quads
-            .iter()
-            .any(|q| q.predicate.as_str() == format!("{EX}code")),
-        "the graph the shape refused is produced all the same"
-    );
-}
-
-#[test]
-fn names_a_focus_node_that_is_an_iri_and_leaves_a_blank_one_unnamed() {
-    let (conversion, _) = read_against_the_vocabulary("output-fails-two-shapes.xml");
-    let focus: Vec<(String, String)> = output_findings(&conversion.findings)
-        .into_iter()
-        .map(|finding| (finding.body, finding.focus))
-        .collect();
-    assert_eq!(
-        focus,
-        [
-            (
-                format!("{SH}MaxLengthConstraintComponent"),
-                "urn:example:item:1".to_owned()
-            ),
-            (format!("{SH}MinCountConstraintComponent"), String::new()),
-        ]
-    );
-}
-
-#[test]
-fn makes_a_finding_of_its_own_of_each_of_two_results_about_one_record() {
-    let (conversion, document) = read_against_the_vocabulary("output-fails-two-shapes.xml");
-    assert_eq!(
-        output_findings(&conversion.findings),
-        [
-            code_too_long(&document),
-            on_the_first_record("MinCountConstraintComponent", "Violation", "", &document),
-        ],
-        "each finding carries the severity of the result it was made from"
-    );
-    let selectors: BTreeSet<String> = reported(&conversion.findings)
-        .iter()
-        .map(|annotation| selector_of(&conversion.findings, annotation))
-        .collect();
-    assert_eq!(
-        selectors.len(),
-        2,
-        "two findings on one record are two alternatives of each other where they share a selector"
-    );
-}
-
-#[test]
-fn reports_a_predicate_no_ontology_declares_and_leaves_rdf_type_and_the_bridge_s_own_alone() {
-    let (conversion, _) = read_against_the_vocabulary("a-predicate-no-ontology-declares.xml");
-    let reported: Vec<(String, String, String)> = output_findings(&conversion.findings)
-        .into_iter()
-        .map(|finding| (finding.body, finding.path, finding.severity))
-        .collect();
-    assert_eq!(
-        reported,
-        [(
-            PREDICATE_NOT_DECLARED.to_owned(),
-            format!("{EX}colour"),
-            format!("{SH}Violation"),
-        )],
-        "the record's graph writes rdf:type and rdfs:label, which the Cascade Bridge vocabulary declares, too"
-    );
-}
-
-#[test]
-fn refuses_a_mapping_writing_the_old_attribution_shape_and_lets_through_the_roles_on_an_association(
-) {
-    let undeclared = |written: &str| -> Vec<String> {
-        let resolver = Variant::of(tiny_with_vocabularies()).replacing_exactly(
-            "mapping/item.rq",
-            "ex:title ?title . }",
-            format!("ex:title ?title ; {written} . }}"),
-            1,
-        );
-        let (conversion, _) = run(&resolver, "two.xml");
-        output_findings(&conversion.findings)
-            .into_iter()
-            .filter(|finding| finding.body == PREDICATE_NOT_DECLARED)
-            .map(|finding| finding.path)
-            .collect()
-    };
-    assert_eq!(
-        undeclared(
-            "<http://www.w3.org/ns/prov#qualifiedAttribution> [ <http://www.w3.org/ns/prov#agent> [] ]"
-        ),
-        ["http://www.w3.org/ns/prov#qualifiedAttribution"; 2],
-        "one for each of the document's two records"
-    );
-    assert_eq!(
-        undeclared(
-            "<http://www.w3.org/ns/prov#wasGeneratedBy> [ <http://www.w3.org/ns/prov#qualifiedAssociation> [
-               <http://www.w3.org/ns/prov#agent> [] ;
-               <http://www.w3.org/ns/prov#hadRole> <https://ns.cascadeprotocol.org/cascade#AuthorRole> ] ] ;
-             <http://www.w3.org/ns/prov#wasAttributedTo> []"
-        ),
-        Vec::<String>::new()
-    );
-}
-
-#[test]
-fn reads_the_vocabulary_from_the_directory_the_command_was_given() {
-    let (without, _) = run(&tiny(), "output-fails-a-shape.xml");
-    assert_eq!(
-        output_findings(&without.findings),
-        [],
-        "a resolver given no checkout reads the graph against nothing"
-    );
-
-    let (with, document) = read_against_the_vocabulary("output-fails-a-shape.xml");
-    assert_eq!(
-        output_findings(&with.findings),
-        [code_too_long(&document)],
-        "the shapes stand in the checkout the command named and nowhere in the adapter"
-    );
-}
-
 /// What preparing says of a crate naming this vocabulary file; empty where it prepares.
 fn refusal(file: &str) -> String {
     let resolver = Variant::of(tiny_with_vocabularies()).replacing(CRATE, SHAPES, file);
@@ -238,41 +111,210 @@ fn refusal(file: &str) -> String {
         .unwrap_or_default()
 }
 
-#[test]
-fn refuses_a_vocabulary_file_outside_the_checkout_and_outside_the_adapter() {
-    let refused = refusal("../boundary.rs");
-    assert!(
-        refused.contains("not inside"),
-        "a vocabulary file that climbs out of the checkout and the adapter was read: {refused:?}"
-    );
-}
+mod tests {
+    use super::*;
 
-#[test]
-fn refuses_a_vocabulary_file_that_is_a_file_of_the_adapter() {
-    let refused = refusal("../tiny-adapter/vocab/catalog-gaps.ttl");
-    assert!(
-        refused.contains("not inside"),
-        "the adapter was read against a file of its own rather than one of the vocabulary repository: \
+    /// Loading an adapter from maps of files · load(), Named, Files, Loaded
+    mod loading_an_adapter_from_maps_of_files {
+        use super::*;
+
+        mod given_a_vocabulary {
+            use super::*;
+
+            #[test]
+            fn reads_the_vocabulary_from_the_directory_the_command_was_given() {
+                let (without, _) = run(&tiny(), "output-fails-a-shape.xml");
+                assert_eq!(
+                    output_findings(&without.findings),
+                    [],
+                    "a resolver given no checkout reads the graph against nothing"
+                );
+
+                let (with, document) = read_against_the_vocabulary("output-fails-a-shape.xml");
+                assert_eq!(
+                    output_findings(&with.findings),
+                    [code_too_long(&document)],
+                    "the shapes stand in the checkout the command named and nowhere in the adapter"
+                );
+            }
+
+            #[test]
+            fn refuses_a_vocabulary_file_outside_the_checkout_and_outside_the_adapter() {
+                let refused = refusal("../boundary.rs");
+                assert!(
+                    refused.contains("not inside"),
+                    "a vocabulary file that climbs out of the checkout and the adapter was read: {refused:?}"
+                );
+            }
+
+            #[test]
+            fn refuses_a_vocabulary_file_that_is_a_file_of_the_adapter() {
+                let refused = refusal("../tiny-adapter/vocab/catalog-gaps.ttl");
+                assert!(
+                    refused.contains("not inside"),
+                    "the adapter was read against a file of its own rather than one of the vocabulary repository: \
          {refused:?}"
-    );
-}
+                );
+            }
+        }
+    }
 
-#[test]
-fn refuses_a_shape_whose_severity_no_finding_can_carry() {
-    // A severity of the vocabulary's own invention, which SHACL allows and the
-    // specification's finding shape has no room for.
-    let resolver = Variant::of(tiny_with_vocabularies()).replacing(
-        "catalog.shapes.ttl",
-        "sh:severity sh:Warning",
-        "sh:severity ex:Critical",
-    );
-    let adapter = load_adapter(&resolver).expect("adapter");
-    let refused = prepare(&adapter, &resolver)
-        .err()
-        .map(|error| error.to_string())
-        .unwrap_or_default();
-    assert!(
-        refused.contains("sh:Info, sh:Warning or sh:Violation"),
-        "a severity the specification's finding shape has no room for was compiled: {refused:?}"
-    );
+    /// Validating the graph against the vocabulary · Loaded::convert(), Conversion::unvalidated
+    ///
+    /// Where the host hands over the vocabulary, each record's graph is checked against the
+    /// vocabulary's shapes and ontologies. What fails is a finding, so a pod is never handed a
+    /// graph nobody checked without being told.
+    mod validating_the_graph_against_the_vocabulary {
+        use super::*;
+
+        /// given a record's graph
+        mod given_a_record_s_graph {
+            use super::*;
+
+            #[test]
+            fn makes_one_finding_of_a_failed_shape_result_and_still_produces_the_graph_the_shape_refused(
+            ) {
+                let (conversion, document) =
+                    read_against_the_vocabulary("output-fails-a-shape.xml");
+                assert_eq!(
+                    output_findings(&conversion.findings),
+                    [code_too_long(&document)]
+                );
+                assert!(
+                    conversion
+                        .quads
+                        .iter()
+                        .any(|q| q.predicate.as_str() == format!("{EX}code")),
+                    "the graph the shape refused is produced all the same"
+                );
+            }
+
+            #[test]
+            fn names_a_focus_node_that_is_an_iri_and_leaves_a_blank_one_unnamed() {
+                let (conversion, _) = read_against_the_vocabulary("output-fails-two-shapes.xml");
+                let focus: Vec<(String, String)> = output_findings(&conversion.findings)
+                    .into_iter()
+                    .map(|finding| (finding.body, finding.focus))
+                    .collect();
+                assert_eq!(
+                    focus,
+                    [
+                        (
+                            format!("{SH}MaxLengthConstraintComponent"),
+                            "urn:example:item:1".to_owned()
+                        ),
+                        (format!("{SH}MinCountConstraintComponent"), String::new()),
+                    ]
+                );
+            }
+
+            #[test]
+            fn makes_a_finding_of_its_own_of_each_of_two_results_about_one_record() {
+                let (conversion, document) =
+                    read_against_the_vocabulary("output-fails-two-shapes.xml");
+                assert_eq!(
+                    output_findings(&conversion.findings),
+                    [
+                        code_too_long(&document),
+                        on_the_first_record(
+                            "MinCountConstraintComponent",
+                            "Violation",
+                            "",
+                            &document
+                        ),
+                    ],
+                    "each finding carries the severity of the result it was made from"
+                );
+                let selectors: BTreeSet<String> = reported(&conversion.findings)
+                    .iter()
+                    .map(|annotation| selector_of(&conversion.findings, annotation))
+                    .collect();
+                assert_eq!(
+                    selectors.len(),
+                    2,
+                    "two findings on one record are two alternatives of each other where they share a selector"
+                );
+            }
+
+            /// reports a predicate no ontology declares and leaves rdf type and the bridge's own alone
+            #[test]
+            fn reports_a_predicate_no_ontology_declares_and_leaves_rdf_type_and_the_bridge_s_own_alone(
+            ) {
+                let (conversion, _) =
+                    read_against_the_vocabulary("a-predicate-no-ontology-declares.xml");
+                let reported: Vec<(String, String, String)> = output_findings(&conversion.findings)
+                    .into_iter()
+                    .map(|finding| (finding.body, finding.path, finding.severity))
+                    .collect();
+                assert_eq!(
+                    reported,
+                    [(
+                        PREDICATE_NOT_DECLARED.to_owned(),
+                        format!("{EX}colour"),
+                        format!("{SH}Violation"),
+                    )],
+                    "the record's graph writes rdf:type and rdfs:label, which the Cascade Bridge vocabulary declares, too"
+                );
+            }
+
+            #[test]
+            fn reports_prov_qualified_attribution_as_undeclared_on_each_record_and_nothing_for_a_qualified_association_with_roles(
+            ) {
+                let undeclared = |written: &str| -> Vec<String> {
+                    let resolver = Variant::of(tiny_with_vocabularies()).replacing_exactly(
+                        "mapping/item.rq",
+                        "ex:title ?title . }",
+                        format!("ex:title ?title ; {written} . }}"),
+                        1,
+                    );
+                    let (conversion, _) = run(&resolver, "two.xml");
+                    output_findings(&conversion.findings)
+                        .into_iter()
+                        .filter(|finding| finding.body == PREDICATE_NOT_DECLARED)
+                        .map(|finding| finding.path)
+                        .collect()
+                };
+                assert_eq!(
+                    undeclared(
+                        "<http://www.w3.org/ns/prov#qualifiedAttribution> [ <http://www.w3.org/ns/prov#agent> [] ]"
+                    ),
+                    ["http://www.w3.org/ns/prov#qualifiedAttribution"; 2],
+                    "one for each of the document's two records"
+                );
+                assert_eq!(
+                    undeclared(
+                        "<http://www.w3.org/ns/prov#wasGeneratedBy> [ <http://www.w3.org/ns/prov#qualifiedAssociation> [
+               <http://www.w3.org/ns/prov#agent> [] ;
+               <http://www.w3.org/ns/prov#hadRole> <https://ns.cascadeprotocol.org/cascade#AuthorRole> ] ] ;
+             <http://www.w3.org/ns/prov#wasAttributedTo> []"
+                    ),
+                    Vec::<String>::new()
+                );
+            }
+        }
+
+        mod given_a_shape {
+            use super::*;
+
+            #[test]
+            fn refuses_a_shape_whose_severity_no_finding_can_carry() {
+                // A severity of the vocabulary's own invention, which SHACL allows and the
+                // specification's finding shape has no room for.
+                let resolver = Variant::of(tiny_with_vocabularies()).replacing(
+                    "catalog.shapes.ttl",
+                    "sh:severity sh:Warning",
+                    "sh:severity ex:Critical",
+                );
+                let adapter = load_adapter(&resolver).expect("adapter");
+                let refused = prepare(&adapter, &resolver)
+                    .err()
+                    .map(|error| error.to_string())
+                    .unwrap_or_default();
+                assert!(
+                    refused.contains("sh:Info, sh:Warning or sh:Violation"),
+                    "a severity the specification's finding shape has no room for was compiled: {refused:?}"
+                );
+            }
+        }
+    }
 }

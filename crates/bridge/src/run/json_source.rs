@@ -44,103 +44,6 @@ fn selectors(findings: &[Quad]) -> Vec<String> {
     values
 }
 
-#[test]
-fn passes_every_entry_of_the_tiny_json_adapter() {
-    let resolver = tiny_json();
-    let adapter = load_adapter(&resolver).expect("the adapter");
-    let results = run_manifest(&adapter, &resolver, RunOptions::default()).expect("the run");
-    assert_eq!(results.len(), 2);
-    for result in results {
-        assert_eq!(
-            result.outcome.as_str(),
-            "passed",
-            "{}: {}",
-            result.name,
-            result.description
-        );
-    }
-}
-
-#[test]
-fn reads_a_json_document_in_the_envelope_naming_its_member_s_value_before_one_naming_none() {
-    let conversion = converted(&tiny_json(), "list.json");
-    assert_eq!(conversion.units, 2);
-    assert_eq!(conversion.detected, Some(true));
-    assert_eq!(
-        selectors(&conversion.findings),
-        ["\"/extra\"", "\"/extra/a\"", "\"/items/1\"", "\"/title\""]
-    );
-}
-
-#[test]
-fn reads_a_json_document_in_the_envelope_named_whether_or_not_another_admits_it() {
-    let conversion = read_in(&tiny_json(), "list.json", "envelope-item");
-    assert_eq!(conversion.units, 1);
-    let selectors = selectors(&conversion.findings);
-    assert!(selectors.contains(&"\"\"".to_owned()), "{selectors:?}");
-    assert!(
-        selectors.contains(&"\"/items/1/extra\"".to_owned()),
-        "{selectors:?}"
-    );
-}
-
-#[test]
-fn validates_a_json_document_against_its_envelope_s_schema_at_the_document_s_value() {
-    let resolver = Variant::of(tiny_json()).replacing(
-        "fixtures/in/list.json",
-        "{\"kind\": \"list\",",
-        "{\"kind\": \"list\", \"trailer\": 1,",
-    );
-    let findings = converted(&resolver, "list.json").findings;
-    let additional = "<https://datatracker.ietf.org/doc/html/draft-wright-json-schema-validation-01#section-6.20>";
-    assert!(
-        findings.iter().any(|q| q.object.to_string() == additional),
-        "{findings:?}"
-    );
-}
-
-#[test]
-fn refuses_a_json_document_that_is_not_json() {
-    let resolver = Variant::of(tiny_json()).replacing("fixtures/in/item.json", "\"nine\"", "nine");
-    let adapter = load_adapter(&resolver).expect("the adapter");
-    let prepared = prepare(&adapter, &resolver).expect("prepared");
-    let iri = format!("{}fixtures/in/item.json", resolver.root());
-    let bytes = resolver.read(&iri).expect("the input");
-    let refused = convert(
-        &prepared,
-        Source {
-            iri: &iri,
-            envelope: None,
-            bytes: &bytes,
-            facts: None,
-        },
-    )
-    .err()
-    .expect("refused")
-    .to_string();
-    assert!(refused.contains("not JSON"), "{refused}");
-}
-
-#[test]
-fn follows_no_address_this_bridge_built_from_its_own_walk() {
-    let resolver = Variant::of(tiny_json()).replacing(
-        "fixtures/in/item.json",
-        "\"title\": \"nine\"",
-        "\"title\": 5, \"title\": 6",
-    );
-    let findings = converted(&resolver, "item.json").findings;
-    let type_ = "<https://datatracker.ietf.org/doc/html/draft-wright-json-schema-validation-01#section-6.25>";
-    let not_one = "<https://ns.cascadeprotocol.org/bridge/v1-draft#addressNotOneNode>";
-    assert!(
-        findings.iter().any(|q| q.object.to_string() == type_),
-        "{findings:?}"
-    );
-    assert!(
-        !findings.iter().any(|q| q.object.to_string() == not_one),
-        "{findings:?}"
-    );
-}
-
 /// The tiny JSON adapter with its mapping reading the selector fact and a
 /// document table every record of the document constructs.
 fn tabled() -> Variant {
@@ -187,29 +90,6 @@ fn said(quads: &[Quad], subject: &str, predicate: &str) -> Vec<String> {
     said
 }
 
-#[test]
-fn gives_each_json_record_its_pointer_and_the_table_every_record_of_its_document_constructs() {
-    let quads = converted(&tabled(), "list.json").quads;
-    for (item, at) in [("1", "\"/items/0\""), ("2", "\"/items/1\"")] {
-        let item = format!("<urn:example:item:{item}>");
-        assert_eq!(said(&quads, &item, "urn:example:list#at"), [at]);
-        assert_eq!(
-            said(&quads, &item, "urn:example:list#seen"),
-            ["\"1\"", "\"2\""],
-            "{item} reads what every record of its document holds"
-        );
-    }
-}
-
-#[test]
-fn gives_a_json_document_s_own_value_the_empty_pointer() {
-    let quads = read_in(&tabled(), "item.json", "envelope-item").quads;
-    assert_eq!(
-        said(&quads, "<urn:example:item:9>", "urn:example:list#at"),
-        ["\"\""]
-    );
-}
-
 /// The tiny JSON adapter whose list envelope names one definition of a schema whose
 /// whole the adapter names, the whole requiring a member the definition does not,
 /// and the definition one the whole does not.
@@ -249,54 +129,6 @@ fn entry_schema() -> Variant {
         )
 }
 
-#[test]
-fn validates_a_record_against_the_subschema_its_envelope_s_schema_fragment_names_resolving_refs_in_the_whole_document(
-) {
-    let violations = fixtures::violations(&converted(&entry_schema(), "list.json").findings);
-    let section = |number: &str| {
-        format!("https://datatracker.ietf.org/doc/html/draft-wright-json-schema-validation-01#section-6.{number}")
-    };
-    assert_eq!(
-        violations,
-        [
-            (section("17"), "/items/2".to_owned(), String::new()),
-            (section("25"), "/items/1".to_owned(), "/title".to_owned()),
-        ]
-    );
-}
-
-#[test]
-fn validates_a_record_read_in_an_envelope_naming_no_schema_against_the_adapter_s() {
-    let violations = fixtures::violations(
-        &converted(
-            &entry_schema().replacing("fixtures/in/item.json", "\"kind\": \"item\"", "\"kind\": 3"),
-            "item.json",
-        )
-        .findings,
-    );
-    let type_ =
-        "https://datatracker.ietf.org/doc/html/draft-wright-json-schema-validation-01#section-6.25";
-    assert_eq!(
-        violations,
-        [(type_.to_owned(), String::new(), "/kind".to_owned())]
-    );
-}
-
-#[test]
-fn refuses_a_source_schema_whose_fragment_names_no_subschema() {
-    let resolver = entry_schema().replacing(
-        "ro-crate-metadata.json",
-        "#/definitions/entry",
-        "#/definitions/absent",
-    );
-    let adapter = load_adapter(&resolver).expect("the adapter");
-    let refused = prepare(&adapter, &resolver)
-        .err()
-        .expect("refused")
-        .to_string();
-    assert!(refused.contains("#/definitions/absent"), "{refused}");
-}
-
 const ARRIVING: &str = "PREFIX fx:   <http://sparql.xyz/facade-x/ns/>
 PREFIX xyz:  <http://sparql.xyz/facade-x/data/>
 PREFIX prov: <http://www.w3.org/ns/prov#>
@@ -309,59 +141,303 @@ WHERE {
   BIND(IRI(CONCAT(\"urn:example:draft:\", ?id)) AS ?v)
 }";
 
-#[test]
-fn writes_an_arrival_s_selector_in_a_json_document_as_a_fragment_selector_conforming_to_json_pointer(
-) {
-    let resolver = Variant::of(tiny_json()).with("mapping/item.rq", ARRIVING);
-    let quads = converted(&resolver, "list.json").quads;
-    let arrivals: Vec<String> = quads
-        .iter()
-        .filter(|q| q.predicate.as_str() == BRIDGE_ARRIVED_AS)
-        .map(|q| q.subject.to_string())
-        .collect();
-    assert!(!arrivals.is_empty());
-    for arrival in arrivals {
-        let selectors = objects(&quads, &arrival, &format!("{OA}hasSelector"));
-        let [selector] = selectors.as_slice() else {
-            panic!("{arrival} carries {selectors:?}");
-        };
-        let selector = selector.to_string();
-        assert_eq!(
-            objects(&quads, &selector, RDF_TYPE)
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>(),
-            [format!("<{OA}FragmentSelector>")]
-        );
-        assert_eq!(
-            objects(&quads, &selector, "http://purl.org/dc/terms/conformsTo")
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>(),
-            ["<https://www.rfc-editor.org/rfc/rfc6901>"]
-        );
-    }
-}
+mod tests {
+    use super::*;
 
-#[test]
-fn writes_an_arrival_s_selector_value_with_a_key_s_tilde_slash_space_and_non_ascii_character_escaped(
-) {
-    let resolver = Variant::of(tiny_json())
-        .with("mapping/item.rq", ARRIVING)
-        .replacing(
-            "ro-crate-metadata.json",
-            "$.items[*]",
-            "$.items[*].sub['a~b/c d \u{e9}']",
-        )
-        .with(
-            "fixtures/in/list.json",
-            r#"{"kind": "list", "items": [{"id": "1", "sub": {"a~b/c d é": {"id": "1"}}}]}"#,
-        );
-    let quads = converted(&resolver, "list.json").quads;
-    let values: Vec<String> = quads
-        .iter()
-        .filter(|q| q.predicate.as_str() == RDF_VALUE)
-        .map(|q| q.object.to_string())
-        .collect();
-    assert_eq!(values, [r#""/items/0/sub/a~0b~1c%20d%20%C3%A9""#]);
+    /// Reading a JSON document as records · Loaded::convert(), Document::envelope
+    mod reading_a_json_document_as_records {
+        use super::*;
+
+        /// given JSON text
+        mod given_json_text {
+            use super::*;
+
+            #[test]
+            fn refuses_a_json_document_that_is_not_json() {
+                let resolver =
+                    Variant::of(tiny_json()).replacing("fixtures/in/item.json", "\"nine\"", "nine");
+                let adapter = load_adapter(&resolver).expect("the adapter");
+                let prepared = prepare(&adapter, &resolver).expect("prepared");
+                let iri = format!("{}fixtures/in/item.json", resolver.root());
+                let bytes = resolver.read(&iri).expect("the input");
+                let refused = convert(
+                    &prepared,
+                    Source {
+                        iri: &iri,
+                        envelope: None,
+                        bytes: &bytes,
+                        facts: None,
+                    },
+                )
+                .err()
+                .expect("refused")
+                .to_string();
+                assert!(refused.contains("not JSON"), "{refused}");
+            }
+        }
+
+        /// given a JSON Pointer
+        mod given_a_json_pointer {
+            use super::*;
+
+            /// writes an arrival's selector in a json document as a fragment selector conforming to json pointer
+            #[test]
+            fn writes_an_arrival_s_selector_in_a_json_document_as_a_fragment_selector_conforming_to_json_pointer(
+            ) {
+                let resolver = Variant::of(tiny_json()).with("mapping/item.rq", ARRIVING);
+                let quads = converted(&resolver, "list.json").quads;
+                let arrivals: Vec<String> = quads
+                    .iter()
+                    .filter(|q| q.predicate.as_str() == BRIDGE_ARRIVED_AS)
+                    .map(|q| q.subject.to_string())
+                    .collect();
+                assert!(!arrivals.is_empty());
+                for arrival in arrivals {
+                    let selectors = objects(&quads, &arrival, &format!("{OA}hasSelector"));
+                    let [selector] = selectors.as_slice() else {
+                        panic!("{arrival} carries {selectors:?}");
+                    };
+                    let selector = selector.to_string();
+                    assert_eq!(
+                        objects(&quads, &selector, RDF_TYPE)
+                            .iter()
+                            .map(ToString::to_string)
+                            .collect::<Vec<_>>(),
+                        [format!("<{OA}FragmentSelector>")]
+                    );
+                    assert_eq!(
+                        objects(&quads, &selector, "http://purl.org/dc/terms/conformsTo")
+                            .iter()
+                            .map(ToString::to_string)
+                            .collect::<Vec<_>>(),
+                        ["<https://www.rfc-editor.org/rfc/rfc6901>"]
+                    );
+                }
+            }
+
+            /// writes an arrival's selector value with a key's tilde slash space and non ascii character escaped
+            #[test]
+            fn writes_an_arrival_s_selector_value_with_a_key_s_tilde_slash_space_and_non_ascii_character_escaped(
+            ) {
+                let resolver = Variant::of(tiny_json())
+                    .with("mapping/item.rq", ARRIVING)
+                    .replacing(
+                        "ro-crate-metadata.json",
+                        "$.items[*]",
+                        "$.items[*].sub['a~b/c d \u{e9}']",
+                    )
+                    .with(
+                        "fixtures/in/list.json",
+                        r#"{"kind": "list", "items": [{"id": "1", "sub": {"a~b/c d é": {"id": "1"}}}]}"#,
+                    );
+                let quads = converted(&resolver, "list.json").quads;
+                let values: Vec<String> = quads
+                    .iter()
+                    .filter(|q| q.predicate.as_str() == RDF_VALUE)
+                    .map(|q| q.object.to_string())
+                    .collect();
+                assert_eq!(values, [r#""/items/0/sub/a~0b~1c%20d%20%C3%A9""#]);
+            }
+        }
+
+        /// given an envelope's record path
+        mod given_an_envelope_s_record_path {
+            use super::*;
+
+            #[test]
+            fn gives_each_json_record_its_pointer_and_the_table_every_record_of_its_document_constructs(
+            ) {
+                let quads = converted(&tabled(), "list.json").quads;
+                for (item, at) in [("1", "\"/items/0\""), ("2", "\"/items/1\"")] {
+                    let item = format!("<urn:example:item:{item}>");
+                    assert_eq!(said(&quads, &item, "urn:example:list#at"), [at]);
+                    assert_eq!(
+                        said(&quads, &item, "urn:example:list#seen"),
+                        ["\"1\"", "\"2\""],
+                        "{item} reads what every record of its document holds"
+                    );
+                }
+            }
+
+            /// gives a json document's own value the empty pointer
+            #[test]
+            fn gives_a_json_document_s_own_value_the_empty_pointer() {
+                let quads = read_in(&tabled(), "item.json", "envelope-item").quads;
+                assert_eq!(
+                    said(&quads, "<urn:example:item:9>", "urn:example:list#at"),
+                    ["\"\""]
+                );
+            }
+        }
+
+        mod given_more_than_one_envelope {
+            use super::*;
+
+            /// reads a json document in the envelope naming its member's value before one naming none
+            #[test]
+            fn reads_a_json_document_in_the_envelope_naming_its_member_s_value_before_one_naming_none(
+            ) {
+                let conversion = converted(&tiny_json(), "list.json");
+                assert_eq!(conversion.units, 2);
+                assert_eq!(conversion.detected, Some(true));
+                assert_eq!(
+                    selectors(&conversion.findings),
+                    ["\"/extra\"", "\"/extra/a\"", "\"/items/1\"", "\"/title\""]
+                );
+            }
+
+            #[test]
+            fn reads_a_json_document_in_the_envelope_named_whether_or_not_another_admits_it() {
+                let conversion = read_in(&tiny_json(), "list.json", "envelope-item");
+                assert_eq!(conversion.units, 1);
+                let selectors = selectors(&conversion.findings);
+                assert!(selectors.contains(&"\"\"".to_owned()), "{selectors:?}");
+                assert!(
+                    selectors.contains(&"\"/items/1/extra\"".to_owned()),
+                    "{selectors:?}"
+                );
+            }
+        }
+    }
+
+    /// Checking where a finding points · Conversion::findings()
+    mod checking_where_a_finding_points {
+        use super::*;
+
+        /// given an address in a JSON record
+        mod given_an_address_in_a_json_record {
+            use super::*;
+
+            #[test]
+            fn follows_no_address_this_bridge_built_from_its_own_walk() {
+                let resolver = Variant::of(tiny_json()).replacing(
+                    "fixtures/in/item.json",
+                    "\"title\": \"nine\"",
+                    "\"title\": 5, \"title\": 6",
+                );
+                let findings = converted(&resolver, "item.json").findings;
+                let type_ = "<https://datatracker.ietf.org/doc/html/draft-wright-json-schema-validation-01#section-6.25>";
+                let not_one = "<https://ns.cascadeprotocol.org/bridge/v1-draft#addressNotOneNode>";
+                assert!(
+                    findings.iter().any(|q| q.object.to_string() == type_),
+                    "{findings:?}"
+                );
+                assert!(
+                    !findings.iter().any(|q| q.object.to_string() == not_one),
+                    "{findings:?}"
+                );
+            }
+        }
+    }
+
+    /// Validating a JSON document against its schema · Loaded::convert()
+    ///
+    /// A JSON adapter's schema is JSON Schema draft-06, which FHIR publishes. Each failing
+    /// keyword is a finding at the node it fails at.
+    mod validating_a_json_document_against_its_schema {
+        use super::*;
+
+        /// given an envelope's schema
+        mod given_an_envelope_s_schema {
+            use super::*;
+
+            /// validates a json document against its envelope's schema at the document's value
+            #[test]
+            fn validates_a_json_document_against_its_envelope_s_schema_at_the_document_s_value() {
+                let resolver = Variant::of(tiny_json()).replacing(
+                    "fixtures/in/list.json",
+                    "{\"kind\": \"list\",",
+                    "{\"kind\": \"list\", \"trailer\": 1,",
+                );
+                let findings = converted(&resolver, "list.json").findings;
+                let additional = "<https://datatracker.ietf.org/doc/html/draft-wright-json-schema-validation-01#section-6.20>";
+                assert!(
+                    findings.iter().any(|q| q.object.to_string() == additional),
+                    "{findings:?}"
+                );
+            }
+
+            /// validates a record against the subschema its envelope's schema fragment names resolving refs in the whole document
+            #[test]
+            fn validates_a_record_against_the_subschema_its_envelope_s_schema_fragment_names_resolving_refs_in_the_whole_document(
+            ) {
+                let violations =
+                    fixtures::violations(&converted(&entry_schema(), "list.json").findings);
+                let section = |number: &str| {
+                    format!("https://datatracker.ietf.org/doc/html/draft-wright-json-schema-validation-01#section-6.{number}")
+                };
+                assert_eq!(
+                    violations,
+                    [
+                        (section("17"), "/items/2".to_owned(), String::new()),
+                        (section("25"), "/items/1".to_owned(), "/title".to_owned()),
+                    ]
+                );
+            }
+
+            #[test]
+            fn validates_a_record_read_in_an_envelope_naming_no_schema_against_the_adapter_s() {
+                let violations = fixtures::violations(
+                    &converted(
+                        &entry_schema().replacing(
+                            "fixtures/in/item.json",
+                            "\"kind\": \"item\"",
+                            "\"kind\": 3",
+                        ),
+                        "item.json",
+                    )
+                    .findings,
+                );
+                let type_ =
+                    "https://datatracker.ietf.org/doc/html/draft-wright-json-schema-validation-01#section-6.25";
+                assert_eq!(
+                    violations,
+                    [(type_.to_owned(), String::new(), "/kind".to_owned())]
+                );
+            }
+
+            #[test]
+            fn refuses_a_source_schema_whose_fragment_names_no_subschema() {
+                let resolver = entry_schema().replacing(
+                    "ro-crate-metadata.json",
+                    "#/definitions/entry",
+                    "#/definitions/absent",
+                );
+                let adapter = load_adapter(&resolver).expect("the adapter");
+                let refused = prepare(&adapter, &resolver)
+                    .err()
+                    .expect("refused")
+                    .to_string();
+                assert!(refused.contains("#/definitions/absent"), "{refused}");
+            }
+        }
+    }
+
+    /// Running an adapter's test manifest · test(), TestOptions, TestReport
+    mod running_an_adapter_s_test_manifest {
+        use super::*;
+
+        /// `test(adapter, vocabulary, options)`
+        mod test {
+            use super::*;
+
+            #[test]
+            fn passes_every_entry_of_the_tiny_json_adapter() {
+                let resolver = tiny_json();
+                let adapter = load_adapter(&resolver).expect("the adapter");
+                let results =
+                    run_manifest(&adapter, &resolver, RunOptions::default()).expect("the run");
+                assert_eq!(results.len(), 2);
+                for result in results {
+                    assert_eq!(
+                        result.outcome.as_str(),
+                        "passed",
+                        "{}: {}",
+                        result.name,
+                        result.description
+                    );
+                }
+            }
+        }
+    }
 }

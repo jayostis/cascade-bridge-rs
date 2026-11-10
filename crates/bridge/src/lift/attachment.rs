@@ -49,23 +49,37 @@ pub(crate) fn decoded(written: &str) -> Option<String> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn accepts_a_charset_quoted_with_balanced_quotes_only() {
-        for (media_type, text) in [
-            ("text/plain;charset=utf-8", true),
-            ("text/plain; charset=\"UTF-8\"", true),
-            ("text/plain; charset=\"\"utf-8", false),
-            ("text/plain; charset=utf-8\"", false),
-            ("text/plain; charset=\"utf-8", false),
-        ] {
-            assert_eq!(names_text(media_type), text, "{media_type}");
-        }
-    }
+    /// Reading an XML document as records · Loaded::convert()
+    ///
+    /// The Bridge lifts XML into a generic graph that the mappings query, one tree for each
+    /// record: each element the adapter's envelope names. A record carries a selector, an XPath
+    /// that finds its element again in the document.
+    mod reading_an_xml_document_as_records {
+        use super::*;
 
-    #[test]
-    fn decodes_nothing_where_no_character_is_left_once_whitespace_is_removed() {
-        assert_eq!(decoded(""), None);
-        assert_eq!(decoded(" \n\t\r "), None);
-        assert_eq!(decoded("aGk=").as_deref(), Some("hi"));
+        mod given_a_base64_attachment {
+            use super::*;
+
+            #[test]
+            fn accepts_a_charset_quoted_with_balanced_quotes_only() {
+                for (media_type, text) in [
+                    ("text/plain;charset=utf-8", true),
+                    ("text/plain; charset=\"UTF-8\"", true),
+                    ("text/plain; charset=\"\"utf-8", false),
+                    ("text/plain; charset=utf-8\"", false),
+                    ("text/plain; charset=\"utf-8", false),
+                ] {
+                    assert_eq!(names_text(media_type), text, "{media_type}");
+                }
+            }
+
+            #[test]
+            fn decodes_padded_base64_to_its_text_and_nothing_where_no_character_is_left_once_whitespace_is_removed(
+            ) {
+                assert_eq!(decoded(""), None);
+                assert_eq!(decoded(" \n\t\r "), None);
+                assert_eq!(decoded("aGk=").as_deref(), Some("hi"));
+            }
+        }
     }
 }

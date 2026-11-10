@@ -18,17 +18,33 @@ fn values(findings: &[Quad]) -> Vec<String> {
         .collect()
 }
 
-#[test]
-fn names_a_namespaced_document_element_of_a_finding_about_the_document_itself() {
-    let values = values(&converted(&namespaced(), "two.xml").findings);
-    let document = format!("/*[local-name()='catalog' and namespace-uri()='{CATALOG}']");
-    assert!(values.contains(&document), "{values:?}");
-    let record = format!(
-        "/*[local-name()='catalog' and namespace-uri()='{CATALOG}']\
+mod tests {
+    use super::*;
+
+    /// Findings about a document · Conversion::findings()
+    mod findings_about_a_document {
+        use super::*;
+
+        mod given_a_findings_query {
+            use super::*;
+
+            /// writes a namespaced document and its record by local name and namespace in a finding's selector
+            #[test]
+            fn writes_a_namespaced_document_and_its_record_by_local_name_and_namespace_in_a_finding_s_selector(
+            ) {
+                let values = values(&converted(&namespaced(), "two.xml").findings);
+                let document =
+                    format!("/*[local-name()='catalog' and namespace-uri()='{CATALOG}']");
+                assert!(values.contains(&document), "{values:?}");
+                let record = format!(
+                    "/*[local-name()='catalog' and namespace-uri()='{CATALOG}']\
          /*[local-name()='item' and namespace-uri()='{CATALOG}'][1]"
-    );
-    assert!(
-        values.contains(&record),
-        "a record and its document are written alike: {values:?}"
-    );
+                );
+                assert!(
+                    values.contains(&record),
+                    "a record and its document are written alike: {values:?}"
+                );
+            }
+        }
+    }
 }

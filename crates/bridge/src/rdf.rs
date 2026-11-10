@@ -271,79 +271,93 @@ mod tests {
         );
     }
 
-    #[test]
-    fn emits_no_reference_that_resolves_anywhere_but_the_iri_it_was_made_from() {
-        for iri in [
-            // A dot segment, which the reader removes a second time and so
-            // arrives at a file the graph never named.
-            "file:///checkout/fixtures/../in/two.xml",
-            "file:///checkout/fixtures/./in/two.xml",
-            "file:///checkout/fixtures/in/./two.xml",
-            "file:///checkout/fixtures/findings/./x.ttl",
-            "file:///checkout/fixtures/findings/../x.ttl",
-            // A percent-encoded one, which is a name and not a step.
-            "file:///checkout/fixtures/%2E%2E/in/two.xml",
-            "file:///checkout/fixtures/findings/%2E/x.ttl",
-            // A first step a reader would take for a scheme.
-            "file:///checkout/fixtures/findings/http:x.ttl",
-            "file:///checkout/fixtures/http:x.ttl",
-            // Characters a reference carries as they stand, or encoded.
-            "file:///checkout/fixtures/in/two%2Fone.xml",
-            "file:///checkout/fixtures/in/two%20one.xml",
-            "file:///checkout/fixtures/in/two%23one.xml",
-            "file:///checkout/fixtures/in/caf%C3%A9.xml",
-            "file:///checkout/fixtures/in/caf\u{e9}.xml",
-            "file:///checkout/fixtures/in/\u{4e2d}\u{6587}.xml",
-            // Shapes that are no file standing beside this one at all.
-            "file:///checkout/fixtures/findings/",
-            "file:///",
-            "file:///checkout//in/two.xml",
-            "file://localhost/checkout/fixtures/in/two.xml",
-            "file:///C:/checkout/fixtures/in/two.xml",
-            "urn:example:catalog#noteHasNoTerm",
-            ORACLE,
-        ] {
-            resolves_back_to(iri);
-        }
-    }
+    /// Writing the graph and the findings · Conversion::graph(), Conversion::findings(), Format
+    ///
+    /// A conversion is written as Turtle or N-Triples, byte for byte the same in every run.
+    /// Findings can be written relative to the file they will be saved in, so a folder of results
+    /// can be moved.
+    mod writing_the_graph_and_the_findings {
+        use super::*;
 
-    #[test]
-    fn reads_a_percent_encoded_dot_segment_as_a_name_and_not_a_step() {
-        assert_eq!(
-            named("file:///checkout/fixtures/%2E%2E/in/two.xml").as_deref(),
-            Some("../%2E%2E/in/two.xml")
-        );
-    }
+        /// `findings(format, relative_to)`
+        mod findings {
+            use super::*;
 
-    #[test]
-    fn names_a_document_beside_the_file_by_the_way_up_and_back_down_to_it() {
-        assert_eq!(
-            named("file:///checkout/fixtures/in/two.xml").as_deref(),
-            Some("../in/two.xml")
-        );
-        assert_eq!(
-            named("file:///checkout/fixtures/findings/other.ttl").as_deref(),
-            Some("other.ttl")
-        );
-        assert_eq!(
-            named("file:///elsewhere/in/two.xml").as_deref(),
-            Some("../../../elsewhere/in/two.xml")
-        );
-        assert_eq!(named(ORACLE).as_deref(), Some("two.ttl"));
-    }
+            #[test]
+            fn writes_no_reference_that_resolves_anywhere_but_the_iri_it_was_made_from() {
+                for iri in [
+                    // A dot segment, which the reader removes a second time and so
+                    // arrives at a file the graph never named.
+                    "file:///checkout/fixtures/../in/two.xml",
+                    "file:///checkout/fixtures/./in/two.xml",
+                    "file:///checkout/fixtures/in/./two.xml",
+                    "file:///checkout/fixtures/findings/./x.ttl",
+                    "file:///checkout/fixtures/findings/../x.ttl",
+                    // A percent-encoded one, which is a name and not a step.
+                    "file:///checkout/fixtures/%2E%2E/in/two.xml",
+                    "file:///checkout/fixtures/findings/%2E/x.ttl",
+                    // A first step a reader would take for a scheme.
+                    "file:///checkout/fixtures/findings/http:x.ttl",
+                    "file:///checkout/fixtures/http:x.ttl",
+                    // Characters a reference carries as they stand, or encoded.
+                    "file:///checkout/fixtures/in/two%2Fone.xml",
+                    "file:///checkout/fixtures/in/two%20one.xml",
+                    "file:///checkout/fixtures/in/two%23one.xml",
+                    "file:///checkout/fixtures/in/caf%C3%A9.xml",
+                    "file:///checkout/fixtures/in/caf\u{e9}.xml",
+                    "file:///checkout/fixtures/in/\u{4e2d}\u{6587}.xml",
+                    // Shapes that are no file standing beside this one at all.
+                    "file:///checkout/fixtures/findings/",
+                    "file:///",
+                    "file:///checkout//in/two.xml",
+                    "file://localhost/checkout/fixtures/in/two.xml",
+                    "file:///C:/checkout/fixtures/in/two.xml",
+                    "urn:example:catalog#noteHasNoTerm",
+                    ORACLE,
+                ] {
+                    resolves_back_to(iri);
+                }
+            }
 
-    #[test]
-    fn names_in_full_every_iri_the_file_cannot_name_relative_to_itself() {
-        for iri in [
-            // Another scheme, which is every body a gap scheme declares.
-            "urn:example:catalog#noteHasNoTerm",
-            "https://ns.cascadeprotocol.org/cascade#SourcePathNotAccounted",
-            // Another host: a relative reference cannot cross one.
-            "file://elsewhere/checkout/fixtures/in/two.xml",
-            // A fragment, which resolution would carry along with the path.
-            "file:///checkout/fixtures/in/two.xml#record",
-        ] {
-            assert_eq!(named(iri), None, "{iri}");
+            #[test]
+            fn reads_a_percent_encoded_dot_segment_as_a_name_and_not_a_step() {
+                assert_eq!(
+                    named("file:///checkout/fixtures/%2E%2E/in/two.xml").as_deref(),
+                    Some("../%2E%2E/in/two.xml")
+                );
+            }
+
+            #[test]
+            fn names_a_document_beside_the_file_by_the_way_up_and_back_down_to_it() {
+                assert_eq!(
+                    named("file:///checkout/fixtures/in/two.xml").as_deref(),
+                    Some("../in/two.xml")
+                );
+                assert_eq!(
+                    named("file:///checkout/fixtures/findings/other.ttl").as_deref(),
+                    Some("other.ttl")
+                );
+                assert_eq!(
+                    named("file:///elsewhere/in/two.xml").as_deref(),
+                    Some("../../../elsewhere/in/two.xml")
+                );
+                assert_eq!(named(ORACLE).as_deref(), Some("two.ttl"));
+            }
+
+            #[test]
+            fn names_in_full_every_iri_the_file_cannot_name_relative_to_itself() {
+                for iri in [
+                    // Another scheme, which is every body a gap scheme declares.
+                    "urn:example:catalog#noteHasNoTerm",
+                    "https://ns.cascadeprotocol.org/cascade#SourcePathNotAccounted",
+                    // Another host: a relative reference cannot cross one.
+                    "file://elsewhere/checkout/fixtures/in/two.xml",
+                    // A fragment, which resolution would carry along with the path.
+                    "file:///checkout/fixtures/in/two.xml#record",
+                ] {
+                    assert_eq!(named(iri), None, "{iri}");
+                }
+            }
         }
     }
 }

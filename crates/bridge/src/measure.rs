@@ -171,62 +171,74 @@ mod tests {
         std::thread::sleep(Duration::from_millis(milliseconds));
     }
 
-    #[test]
-    fn a_stage_entered_inside_another_is_taken_out_of_it() {
-        let watch = Stopwatch::new(true);
-        let started = Instant::now();
-        watch.during(Stage::Mapping, || {
-            spend(10);
-            watch.during(Stage::Index, || spend(30));
-            spend(10);
-        });
-        let whole = started.elapsed();
-        let spent = |wanted: Stage| {
-            watch
-                .times()
-                .into_iter()
-                .find(|time| time.stage == wanted)
-                .map(|time| time.elapsed)
-                .expect("a stage that ran")
-        };
-        let (index, mapping) = (spent(Stage::Index), spent(Stage::Mapping));
-        assert!(index >= Duration::from_millis(30), "{index:?}");
-        assert!(mapping >= Duration::from_millis(20), "{mapping:?}");
-        assert!(
-            index + mapping <= whole,
-            "{index:?} + {mapping:?} > {whole:?}"
-        );
-    }
+    /// Workings no caller sees · crates/bridge/src
+    mod workings_no_caller_sees {
+        use super::*;
 
-    #[test]
-    fn a_stage_run_again_adds_to_its_time_and_the_times_come_in_stage_order() {
-        let watch = Stopwatch::new(true);
-        watch.during(Stage::Findings, || spend(1));
-        watch.during(Stage::Lift, || spend(1));
-        watch.during(Stage::Lift, || spend(1));
-        let stages: Vec<Stage> = watch.times().iter().map(|time| time.stage).collect();
-        assert_eq!(stages, [Stage::Lift, Stage::Findings]);
-    }
+        /// `Stopwatch`
+        mod stopwatch {
+            use super::*;
 
-    #[test]
-    fn a_stopwatch_that_is_off_runs_the_work_and_keeps_nothing() {
-        let watch = Stopwatch::default();
-        assert_eq!(watch.during(Stage::Lift, || 7), 7);
-        assert!(watch.times().is_empty());
-        assert_eq!(watch.current(), None);
-    }
+            /// takes a stage entered inside another out of the outer stage's time
+            #[test]
+            fn takes_a_stage_entered_inside_another_out_of_the_outer_stage_s_time() {
+                let watch = Stopwatch::new(true);
+                let started = Instant::now();
+                watch.during(Stage::Mapping, || {
+                    spend(10);
+                    watch.during(Stage::Index, || spend(30));
+                    spend(10);
+                });
+                let whole = started.elapsed();
+                let spent = |wanted: Stage| {
+                    watch
+                        .times()
+                        .into_iter()
+                        .find(|time| time.stage == wanted)
+                        .map(|time| time.elapsed)
+                        .expect("a stage that ran")
+                };
+                let (index, mapping) = (spent(Stage::Index), spent(Stage::Mapping));
+                assert!(index >= Duration::from_millis(30), "{index:?}");
+                assert!(mapping >= Duration::from_millis(20), "{mapping:?}");
+                assert!(
+                    index + mapping <= whole,
+                    "{index:?} + {mapping:?} > {whole:?}"
+                );
+            }
 
-    #[test]
-    fn a_query_is_run_in_the_stage_that_is_running() {
-        let watch = Stopwatch::new(true);
-        assert_eq!(
-            watch.during(Stage::Mapping, || watch
-                .during(Stage::Index, || watch.current())),
-            Some(Stage::Index)
-        );
-        assert_eq!(
-            watch.during(Stage::Findings, || watch.current()),
-            Some(Stage::Findings)
-        );
+            /// adds a stage run again to its time, and returns the times in stage order
+            #[test]
+            fn adds_a_stage_run_again_to_its_time_and_returns_the_times_in_stage_order() {
+                let watch = Stopwatch::new(true);
+                watch.during(Stage::Findings, || spend(1));
+                watch.during(Stage::Lift, || spend(1));
+                watch.during(Stage::Lift, || spend(1));
+                let stages: Vec<Stage> = watch.times().iter().map(|time| time.stage).collect();
+                assert_eq!(stages, [Stage::Lift, Stage::Findings]);
+            }
+
+            #[test]
+            fn runs_the_work_and_keeps_nothing_when_it_is_off() {
+                let watch = Stopwatch::default();
+                assert_eq!(watch.during(Stage::Lift, || 7), 7);
+                assert!(watch.times().is_empty());
+                assert_eq!(watch.current(), None);
+            }
+
+            #[test]
+            fn names_the_stage_entered_last_of_those_running_as_the_one_a_query_runs_in() {
+                let watch = Stopwatch::new(true);
+                assert_eq!(
+                    watch.during(Stage::Mapping, || watch
+                        .during(Stage::Index, || watch.current())),
+                    Some(Stage::Index)
+                );
+                assert_eq!(
+                    watch.during(Stage::Findings, || watch.current()),
+                    Some(Stage::Findings)
+                );
+            }
+        }
     }
 }

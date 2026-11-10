@@ -548,30 +548,54 @@ _:release rdfs:label \"{release}\" ."
         canonical_lines(without_the_release(quads)).expect("canonical")
     }
 
-    #[test]
-    fn leaves_out_of_a_conversion_only_the_agent_of_the_association_that_has_a_plan() {
-        assert_eq!(
-            compared("release 1", "Registry"),
-            compared("release 2", "Registry"),
-            "a release named differently still compares equal"
-        );
-        assert_ne!(
-            compared("release 1", "Registry"),
-            compared("release 1", "Elsewhere"),
-            "an author named differently does not"
-        );
-    }
-
     fn findings(lines: &[&str]) -> Vec<String> {
         lines.iter().map(|line| (*line).to_owned()).collect()
     }
 
-    #[test]
-    fn counts_a_finding_produced_twice_and_expected_once_as_one_extra() {
-        let once = findings(&["a finding"]);
-        let twice = findings(&["a finding", "a finding"]);
-        assert_eq!(beyond(&twice, &once), ["a finding"]);
-        assert_eq!(beyond(&once, &twice), Vec::<String>::new());
-        assert_eq!(beyond(&twice, &twice), Vec::<String>::new());
+    /// Naming records and their versions · Facts, Document::facts
+    ///
+    /// A record's name is computed from what the source says, so one record met in two
+    /// documents gets one name; a version is what the record says at one time. Facts are what
+    /// the host knows of an import that the document does not say, such as the server it came
+    /// from.
+    mod naming_records_and_their_versions {
+        use super::*;
+
+        mod given_the_facts_a_host_supplies {
+            use super::*;
+
+            #[test]
+            fn leaves_out_of_a_conversion_only_the_agent_of_the_association_that_has_a_plan() {
+                assert_eq!(
+                    compared("release 1", "Registry"),
+                    compared("release 2", "Registry"),
+                    "a release named differently still compares equal"
+                );
+                assert_ne!(
+                    compared("release 1", "Registry"),
+                    compared("release 1", "Elsewhere"),
+                    "an author named differently does not"
+                );
+            }
+        }
+    }
+
+    /// Running an adapter's test manifest · test(), TestOptions, TestReport
+    mod running_an_adapter_s_test_manifest {
+        use super::*;
+
+        /// `test(adapter, vocabulary, options)`
+        mod test {
+            use super::*;
+
+            #[test]
+            fn counts_a_finding_produced_twice_and_expected_once_as_one_extra() {
+                let once = findings(&["a finding"]);
+                let twice = findings(&["a finding", "a finding"]);
+                assert_eq!(beyond(&twice, &once), ["a finding"]);
+                assert_eq!(beyond(&once, &twice), Vec::<String>::new());
+                assert_eq!(beyond(&twice, &twice), Vec::<String>::new());
+            }
+        }
     }
 }

@@ -764,51 +764,70 @@ mod tests {
         }
     }
 
-    #[test]
-    fn a_convert_past_a_budget_with_no_query_left_to_notice_stops_as_a_bridge_failure() {
-        let spent = Profile::new(
-            Executor::Compiled,
-            false,
-            Budgets {
-                time: Duration::ZERO,
-                ..Budgets::default()
-            },
-        );
-        let stopped = within_budgets(nothing_converted(), &spent).err();
-        assert_eq!(
-            stopped
-                .as_ref()
-                .map(|error| (error.kind(), error.message())),
-            Some((
-                &ErrorKind::Bridge,
-                "the convert outgrew its time budget of 0ns"
-            ))
-        );
-        assert!(within_budgets(nothing_converted(), &Profile::default()).is_ok());
+    /// Stopping a convert at its budgets · Budgets, ConvertOptions, Loaded::convert_with()
+    mod stopping_a_convert_at_its_budgets {
+        use super::*;
+
+        mod given_a_time_budget {
+            use super::*;
+
+            #[test]
+            fn stops_a_convert_past_its_time_budget_even_when_no_query_is_left_to_notice() {
+                let spent = Profile::new(
+                    Executor::Compiled,
+                    false,
+                    Budgets {
+                        time: Duration::ZERO,
+                        ..Budgets::default()
+                    },
+                );
+                let stopped = within_budgets(nothing_converted(), &spent).err();
+                assert_eq!(
+                    stopped
+                        .as_ref()
+                        .map(|error| (error.kind(), error.message())),
+                    Some((
+                        &ErrorKind::Bridge,
+                        "the convert outgrew its time budget of 0ns"
+                    ))
+                );
+                assert!(within_budgets(nothing_converted(), &Profile::default()).is_ok());
+            }
+        }
     }
 
-    #[test]
-    fn reads_each_query_of_the_adapter_once_per_prepare() {
-        let adapter = load_adapter(&tiny()).expect("adapter");
-        let counting = Counting {
-            directory: tiny(),
-            reads: RefCell::default(),
-        };
-        prepare(&adapter, &counting).expect("prepared");
-        let reads = counting.reads.into_inner();
-        let queries: Vec<&String> = adapter
-            .mappings
-            .iter()
-            .chain(&adapter.findings_queries)
-            .chain(&adapter.document_table_queries)
-            .chain(&adapter.detect_query)
-            .collect();
-        assert!(!adapter.findings_queries.is_empty() && adapter.detect_query.is_some());
-        let misread: Vec<(&String, usize)> = queries
-            .into_iter()
-            .map(|query| (query, reads.get(query).copied().unwrap_or_default()))
-            .filter(|(_, times)| *times != 1)
-            .collect();
-        assert_eq!(misread, Vec::<(&String, usize)>::new());
+    /// Workings no caller sees · crates/bridge/src
+    mod workings_no_caller_sees {
+        use super::*;
+
+        /// `prepare()`
+        mod prepare {
+            use super::*;
+
+            #[test]
+            fn reads_each_query_of_the_adapter_once_per_prepare() {
+                let adapter = load_adapter(&tiny()).expect("adapter");
+                let counting = Counting {
+                    directory: tiny(),
+                    reads: RefCell::default(),
+                };
+                prepare(&adapter, &counting).expect("prepared");
+                let reads = counting.reads.into_inner();
+                let queries: Vec<&String> = adapter
+                    .mappings
+                    .iter()
+                    .chain(&adapter.findings_queries)
+                    .chain(&adapter.document_table_queries)
+                    .chain(&adapter.detect_query)
+                    .collect();
+                assert!(!adapter.findings_queries.is_empty() && adapter.detect_query.is_some());
+                let misread: Vec<(&String, usize)> = queries
+                    .into_iter()
+                    .map(|query| (query, reads.get(query).copied().unwrap_or_default()))
+                    .filter(|(_, times)| *times != 1)
+                    .collect();
+                assert_eq!(misread, Vec::<(&String, usize)>::new());
+            }
+        }
     }
 }

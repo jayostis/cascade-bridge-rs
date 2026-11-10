@@ -456,47 +456,57 @@ fn what_fetches(query: &spargebra::Query) -> Option<&'static str> {
 mod tests {
     use super::prologue_prefixes;
 
-    #[test]
-    fn reads_a_prologue_however_its_keyword_and_spacing_are_written() {
-        assert_eq!(
-            prologue_prefixes(
-                "prefix ex: <urn:example:catalog#>\n  PREFIX  g:<https://ns.example.org/g/v1#>\nCONSTRUCT { }"
-            ),
-            [
-                ("ex".to_owned(), "urn:example:catalog#".to_owned()),
-                ("g".to_owned(), "https://ns.example.org/g/v1#".to_owned()),
-            ]
-        );
-    }
+    /// Workings no caller sees · crates/bridge/src
+    mod workings_no_caller_sees {
+        use super::*;
 
-    #[test]
-    fn reads_both_declarations_a_prologue_writes_on_one_line() {
-        assert_eq!(
-            prologue_prefixes(
-                "PREFIX ex: <urn:example:catalog#> PREFIX v1: <https://ns.example.org/v1#>\nCONSTRUCT { }"
-            ),
-            [
-                ("ex".to_owned(), "urn:example:catalog#".to_owned()),
-                ("v1".to_owned(), "https://ns.example.org/v1#".to_owned()),
-            ]
-        );
-    }
+        /// `prologue_prefixes()`
+        mod prologue_prefixes {
+            use super::*;
 
-    #[test]
-    fn reads_a_prefix_a_base_and_a_comment_stand_before() {
-        assert_eq!(
-            prologue_prefixes(
-                "BASE <urn:example:> # where the names begin\nPREFIX ex: <urn:example:catalog#>\nCONSTRUCT { }"
-            ),
-            [("ex".to_owned(), "urn:example:catalog#".to_owned())]
-        );
-    }
+            #[test]
+            fn reads_a_prologue_however_its_keyword_and_spacing_are_written() {
+                assert_eq!(
+                    prologue_prefixes(
+                        "prefix ex: <urn:example:catalog#>\n  PREFIX  g:<https://ns.example.org/g/v1#>\nCONSTRUCT { }"
+                    ),
+                    [
+                        ("ex".to_owned(), "urn:example:catalog#".to_owned()),
+                        ("g".to_owned(), "https://ns.example.org/g/v1#".to_owned()),
+                    ]
+                );
+            }
 
-    #[test]
-    fn reads_no_prefix_out_of_a_comment_or_a_word_that_merely_starts_with_one() {
-        assert_eq!(
-            prologue_prefixes("# PREFIX ex: <urn:example:catalog#>\nPREFIXES ex: <urn:x#>"),
-            Vec::new()
-        );
+            #[test]
+            fn reads_both_declarations_a_prologue_writes_on_one_line() {
+                assert_eq!(
+                    prologue_prefixes(
+                        "PREFIX ex: <urn:example:catalog#> PREFIX v1: <https://ns.example.org/v1#>\nCONSTRUCT { }"
+                    ),
+                    [
+                        ("ex".to_owned(), "urn:example:catalog#".to_owned()),
+                        ("v1".to_owned(), "https://ns.example.org/v1#".to_owned()),
+                    ]
+                );
+            }
+
+            #[test]
+            fn reads_a_prefix_a_base_and_a_comment_stand_before() {
+                assert_eq!(
+                    prologue_prefixes(
+                        "BASE <urn:example:> # where the names begin\nPREFIX ex: <urn:example:catalog#>\nCONSTRUCT { }"
+                    ),
+                    [("ex".to_owned(), "urn:example:catalog#".to_owned())]
+                );
+            }
+
+            #[test]
+            fn reads_no_prefix_out_of_a_comment_or_a_word_that_merely_starts_with_one() {
+                assert_eq!(
+                    prologue_prefixes("# PREFIX ex: <urn:example:catalog#>\nPREFIXES ex: <urn:x#>"),
+                    Vec::new()
+                );
+            }
+        }
     }
 }

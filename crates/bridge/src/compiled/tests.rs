@@ -673,37 +673,6 @@ const DIVERGENT: &[(&str, &str, &str)] = &[
     ),
 ];
 
-#[test]
-fn answers_each_key_as_the_general_evaluator_does() {
-    let differing: Vec<_> = KEYED
-        .iter()
-        .filter_map(|(construct, data, query)| {
-            let store = graph_of(data);
-            let theirs = evaluated(query, &store);
-            assert!(
-                !theirs.is_empty(),
-                "{construct} answers nothing, so shows nothing"
-            );
-            let ours = compiled(query, &store);
-            (ours != Ok(theirs.clone())).then_some((*construct, ours, theirs))
-        })
-        .collect();
-    assert!(differing.is_empty(), "{differing:#?}");
-}
-
-#[test]
-fn answers_as_the_general_evaluator_does_where_the_data_tells_a_wrong_plan_apart() {
-    let differing: Vec<_> = DIVERGENT
-        .iter()
-        .filter_map(|(construct, data, query)| {
-            let store = graph_of(data);
-            let (ours, theirs) = (compiled(query, &store), evaluated(query, &store));
-            (ours != Ok(theirs.clone())).then_some((*construct, ours, theirs))
-        })
-        .collect();
-    assert!(differing.is_empty(), "{differing:#?}");
-}
-
 fn graph() -> Store {
     graph_of(DATA)
 }
@@ -810,103 +779,6 @@ fn split(store: &Store) -> (Store, Shared) {
     (own, Shared::new(shared))
 }
 
-#[test]
-fn lowers_each_construct_a_mapping_query_uses_and_answers_as_the_general_evaluator_does() {
-    let silent: Vec<_> = LOWERED
-        .iter()
-        .filter(|(_, query)| !answers_alike(query))
-        .map(|(construct, _)| *construct)
-        .collect();
-    assert!(
-        silent.is_empty(),
-        "{silent:?} answer nothing, so show nothing"
-    );
-}
-
-#[test]
-fn evaluates_each_builtin_to_the_value_the_general_evaluator_gives() {
-    let mut dropped = Vec::new();
-    for expression in [
-        "STR(?v)",
-        "STRLEN(?v)",
-        "CONCAT(?v, \"-\", ?n)",
-        "SUBSTR(?v, 3, 4)",
-        "SUBSTR(?v, 8)",
-        "SUBSTR(?v, 0, 2)",
-        "STRAFTER(?v, \", \")",
-        "STRBEFORE(?v, \",\")",
-        "STRAFTER(?v, \"no\")",
-        "REPLACE(?w, \"^[ ]+|[ ]+$\", \"\")",
-        "REPLACE(?v, \"(o)\", \"[$1]\", \"i\")",
-        "LCASE(?v)",
-        "UCASE(?v)",
-        "ENCODE_FOR_URI(?v)",
-        "SHA256(?v)",
-        "IRI(CONCAT(\"urn:x:\", ENCODE_FOR_URI(?v)))",
-        "STRDT(?n, xsd:integer)",
-        "STRDT(\"2020-01-02\", xsd:date)",
-        "STRDT(CONCAT(\"2020-01-02T03:04:05\", \"\"), xsd:dateTime)",
-        "xsd:integer(?n) + 1",
-        "xsd:integer(?n) * xsd:integer(?n) - 2",
-        "xsd:integer(?n) / 4",
-        "1 / 0",
-        "xsd:integer(?v)",
-        "IF(REGEX(?v, \"^hello\", \"i\"), \"yes\", \"no\")",
-        "IF(CONTAINS(?v, \"World\") && !STRENDS(?v, \"x\"), 1, 2)",
-        "COALESCE(?missing, STRAFTER(?v, \"!\"), ?n)",
-        "IF(BOUND(?missing), \"bound\", \"unbound\")",
-        "IF(?v IN (\"a\", \"Hello, World\"), \"in\", \"out\")",
-        "IF(?v NOT IN (\"a\", \"b\"), \"out\", \"in\")",
-        "IF(isIRI(?v) || isBlank(?v) || isLiteral(?v), \"term\", \"none\")",
-        "IF(sameTerm(?v, ?v) && ?v = ?v && ?v != \"x\", \"same\", \"differ\")",
-        "IF(STRLEN(?v) > 3 && STRLEN(?v) >= 12 && STRLEN(?v) < 20 && STRLEN(?v) <= 12, \"ordered\", \"unordered\")",
-        "IF(?v = 1, \"equal\", \"not\")",
-    ] {
-        let query = format!(
-            "CONSTRUCT {{ :v1 :out ?o }} WHERE {{ :v1 :v ?v ; :n ?n ; :w ?w . BIND({expression} AS ?o) }}"
-        );
-        if !answers_alike(&query) {
-            dropped.push(expression);
-        }
-    }
-    assert_eq!(dropped, ["SUBSTR(?v, 0, 2)", "1 / 0", "xsd:integer(?v)"]);
-}
-
-#[test]
-fn names_each_builtin_once() {
-    let mut names = HashSet::new();
-    let repeated: Vec<_> = BUILTINS
-        .iter()
-        .map(|builtin| builtin.name)
-        .filter(|name| !names.insert(*name))
-        .collect();
-    assert!(repeated.is_empty(), "{repeated:?}");
-}
-
-#[test]
-fn declines_each_construct_it_does_not_read_and_says_which() {
-    let wrong: Vec<_> = DECLINED
-        .iter()
-        .filter_map(|(construct, query, reason)| {
-            let declined = compile(&parse(query)).err();
-            (declined.as_deref() != Some(*reason)).then_some((*construct, declined))
-        })
-        .collect();
-    assert!(wrong.is_empty(), "{wrong:#?}");
-}
-
-#[test]
-fn gives_a_query_up_where_a_value_is_one_no_builtin_covers() {
-    let store = graph();
-    for (construct, query) in GIVEN_UP {
-        assert_eq!(
-            compiled(query, &store),
-            Err(Fail::GiveUp),
-            "{construct}: {query}"
-        );
-    }
-}
-
 /// Where a plan that reads a group's variable from the row around it, instead of
 /// as unbound, would answer something.
 const NOTHING: &[(&str, &str)] = &[
@@ -928,110 +800,6 @@ const NOTHING: &[(&str, &str)] = &[
     ),
 ];
 
-#[test]
-fn answers_nothing_where_the_general_evaluator_answers_nothing() {
-    let store = graph();
-    for (construct, query) in NOTHING {
-        assert_eq!(
-            evaluated(query, &store),
-            Vec::<String>::new(),
-            "{construct}"
-        );
-        assert_eq!(compiled(query, &store), Ok(Vec::new()), "{construct}");
-    }
-}
-
-#[test]
-fn answers_an_exists_that_shares_no_variable_afresh_for_each_tree() {
-    let query =
-        "CONSTRUCT { ?i :seen :yes } WHERE { ?i a :Item . FILTER EXISTS { ?z :key \"1\" } }";
-    let plan = compile(&parse(query)).expect("compiled");
-    assert!(explained(query).contains("exists, remembered as memo 0:"));
-    let keyed = graph();
-    let unkeyed = graph_of(&DATA.replace(":one :key \"1\" ; :label \"one\" .", ""));
-    for store in [&keyed, &unkeyed, &keyed] {
-        let answered = plan
-            .construct(&Tree::of(store, Watch::default()).expect("a tree"))
-            .expect("constructed");
-        assert_eq!(
-            canonical_parts(answered).expect("canonical"),
-            evaluated(query, store)
-        );
-    }
-    assert_ne!(evaluated(query, &keyed), evaluated(query, &unkeyed));
-}
-
-#[test]
-fn prints_a_plan_by_its_steps_with_variables_by_name_and_the_exists_it_remembers() {
-    let query = "CONSTRUCT { ?i :seen ?n } WHERE { ?r a :Root ; ?slot ?i . ?i :name ?n . FILTER EXISTS { ?i rdf:_1 ?child } FILTER EXISTS { ?z :key \"1\" } }";
-    let other =
-        "CONSTRUCT { ?i :seen :yes } WHERE { ?i a :Item . FILTER EXISTS { ?z :key \"1\" } }";
-    let first = explained(query);
-    explained(other);
-    assert_eq!(explained(query), first);
-    assert_eq!(
-        first,
-        concat!(
-            "filter EXISTS { ?z <urn:t#key> \"1\" . }\n",
-            "  exists, remembered as memo 0:\n",
-            "    scan ?z <urn:t#key> \"1\"\n",
-            "scan ?r <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <urn:t#Root>\n",
-            "scan ?r ?slot ?i\n",
-            "filter EXISTS { ?i <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> ?child . }\n",
-            "  exists, run for each row:\n",
-            "    scan ?i <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> ?child\n",
-            "scan ?i <urn:t#name> ?n\n",
-            "construct\n",
-            "  ?i <urn:t#seen> ?n\n",
-        )
-    );
-}
-
-#[test]
-fn prints_the_same_plan_each_time_a_query_is_parsed_and_tells_shadowed_variables_apart() {
-    let query = "CONSTRUCT { ?i :seen ?c } WHERE { ?i :name ?code . { SELECT ?i (COUNT(*) AS ?c) (SUM(?s) AS ?t) WHERE { ?i :size ?s . ?i :id ?code . FILTER(STRLEN(?code) > 0) } GROUP BY ?i } FILTER(STRLEN(?code) > 1) }";
-    let plan = explained(query);
-    assert_eq!(plan, explained(query));
-    assert_eq!(
-        plan,
-        concat!(
-            "scan ?i <urn:t#name> ?code\n",
-            "filter (STRLEN(?code) > \"1\"^^<http://www.w3.org/2001/XMLSchema#integer>)\n",
-            "group by (?i)\n",
-            "  ?gen0 := count(*)\n",
-            "  ?gen1 := sum(?s)\n",
-            "  scan ?i <urn:t#size> ?s\n",
-            "  scan ?i <urn:t#id> ?code~5\n",
-            "  filter (STRLEN(?code~5) > \"0\"^^<http://www.w3.org/2001/XMLSchema#integer>)\n",
-            "bind ?c := ?gen0\n",
-            "bind ?t := ?gen1\n",
-            "construct\n",
-            "  ?i <urn:t#seen> ?c\n",
-        )
-    );
-}
-
-#[test]
-fn offers_every_tuple_of_an_answer_where_one_leaves_a_key_the_row_binds_unbound() {
-    let term = |name: &str| {
-        Rc::new(Term::from(NamedNode::new_unchecked(format!(
-            "urn:t#{name}"
-        ))))
-    };
-    let (a, b) = (term("a"), term("b"));
-    let bound = [(0, Rc::clone(&a))];
-    let complete = Answer::of(vec![
-        vec![Some(Rc::clone(&a))],
-        vec![Some(Rc::clone(&b))],
-        vec![Some(Rc::clone(&a))],
-    ]);
-    assert_eq!(complete.agreeing(&bound), [0, 2]);
-    assert_eq!(complete.agreeing(&[(0, term("c"))]), Vec::<usize>::new());
-    assert_eq!(complete.agreeing(&[]), [0, 1, 2]);
-    let incomplete = Answer::of(vec![vec![Some(a)], vec![None]]);
-    assert_eq!(incomplete.agreeing(&bound), [0, 1]);
-}
-
 fn scans_of(query: &str, store: &Store) -> usize {
     let tree = Tree::of(store, Watch::default()).expect("a tree");
     compile(&parse(query))
@@ -1039,57 +807,6 @@ fn scans_of(query: &str, store: &Store) -> usize {
         .construct(&tree)
         .expect("constructed");
     tree.scans()
-}
-
-#[test]
-fn runs_a_subquery_that_reads_nothing_from_the_rows_it_joins_once_for_the_tree() {
-    let store = graph();
-    for &(construct, query, rows, subquery) in ONCE {
-        assert!(
-            evaluated(rows, &store).len() > 1,
-            "{construct}: one row would not tell once from each"
-        );
-        assert_eq!(
-            scans_of(query, &store),
-            scans_of(rows, &store) + scans_of(subquery, &store),
-            "{construct}"
-        );
-    }
-}
-
-#[test]
-fn prints_a_subquery_run_once_and_one_that_reads_its_key_from_the_rows_apart() {
-    let once = explained(ONCE[0].1);
-    assert!(
-        once.contains("group by (?i ?m), remembered as memo 0\n"),
-        "{once}"
-    );
-    let seeded = explained(
-        "CONSTRUCT { ?i :count ?c } WHERE { ?i a :Item . OPTIONAL { SELECT ?i (COUNT(?y) AS ?c) WHERE { ?i rdf:_1 ?y } GROUP BY ?i } }",
-    );
-    assert!(seeded.contains("group by (?i)\n"), "{seeded}");
-}
-
-#[test]
-fn answers_two_plans_that_each_remember_an_exists_alike_on_one_tree() {
-    let store = graph();
-    let tree = Tree::of(&store, Watch::default()).expect("a tree");
-    let found =
-        "CONSTRUCT { ?i :seen :yes } WHERE { ?i a :Item . FILTER EXISTS { ?z :key \"1\" } }";
-    let missing =
-        "CONSTRUCT { ?i :seen :yes } WHERE { ?i a :Item . FILTER EXISTS { ?z :key \"9\" } }";
-    assert_ne!(evaluated(found, &store), evaluated(missing, &store));
-    for query in [found, missing, found] {
-        let answered = compile(&parse(query))
-            .expect("compiled")
-            .construct(&tree)
-            .expect("constructed");
-        assert_eq!(
-            canonical_parts(answered).expect("canonical"),
-            evaluated(query, &store),
-            "{query}"
-        );
-    }
 }
 
 struct Text(String);
@@ -1126,82 +843,6 @@ fn answered(query: &Query, executor: Executor) -> (Vec<String>, Vec<QueryProfile
     )
 }
 
-#[test]
-fn answers_each_declined_construct_as_the_general_evaluator_and_says_why() {
-    for &(construct, query, reason) in DECLINED {
-        if !query.starts_with("CONSTRUCT") {
-            continue;
-        }
-        let query = read(query);
-        let (answer, profiled) = answered(&query, Executor::Compiled);
-        let (general, general_profiled) = answered(&query, Executor::Spareval);
-        assert_eq!(answer, general, "{construct}");
-        assert_eq!(
-            profiled
-                .iter()
-                .map(|q| (q.fallback.as_deref(), q.give_ups))
-                .collect::<Vec<_>>(),
-            [(Some(reason), 0)],
-            "{construct}"
-        );
-        assert_eq!(
-            general_profiled
-                .iter()
-                .map(|q| q.fallback.as_deref())
-                .collect::<Vec<_>>(),
-            [None],
-            "{construct}: the compiler did not run"
-        );
-    }
-}
-
-#[test]
-fn answers_each_given_up_query_as_the_general_evaluator_and_counts_it() {
-    for &(construct, query) in GIVEN_UP {
-        let query = read(query);
-        let (answer, profiled) = answered(&query, Executor::Compiled);
-        assert_eq!(
-            profiled
-                .iter()
-                .map(|q| (q.fallback.as_deref(), q.give_ups))
-                .collect::<Vec<_>>(),
-            [(None, 1)],
-            "{construct}"
-        );
-        assert_eq!(
-            answer,
-            answered(&query, Executor::Spareval).0,
-            "{construct}"
-        );
-    }
-}
-
-#[test]
-fn runs_a_query_both_ways_and_answers_where_they_agree() {
-    let query = read("CONSTRUCT { ?i :named ?n } WHERE { ?i a :Item ; :name ?n }");
-    let (answer, profiled) = answered(&query, Executor::Both);
-    assert_eq!(answer.len(), 2);
-    assert_eq!(profiled.iter().map(|q| q.give_ups).sum::<usize>(), 0);
-}
-
-#[test]
-fn names_the_query_and_the_triple_where_the_two_executors_differ() {
-    let store = graph();
-    let theirs = compile(&parse(
-        "CONSTRUCT { ?i :named ?n } WHERE { ?i a :Item ; :name ?n }",
-    ))
-    .expect("compiled")
-    .construct(&Tree::of(&store, Watch::default()).expect("a tree"))
-    .expect("constructed");
-    let refused = agree("urn:t:query.rq", &theirs[1..], &theirs).expect_err("a difference");
-    assert!(
-        refused.message().contains("urn:t:query.rq")
-            && refused.message().contains("general evaluator")
-            && refused.message().contains("urn:t#named"),
-        "{refused}"
-    );
-}
-
 fn converted_under(
     adapter: &dyn Resolver,
     input: &str,
@@ -1214,46 +855,452 @@ fn converted_under(
     )
 }
 
-#[test]
-fn converts_each_tiny_adapter_alike_under_every_executor() {
-    for (adapter, input) in [
-        (&tiny() as &dyn Resolver, "two.xml"),
-        (&tiny_json(), "item.json"),
-    ] {
-        let general = converted_under(adapter, input, Executor::Spareval);
-        assert!(!general.0.is_empty(), "{input}");
-        assert_eq!(
-            converted_under(adapter, input, Executor::Compiled),
-            general,
-            "{input}"
-        );
-        assert_eq!(
-            converted_under(adapter, input, Executor::Both),
-            general,
-            "{input}"
-        );
+/// Choosing how queries are executed · Executor, Loaded::explain(), Fallback
+///
+/// The Bridge runs a query with its own compiled executor where the compiler reads it, and with
+/// the general evaluator (Oxigraph's) where it does not. The graph is the same either way;
+/// `Executor::Both` runs both and refuses a difference.
+mod choosing_how_queries_are_executed {
+    use super::*;
+
+    mod given_a_query_the_compiler_compiles {
+        use super::*;
+
+        #[test]
+        fn answers_each_key_as_the_general_evaluator_does() {
+            let differing: Vec<_> = KEYED
+                .iter()
+                .filter_map(|(construct, data, query)| {
+                    let store = graph_of(data);
+                    let theirs = evaluated(query, &store);
+                    assert!(
+                        !theirs.is_empty(),
+                        "{construct} answers nothing, so shows nothing"
+                    );
+                    let ours = compiled(query, &store);
+                    (ours != Ok(theirs.clone())).then_some((*construct, ours, theirs))
+                })
+                .collect();
+            assert!(differing.is_empty(), "{differing:#?}");
+        }
+
+        #[test]
+        fn answers_as_the_general_evaluator_does_where_the_data_tells_a_wrong_plan_apart() {
+            let differing: Vec<_> = DIVERGENT
+                .iter()
+                .filter_map(|(construct, data, query)| {
+                    let store = graph_of(data);
+                    let (ours, theirs) = (compiled(query, &store), evaluated(query, &store));
+                    (ours != Ok(theirs.clone())).then_some((*construct, ours, theirs))
+                })
+                .collect();
+            assert!(differing.is_empty(), "{differing:#?}");
+        }
+
+        #[test]
+        fn answers_each_construct_a_mapping_query_uses_with_rows_and_as_the_general_evaluator_does()
+        {
+            let silent: Vec<_> = LOWERED
+                .iter()
+                .filter(|(_, query)| !answers_alike(query))
+                .map(|(construct, _)| *construct)
+                .collect();
+            assert!(
+                silent.is_empty(),
+                "{silent:?} answer nothing, so show nothing"
+            );
+        }
+
+        #[test]
+        fn answers_each_builtin_as_the_general_evaluator_does_and_names_the_three_whose_answer_is_empty(
+        ) {
+            let mut dropped = Vec::new();
+            for expression in [
+                "STR(?v)",
+                "STRLEN(?v)",
+                "CONCAT(?v, \"-\", ?n)",
+                "SUBSTR(?v, 3, 4)",
+                "SUBSTR(?v, 8)",
+                "SUBSTR(?v, 0, 2)",
+                "STRAFTER(?v, \", \")",
+                "STRBEFORE(?v, \",\")",
+                "STRAFTER(?v, \"no\")",
+                "REPLACE(?w, \"^[ ]+|[ ]+$\", \"\")",
+                "REPLACE(?v, \"(o)\", \"[$1]\", \"i\")",
+                "LCASE(?v)",
+                "UCASE(?v)",
+                "ENCODE_FOR_URI(?v)",
+                "SHA256(?v)",
+                "IRI(CONCAT(\"urn:x:\", ENCODE_FOR_URI(?v)))",
+                "STRDT(?n, xsd:integer)",
+                "STRDT(\"2020-01-02\", xsd:date)",
+                "STRDT(CONCAT(\"2020-01-02T03:04:05\", \"\"), xsd:dateTime)",
+                "xsd:integer(?n) + 1",
+                "xsd:integer(?n) * xsd:integer(?n) - 2",
+                "xsd:integer(?n) / 4",
+                "1 / 0",
+                "xsd:integer(?v)",
+                "IF(REGEX(?v, \"^hello\", \"i\"), \"yes\", \"no\")",
+                "IF(CONTAINS(?v, \"World\") && !STRENDS(?v, \"x\"), 1, 2)",
+                "COALESCE(?missing, STRAFTER(?v, \"!\"), ?n)",
+                "IF(BOUND(?missing), \"bound\", \"unbound\")",
+                "IF(?v IN (\"a\", \"Hello, World\"), \"in\", \"out\")",
+                "IF(?v NOT IN (\"a\", \"b\"), \"out\", \"in\")",
+                "IF(isIRI(?v) || isBlank(?v) || isLiteral(?v), \"term\", \"none\")",
+                "IF(sameTerm(?v, ?v) && ?v = ?v && ?v != \"x\", \"same\", \"differ\")",
+                "IF(STRLEN(?v) > 3 && STRLEN(?v) >= 12 && STRLEN(?v) < 20 && STRLEN(?v) <= 12, \"ordered\", \"unordered\")",
+                "IF(?v = 1, \"equal\", \"not\")",
+            ] {
+                let query = format!(
+                    "CONSTRUCT {{ :v1 :out ?o }} WHERE {{ :v1 :v ?v ; :n ?n ; :w ?w . BIND({expression} AS ?o) }}"
+                );
+                if !answers_alike(&query) {
+                    dropped.push(expression);
+                }
+            }
+            assert_eq!(dropped, ["SUBSTR(?v, 0, 2)", "1 / 0", "xsd:integer(?v)"]);
+        }
+
+        #[test]
+        fn answers_nothing_where_the_general_evaluator_answers_nothing() {
+            let store = graph();
+            for (construct, query) in NOTHING {
+                assert_eq!(
+                    evaluated(query, &store),
+                    Vec::<String>::new(),
+                    "{construct}"
+                );
+                assert_eq!(compiled(query, &store), Ok(Vec::new()), "{construct}");
+            }
+        }
+
+        #[test]
+        fn answers_an_exists_that_shares_no_variable_afresh_for_each_tree() {
+            let query =
+                "CONSTRUCT { ?i :seen :yes } WHERE { ?i a :Item . FILTER EXISTS { ?z :key \"1\" } }";
+            let plan = compile(&parse(query)).expect("compiled");
+            assert!(explained(query).contains("exists, remembered as memo 0:"));
+            let keyed = graph();
+            let unkeyed = graph_of(&DATA.replace(":one :key \"1\" ; :label \"one\" .", ""));
+            for store in [&keyed, &unkeyed, &keyed] {
+                let answered = plan
+                    .construct(&Tree::of(store, Watch::default()).expect("a tree"))
+                    .expect("constructed");
+                assert_eq!(
+                    canonical_parts(answered).expect("canonical"),
+                    evaluated(query, store)
+                );
+            }
+            assert_ne!(evaluated(query, &keyed), evaluated(query, &unkeyed));
+        }
+
+        #[test]
+        fn returns_the_tuples_of_an_answer_that_agree_with_the_bound_key_and_those_that_leave_it_unbound(
+        ) {
+            let term = |name: &str| {
+                Rc::new(Term::from(NamedNode::new_unchecked(format!(
+                    "urn:t#{name}"
+                ))))
+            };
+            let (a, b) = (term("a"), term("b"));
+            let bound = [(0, Rc::clone(&a))];
+            let complete = Answer::of(vec![
+                vec![Some(Rc::clone(&a))],
+                vec![Some(Rc::clone(&b))],
+                vec![Some(Rc::clone(&a))],
+            ]);
+            assert_eq!(complete.agreeing(&bound), [0, 2]);
+            assert_eq!(complete.agreeing(&[(0, term("c"))]), Vec::<usize>::new());
+            assert_eq!(complete.agreeing(&[]), [0, 1, 2]);
+            let incomplete = Answer::of(vec![vec![Some(a)], vec![None]]);
+            assert_eq!(incomplete.agreeing(&bound), [0, 1]);
+        }
+
+        #[test]
+        fn runs_a_subquery_that_reads_nothing_from_the_rows_it_joins_once_for_the_tree() {
+            let store = graph();
+            for &(construct, query, rows, subquery) in ONCE {
+                assert!(
+                    evaluated(rows, &store).len() > 1,
+                    "{construct}: one row would not tell once from each"
+                );
+                assert_eq!(
+                    scans_of(query, &store),
+                    scans_of(rows, &store) + scans_of(subquery, &store),
+                    "{construct}"
+                );
+            }
+        }
+
+        #[test]
+        fn answers_two_plans_that_each_remember_an_exists_alike_on_one_tree() {
+            let store = graph();
+            let tree = Tree::of(&store, Watch::default()).expect("a tree");
+            let found =
+                "CONSTRUCT { ?i :seen :yes } WHERE { ?i a :Item . FILTER EXISTS { ?z :key \"1\" } }";
+            let missing =
+                "CONSTRUCT { ?i :seen :yes } WHERE { ?i a :Item . FILTER EXISTS { ?z :key \"9\" } }";
+            assert_ne!(evaluated(found, &store), evaluated(missing, &store));
+            for query in [found, missing, found] {
+                let answered = compile(&parse(query))
+                    .expect("compiled")
+                    .construct(&tree)
+                    .expect("constructed");
+                assert_eq!(
+                    canonical_parts(answered).expect("canonical"),
+                    evaluated(query, &store),
+                    "{query}"
+                );
+            }
+        }
+    }
+
+    mod given_a_query_the_compiler_declines {
+        use super::*;
+
+        #[test]
+        fn declines_each_construct_it_does_not_read_and_says_which() {
+            let wrong: Vec<_> = DECLINED
+                .iter()
+                .filter_map(|(construct, query, reason)| {
+                    let declined = compile(&parse(query)).err();
+                    (declined.as_deref() != Some(*reason)).then_some((*construct, declined))
+                })
+                .collect();
+            assert!(wrong.is_empty(), "{wrong:#?}");
+        }
+
+        #[test]
+        fn answers_each_declined_construct_as_the_general_evaluator_and_says_why() {
+            for &(construct, query, reason) in DECLINED {
+                if !query.starts_with("CONSTRUCT") {
+                    continue;
+                }
+                let query = read(query);
+                let (answer, profiled) = answered(&query, Executor::Compiled);
+                let (general, general_profiled) = answered(&query, Executor::Spareval);
+                assert_eq!(answer, general, "{construct}");
+                assert_eq!(
+                    profiled
+                        .iter()
+                        .map(|q| (q.fallback.as_deref(), q.give_ups))
+                        .collect::<Vec<_>>(),
+                    [(Some(reason), 0)],
+                    "{construct}"
+                );
+                assert_eq!(
+                    general_profiled
+                        .iter()
+                        .map(|q| q.fallback.as_deref())
+                        .collect::<Vec<_>>(),
+                    [None],
+                    "{construct}: the compiler did not run"
+                );
+            }
+        }
+
+        /// converts with a mapping the compiler declines as the general evaluator does, and names the construct in `QueryProfile::fallback`
+        #[test]
+        fn converts_with_a_mapping_the_compiler_declines_as_the_general_evaluator_does_and_names_the_construct_in_queryprofile_fallback(
+        ) {
+            let ordered = Variant::of(tiny()).replacing_exactly(
+                "mapping/item.rq",
+                "?title . }\n}",
+                "?title . }\n} ORDER BY ?id",
+                1,
+            );
+            let (compiled, profiled) =
+                profiled_under(&ordered, "two.xml", Executor::Compiled).expect("conversion");
+            let general =
+                conversion_under(&ordered, "two.xml", Executor::Spareval).expect("conversion");
+            assert_eq!(
+                canonical_parts(compiled.quads).expect("canonical"),
+                canonical_parts(general.quads).expect("canonical")
+            );
+            let item = profiled
+                .iter()
+                .find(|q| q.iri.ends_with("/mapping/item.rq"))
+                .expect("the item mapping is profiled");
+            assert_eq!(item.fallback.as_deref(), Some("ORDER BY"));
+            assert_eq!(item.give_ups, 0);
+        }
+    }
+
+    mod given_a_query_a_plan_gives_up_on {
+        use super::*;
+
+        #[test]
+        fn gives_each_query_up_where_its_value_or_its_order_is_one_the_plan_cannot_settle() {
+            let store = graph();
+            for (construct, query) in GIVEN_UP {
+                assert_eq!(
+                    compiled(query, &store),
+                    Err(Fail::GiveUp),
+                    "{construct}: {query}"
+                );
+            }
+        }
+
+        #[test]
+        fn answers_each_given_up_query_as_the_general_evaluator_and_counts_it() {
+            for &(construct, query) in GIVEN_UP {
+                let query = read(query);
+                let (answer, profiled) = answered(&query, Executor::Compiled);
+                assert_eq!(
+                    profiled
+                        .iter()
+                        .map(|q| (q.fallback.as_deref(), q.give_ups))
+                        .collect::<Vec<_>>(),
+                    [(None, 1)],
+                    "{construct}"
+                );
+                assert_eq!(
+                    answer,
+                    answered(&query, Executor::Spareval).0,
+                    "{construct}"
+                );
+            }
+        }
+    }
+
+    /// given `Executor::Both`
+    mod given_executor_both {
+        use super::*;
+
+        #[test]
+        fn runs_a_query_both_ways_and_answers_where_they_agree() {
+            let query = read("CONSTRUCT { ?i :named ?n } WHERE { ?i a :Item ; :name ?n }");
+            let (answer, profiled) = answered(&query, Executor::Both);
+            assert_eq!(answer.len(), 2);
+            assert_eq!(profiled.iter().map(|q| q.give_ups).sum::<usize>(), 0);
+        }
+
+        #[test]
+        fn names_the_query_and_the_triple_where_the_two_executors_differ() {
+            let store = graph();
+            let theirs = compile(&parse(
+                "CONSTRUCT { ?i :named ?n } WHERE { ?i a :Item ; :name ?n }",
+            ))
+            .expect("compiled")
+            .construct(&Tree::of(&store, Watch::default()).expect("a tree"))
+            .expect("constructed");
+            let refused = agree("urn:t:query.rq", &theirs[1..], &theirs).expect_err("a difference");
+            assert!(
+                refused.message().contains("urn:t:query.rq")
+                    && refused.message().contains("general evaluator")
+                    && refused.message().contains("urn:t#named"),
+                "{refused}"
+            );
+        }
+
+        #[test]
+        fn converts_each_tiny_adapter_alike_under_every_executor() {
+            for (adapter, input) in [
+                (&tiny() as &dyn Resolver, "two.xml"),
+                (&tiny_json(), "item.json"),
+            ] {
+                let general = converted_under(adapter, input, Executor::Spareval);
+                assert!(!general.0.is_empty(), "{input}");
+                assert_eq!(
+                    converted_under(adapter, input, Executor::Compiled),
+                    general,
+                    "{input}"
+                );
+                assert_eq!(
+                    converted_under(adapter, input, Executor::Both),
+                    general,
+                    "{input}"
+                );
+            }
+        }
+    }
+
+    /// `explain()`
+    mod explain {
+        use super::*;
+
+        #[test]
+        fn prints_a_plan_by_its_steps_with_variables_by_name_and_the_exists_it_remembers() {
+            let query = "CONSTRUCT { ?i :seen ?n } WHERE { ?r a :Root ; ?slot ?i . ?i :name ?n . FILTER EXISTS { ?i rdf:_1 ?child } FILTER EXISTS { ?z :key \"1\" } }";
+            let other =
+                "CONSTRUCT { ?i :seen :yes } WHERE { ?i a :Item . FILTER EXISTS { ?z :key \"1\" } }";
+            let first = explained(query);
+            explained(other);
+            assert_eq!(explained(query), first);
+            assert_eq!(
+                first,
+                concat!(
+                    "filter EXISTS { ?z <urn:t#key> \"1\" . }\n",
+                    "  exists, remembered as memo 0:\n",
+                    "    scan ?z <urn:t#key> \"1\"\n",
+                    "scan ?r <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <urn:t#Root>\n",
+                    "scan ?r ?slot ?i\n",
+                    "filter EXISTS { ?i <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> ?child . }\n",
+                    "  exists, run for each row:\n",
+                    "    scan ?i <http://www.w3.org/1999/02/22-rdf-syntax-ns#_1> ?child\n",
+                    "scan ?i <urn:t#name> ?n\n",
+                    "construct\n",
+                    "  ?i <urn:t#seen> ?n\n",
+                )
+            );
+        }
+
+        #[test]
+        fn prints_the_same_plan_each_time_a_query_is_parsed_and_tells_shadowed_variables_apart() {
+            let query = "CONSTRUCT { ?i :seen ?c } WHERE { ?i :name ?code . { SELECT ?i (COUNT(*) AS ?c) (SUM(?s) AS ?t) WHERE { ?i :size ?s . ?i :id ?code . FILTER(STRLEN(?code) > 0) } GROUP BY ?i } FILTER(STRLEN(?code) > 1) }";
+            let plan = explained(query);
+            assert_eq!(plan, explained(query));
+            assert_eq!(
+                plan,
+                concat!(
+                    "scan ?i <urn:t#name> ?code\n",
+                    "filter (STRLEN(?code) > \"1\"^^<http://www.w3.org/2001/XMLSchema#integer>)\n",
+                    "group by (?i)\n",
+                    "  ?gen0 := count(*)\n",
+                    "  ?gen1 := sum(?s)\n",
+                    "  scan ?i <urn:t#size> ?s\n",
+                    "  scan ?i <urn:t#id> ?code~5\n",
+                    "  filter (STRLEN(?code~5) > \"0\"^^<http://www.w3.org/2001/XMLSchema#integer>)\n",
+                    "bind ?c := ?gen0\n",
+                    "bind ?t := ?gen1\n",
+                    "construct\n",
+                    "  ?i <urn:t#seen> ?c\n",
+                )
+            );
+        }
+
+        #[test]
+        fn prints_a_subquery_run_once_and_one_that_reads_its_key_from_the_rows_apart() {
+            let once = explained(ONCE[0].1);
+            assert!(
+                once.contains("group by (?i ?m), remembered as memo 0\n"),
+                "{once}"
+            );
+            let seeded = explained(
+                "CONSTRUCT { ?i :count ?c } WHERE { ?i a :Item . OPTIONAL { SELECT ?i (COUNT(?y) AS ?c) WHERE { ?i rdf:_1 ?y } GROUP BY ?i } }",
+            );
+            assert!(seeded.contains("group by (?i)\n"), "{seeded}");
+        }
     }
 }
 
-#[test]
-fn converts_the_tiny_adapter_with_a_mapping_the_compiler_declines_as_the_general_evaluator_does() {
-    let ordered = Variant::of(tiny()).replacing_exactly(
-        "mapping/item.rq",
-        "?title . }\n}",
-        "?title . }\n} ORDER BY ?id",
-        1,
-    );
-    let (compiled, profiled) =
-        profiled_under(&ordered, "two.xml", Executor::Compiled).expect("conversion");
-    let general = conversion_under(&ordered, "two.xml", Executor::Spareval).expect("conversion");
-    assert_eq!(
-        canonical_parts(compiled.quads).expect("canonical"),
-        canonical_parts(general.quads).expect("canonical")
-    );
-    let item = profiled
-        .iter()
-        .find(|q| q.iri.ends_with("/mapping/item.rq"))
-        .expect("the item mapping is profiled");
-    assert_eq!(item.fallback.as_deref(), Some("ORDER BY"));
-    assert_eq!(item.give_ups, 0);
+/// Workings no caller sees · crates/bridge/src
+mod workings_no_caller_sees {
+    use super::*;
+
+    /// `BUILTINS`
+    mod builtins {
+        use super::*;
+
+        #[test]
+        fn names_each_builtin_once() {
+            let mut names = HashSet::new();
+            let repeated: Vec<_> = BUILTINS
+                .iter()
+                .map(|builtin| builtin.name)
+                .filter(|name| !names.insert(*name))
+                .collect();
+            assert!(repeated.is_empty(), "{repeated:?}");
+        }
+    }
 }

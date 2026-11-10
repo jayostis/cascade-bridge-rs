@@ -58,38 +58,52 @@ pub(super) fn skeleton(text: &str, path: &str) -> BTreeSet<String> {
     )
 }
 
-#[test]
-fn reproduces_every_json_lift_vector_of_the_specification() {
-    let names: Vec<String> = fixture_names(VECTORS)
-        .into_iter()
-        .filter_map(|name| name.strip_suffix(".json").map(str::to_owned))
-        .filter(|name| {
-            !SKELETON_VECTORS
-                .iter()
-                .any(|(skeleton, _)| skeleton == name)
-        })
-        .collect();
-    assert!(names.len() >= 7, "{names:?}");
-    for name in names {
-        let produced = canonical(lifted(&text(&name)).expect("the lift"));
-        let expected = expected(&name);
-        assert_eq!(
-            produced,
-            expected,
-            "the {name} vector: missing {:?}, extra {:?}",
-            expected.difference(&produced).collect::<Vec<_>>(),
-            produced.difference(&expected).collect::<Vec<_>>()
-        );
-    }
-}
+mod tests {
+    use super::*;
 
-#[test]
-fn reproduces_every_json_skeleton_vector_of_the_specification() {
-    for (name, path) in SKELETON_VECTORS {
-        assert_eq!(
-            skeleton(&text(name), path),
-            expected(name),
-            "the {name} vector"
-        );
+    /// Reading a JSON document as records · Loaded::convert(), Document::envelope
+    mod reading_a_json_document_as_records {
+        use super::*;
+
+        /// given the specification's JSON lift vectors
+        mod given_the_specification_s_json_lift_vectors {
+            use super::*;
+
+            #[test]
+            fn reproduces_every_json_lift_vector_of_the_specification() {
+                let names: Vec<String> = fixture_names(VECTORS)
+                    .into_iter()
+                    .filter_map(|name| name.strip_suffix(".json").map(str::to_owned))
+                    .filter(|name| {
+                        !SKELETON_VECTORS
+                            .iter()
+                            .any(|(skeleton, _)| skeleton == name)
+                    })
+                    .collect();
+                assert!(names.len() >= 7, "{names:?}");
+                for name in names {
+                    let produced = canonical(lifted(&text(&name)).expect("the lift"));
+                    let expected = expected(&name);
+                    assert_eq!(
+                        produced,
+                        expected,
+                        "the {name} vector: missing {:?}, extra {:?}",
+                        expected.difference(&produced).collect::<Vec<_>>(),
+                        produced.difference(&expected).collect::<Vec<_>>()
+                    );
+                }
+            }
+
+            #[test]
+            fn reproduces_every_json_skeleton_vector_of_the_specification() {
+                for (name, path) in SKELETON_VECTORS {
+                    assert_eq!(
+                        skeleton(&text(name), path),
+                        expected(name),
+                        "the {name} vector"
+                    );
+                }
+            }
+        }
     }
 }
