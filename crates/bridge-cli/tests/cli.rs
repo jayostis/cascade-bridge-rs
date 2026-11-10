@@ -1263,7 +1263,8 @@ mod telling_why_a_command_stopped {
         /// refuses `--format rdfxml`
         #[test]
         fn refuses_a_format_it_does_not_write() {
-            let run = cascade_bridge(&["convert", &adapter(), "document.xml", "--format", "rdfxml"]);
+            let run =
+                cascade_bridge(&["convert", &adapter(), "document.xml", "--format", "rdfxml"]);
             let stderr = String::from_utf8_lossy(&run.stderr);
             assert_eq!(run.status.code(), Some(2), "{stderr}");
             assert!(run.stdout.is_empty());
