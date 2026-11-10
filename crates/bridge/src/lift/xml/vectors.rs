@@ -92,7 +92,7 @@ fn assert_vector(name: &str, produced: BTreeSet<String>) {
     );
 }
 
-const FIRST_UNIT: &str = r#"
+const FIRST_RECORD: &str = r#"
 _:item <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/ns/root> .
 _:item <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/item> .
 _:item <http://sparql.xyz/facade-x/data/id> "1" .
@@ -103,7 +103,7 @@ _:item <https://dom.spec.whatwg.org/#dom-node-textcontent> "x" .
 _:t <https://dom.spec.whatwg.org/#dom-node-textcontent> "x" .
 "#;
 
-const SECOND_UNIT: &str = r#"
+const SECOND_RECORD: &str = r#"
 _:item <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/ns/root> .
 _:item <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <http://sparql.xyz/facade-x/data/item> .
 _:item <http://sparql.xyz/facade-x/data/id> "2" .
@@ -200,12 +200,12 @@ mod tests {
                 assert_graph(
                     "the first record",
                     records.remove(0),
-                    parsed(FIRST_UNIT.as_bytes()),
+                    parsed(FIRST_RECORD.as_bytes()),
                 );
                 assert_graph(
                     "the second record",
                     records.remove(0),
-                    parsed(SECOND_UNIT.as_bytes()),
+                    parsed(SECOND_RECORD.as_bytes()),
                 );
                 assert_graph(
                     "the skeleton",

@@ -273,6 +273,12 @@ mod tests {
             fn fails_the_shapes_entry_where_no_vocabulary_was_given() {
                 let results = run();
                 assert_eq!(outcomes_of(&results).get("shapes"), Some(&"failed"));
+                let shapes = results.iter().find(|r| r.name == "shapes").expect("shapes");
+                assert!(
+                    shapes.description.contains("no vocabulary was given"),
+                    "{}",
+                    shapes.description
+                );
             }
 
             /// times at least one entry and offers only the `sparql-1.1` profile

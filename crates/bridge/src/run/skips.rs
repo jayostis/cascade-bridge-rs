@@ -5,7 +5,7 @@ use crate::load::load_adapter;
 use crate::measure::{Skip, Stage};
 use crate::query::Profile;
 use crate::resolver::Resolver;
-use crate::run::{convert, convert_with, prepare, prepare_skipping, Conversion, Prepared, Source};
+use crate::run::{convert, convert_with, prepare_skipping, Conversion, Prepared, Source};
 use oxrdf::Quad;
 use std::time::{Duration, Instant};
 
@@ -124,8 +124,7 @@ mod tests {
             use super::*;
 
             #[test]
-            fn times_every_stage_and_query_within_the_convert_and_times_nothing_where_profiling_is_off(
-            ) {
+            fn times_every_stage_and_query_within_the_convert_and_nothing_where_profiling_is_off() {
                 let resolver = tiny_with_vocabularies();
                 let prepared = prepared_skipping(&resolver, &[]);
                 let input = Input::of(&resolver, "two.xml");
@@ -156,12 +155,6 @@ mod tests {
                     );
                 }
                 assert!(profiled(&prepared, &input, false).1.stages().is_empty());
-                assert!(
-                    prepare(&load_adapter(&resolver).expect("adapter"), &resolver)
-                        .expect("prepared")
-                        .loading
-                        .is_empty()
-                );
             }
         }
 

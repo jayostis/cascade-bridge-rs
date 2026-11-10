@@ -845,27 +845,27 @@ mod tests {
                 let document =
                     b"<catalog><item><note/></item><item><note/></item><item><note/></item></catalog>";
                 let followed = Followed::default();
-                let units: Vec<crate::lift::Unit> =
+                let records: Vec<crate::lift::Unit> =
                     crate::lift::xml::lift_slice(document, Some("item"))
                         .expect("the lift")
-                        .map(|unit| unit.expect("a unit"))
+                        .map(|lifted| lifted.expect("a record"))
                         .collect();
-                assert_eq!(units.len(), 3);
+                assert_eq!(records.len(), 3);
                 let findings = refining("note[1]");
                 EVALUATED.with(|count| count.set(0));
-                for unit in &units {
-                    let selector = unit.selector();
+                for lifted in &records {
+                    let selector = lifted.selector();
                     let record = Record {
                         source: "urn:example:catalog",
                         selector: &selector,
                         selector_type: SelectorType::XPath,
                     };
                     assert!(followed
-                        .unresolved(&record, &unit.text, &findings)
+                        .unresolved(&record, &lifted.text, &findings)
                         .expect("the reports")
                         .is_empty());
                 }
-                assert_eq!(EVALUATED.with(std::cell::Cell::get), units.len());
+                assert_eq!(EVALUATED.with(std::cell::Cell::get), records.len());
             }
 
             #[test]

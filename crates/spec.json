@@ -126,7 +126,7 @@
     },
     {
       "term": "arrival",
-      "definition": "the node that says how a version reached the pod: its document, its selector and the import.",
+      "definition": "here, the node that says how a version reached the pod: its document, its selector and the import.",
       "aliases": [
         "arrivals"
       ]
@@ -235,7 +235,7 @@
     },
     {
       "term": "engine",
-      "definition": "the Bridge's library, the part that converts; a host calls it."
+      "definition": "here, the Bridge's library, the part that converts; a host calls it."
     },
     {
       "term": "entry",

@@ -1,5 +1,5 @@
 use crate::fixtures::{
-    address, annotations, conversion, count, findings, node, says, step, tiny, unaccounted,
+    address, annotations, count, findings, node, refused, says, step, tiny, unaccounted,
     with_accounting, Variant, ACCOUNTING, BRIDGE, CASCADE, CRATE, OA, PATH_NOT_ACCOUNTED, RDF_TYPE,
     SH,
 };
@@ -507,10 +507,11 @@ mod tests {
             fn refuses_an_accounting_that_does_not_parse_where_an_absent_one_is_read_in_silence() {
                 assert_eq!(census(&findings(&unaccounted(), "two.xml")), Vec::new());
 
-                let Err(refusal) = conversion(&with_accounting(UNPARSEABLE), "two.xml") else {
-                    panic!("an accounting that is not Turtle is read as an accounting of nothing");
-                };
-                let refusal = refusal.to_string();
+                let refusal = refused(
+                    &with_accounting(UNPARSEABLE),
+                    "two.xml",
+                    "an accounting that is not Turtle is read as an accounting of nothing",
+                );
                 assert!(refusal.contains(ACCOUNTING), "{refusal}");
             }
 
@@ -520,10 +521,11 @@ mod tests {
 
                 let missing =
                     Variant::of(tiny()).replacing_exactly(CRATE, ACCOUNTING, UNWRITTEN, 2);
-                let Err(refusal) = conversion(&missing, "two.xml") else {
-                    panic!("a crate that says what it accounts for and cannot show it is read in silence");
-                };
-                let refusal = refusal.to_string();
+                let refusal = refused(
+                    &missing,
+                    "two.xml",
+                    "a crate that says what it accounts for and cannot show it is read in silence",
+                );
                 assert!(refusal.contains(UNWRITTEN), "{refusal}");
             }
 
@@ -567,12 +569,11 @@ mod tests {
 
             #[test]
             fn refuses_a_source_path_that_is_no_literal_where_dropping_it_would_report_the_path() {
-                let Err(refusal) =
-                    conversion(&with_accounting(A_PATH_THAT_IS_NO_LITERAL), "two.xml")
-                else {
-                    panic!("a path that is not a string is read past in silence");
-                };
-                let refusal = refusal.to_string();
+                let refusal = refused(
+                    &with_accounting(A_PATH_THAT_IS_NO_LITERAL),
+                    "two.xml",
+                    "a path that is not a string is read past in silence",
+                );
                 assert!(refusal.contains(ACCOUNTING), "{refusal}");
             }
         }

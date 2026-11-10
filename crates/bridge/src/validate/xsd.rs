@@ -425,7 +425,7 @@ mod tests {
             use super::*;
 
             #[test]
-            fn names_a_file_iri_the_same_however_many_slashes_its_authority_was_written_with() {
+            fn names_a_file_iri_the_same_whatever_its_slashes_and_dots_and_keeps_a_urn_as_is() {
                 assert_eq!(key("file:/a/b/c.xsd"), key("file:///a/b/c.xsd"));
                 assert_eq!(key("file:///a/b/../c.xsd"), key("file:///a/c.xsd"));
                 assert_eq!(key("urn:example:c.xsd"), "urn:example:c.xsd");

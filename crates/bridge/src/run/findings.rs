@@ -1,7 +1,9 @@
 // Every adapter here has its accounting struck out: what a findings query says is what
 // this file is about.
 
-use crate::fixtures::{address, annotations, one, tiny, unaccounted, Variant, OA, RDF_VALUE, SH};
+use crate::fixtures::{
+    address, annotations, one, refused, tiny, unaccounted, Variant, OA, RDF_VALUE, SH,
+};
 use crate::load::load_adapter;
 use crate::resolver::Resolver;
 use crate::run::{convert, prepare, Conversion, Source};
@@ -340,12 +342,11 @@ mod tests {
 
             #[test]
             fn refuses_a_findings_query_whose_target_is_a_name() {
-                let Err(refusal) =
-                    conversion(&rewritten(&[(TARGET, "bridge:thisRecord")]), "two.xml")
-                else {
-                    panic!("the named form is accepted");
-                };
-                let refusal = refusal.to_string();
+                let refusal = refused(
+                    &rewritten(&[(TARGET, "bridge:thisRecord")]),
+                    "two.xml",
+                    "the named form is accepted",
+                );
                 assert!(refusal.contains("item-note-findings.rq"), "{refusal}");
                 assert!(refusal.contains("oa:hasTarget"), "{refusal}");
                 assert!(
@@ -356,11 +357,11 @@ mod tests {
 
             #[test]
             fn refuses_a_findings_query_whose_target_names_no_document() {
-                let Err(refusal) = conversion(&rewritten(&[(TARGET, SOURCELESS)]), "two.xml")
-                else {
-                    panic!("a finding about no document is accepted");
-                };
-                let refusal = refusal.to_string();
+                let refusal = refused(
+                    &rewritten(&[(TARGET, SOURCELESS)]),
+                    "two.xml",
+                    "a finding about no document is accepted",
+                );
                 assert!(refusal.contains("item-note-findings.rq"), "{refusal}");
                 assert!(refusal.contains("oa:hasSource"), "{refusal}");
             }
@@ -368,10 +369,11 @@ mod tests {
             #[test]
             fn refuses_a_findings_query_whose_annotation_has_no_target() {
                 let targeting = format!("oa:hasTarget {TARGET} ;\n    ");
-                let Err(refusal) = conversion(&rewritten(&[(&targeting, "")]), "two.xml") else {
-                    panic!("an annotation about no document is accepted");
-                };
-                let refusal = refusal.to_string();
+                let refusal = refused(
+                    &rewritten(&[(&targeting, "")]),
+                    "two.xml",
+                    "an annotation about no document is accepted",
+                );
                 assert!(refusal.contains("item-note-findings.rq"), "{refusal}");
                 assert!(refusal.contains("oa:hasTarget"), "{refusal}");
             }
@@ -380,10 +382,7 @@ mod tests {
             fn refuses_a_findings_query_that_names_the_annotation_it_constructs() {
                 let named =
                     rewritten(&[("[] a oa:Annotation", "bridge:thisRecord a oa:Annotation")]);
-                let Err(refusal) = conversion(&named, "two.xml") else {
-                    panic!("the named form is accepted");
-                };
-                let refusal = refusal.to_string();
+                let refusal = refused(&named, "two.xml", "the named form is accepted");
                 assert!(refusal.contains("item-note-findings.rq"), "{refusal}");
                 assert!(refusal.contains("oa:Annotation"), "{refusal}");
                 assert!(

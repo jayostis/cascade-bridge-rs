@@ -650,9 +650,9 @@ mod tests {
                 );
             }
 
-            /// removes a dropped version, its arrival and the references to it, and keeps the kept version's facts
+            /// removes a dropped version, its arrival and the references to it, and keeps the kept version's facts and the label of a node that referred to the dropped one
             #[test]
-            fn removes_a_dropped_version_its_arrival_and_the_references_to_it_and_keeps_the_kept_version_s_facts(
+            fn removes_a_dropped_version_its_arrival_and_the_references_to_it_and_keeps_the_kept_facts_and_a_referrer_s_label(
             ) {
                 let quads: Vec<Quad> = RdfParser::from_format(RdfFormat::NTriples)
                     .for_slice(
