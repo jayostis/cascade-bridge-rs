@@ -1,5 +1,5 @@
 SELECT ?input1 ?input2 ?input3 ?name WHERE {
-  BIND (SHA256(CONCAT("90c60849-c5ef-4ca6-bfb8-8662bd07d2b5|https://ns.cascadeprotocol.org/cascade#RetractionNamingRule",
+  BIND (SHA256(CONCAT("90c60849-c5ef-4ca6-bfb8-8662bd07d2b5|https://ns.cascadeprotocol.org/cascade#ReleaseRetractionNamingRule",
                        "|", REPLACE(REPLACE(?input1, "%", "%25"), "\\|", "%7C"),
                        "|", REPLACE(REPLACE(?input2, "%", "%25"), "\\|", "%7C"),
                        "|", REPLACE(REPLACE(?input3, "%", "%25"), "\\|", "%7C"))) AS ?hash)

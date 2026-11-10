@@ -36,8 +36,8 @@
     <#organization-from-ccda-root-and-extension>
     <#organization-from-ccda-root-alone>
     <#organization-from-npi>
-    <#assertion>
-    <#retraction>
+    <#matcher-judgment-assertion>
+    <#release-retraction>
     <#table-row-ndc-to-rxnorm>
     <#table-row-rxnorm-to-medrt>
     <#table-row-rxnorm-to-unii>
@@ -49,9 +49,9 @@
     <#table-row-panel-member>
     <#table-row-panel-member-again>
     <#view-entry>
-    <#claim>
-    <#claim-star-with-a-table>
-    <#claim-repeated-member-and-used>
+    <#matcher-judgment>
+    <#matcher-judgment-star-with-a-table>
+    <#matcher-judgment-repeated-member-and-used>
     <#snapshot-first>
     <#snapshot-next>
     <#snapshot-merge>
@@ -338,19 +338,19 @@
   mf:action [ qt:query <OrganizationNamingRule.rq> ; bridge:nameInputs ( "http://hl7.org/fhir/sid/us-npi" "1234567893" ) ] ;
   mf:result [ bridge:expectedName <urn:uuid:b272d9d2-08db-8fd9-9d33-eca1e48c75ba> ] .
 
-<#assertion> a bridge:NamingTest ;
-  mf:name "assertion" ;
-  rdfs:comment "An assertion: the rule list version, then the claim." ;
-  bridge:namingRule cascade:AssertionNamingRule ;
-  mf:action [ qt:query <AssertionNamingRule.rq> ; bridge:nameInputs ( "urn:uuid:9c1f5a73-2e48-4d6b-b8a0-3f7c1e9d5b24" "urn:uuid:5e4af5e8-b816-849e-9185-aed2981a566f" ) ] ;
-  mf:result [ bridge:expectedName <urn:uuid:ea174059-aeb9-883e-bdfe-b786e4f582d5> ] .
+<#matcher-judgment-assertion> a bridge:NamingTest ;
+  mf:name "matcher-judgment-assertion" ;
+  rdfs:comment "A matcher judgment's assertion: the rule list version, then the matcher judgment." ;
+  bridge:namingRule cascade:MatcherJudgmentAssertionNamingRule ;
+  mf:action [ qt:query <MatcherJudgmentAssertionNamingRule.rq> ; bridge:nameInputs ( "urn:uuid:9c1f5a73-2e48-4d6b-b8a0-3f7c1e9d5b24" "urn:uuid:5e4af5e8-b816-849e-9185-aed2981a566f" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:a66e5082-4344-8125-b30e-77ac738316cb> ] .
 
-<#retraction> a bridge:NamingTest ;
-  mf:name "retraction" ;
-  rdfs:comment "A release's retraction: the release, the claim, the matcher rule it declares wrong." ;
-  bridge:namingRule cascade:RetractionNamingRule ;
-  mf:action [ qt:query <RetractionNamingRule.rq> ; bridge:nameInputs ( "urn:uuid:9c1f5a73-2e48-4d6b-b8a0-3f7c1e9d5b24" "urn:uuid:5e4af5e8-b816-849e-9185-aed2981a566f" "https://ns.cascadeprotocol.org/cascade#SameCodeRule" ) ] ;
-  mf:result [ bridge:expectedName <urn:uuid:24926c43-98e2-8d66-a07d-81eedbfa8b07> ] .
+<#release-retraction> a bridge:NamingTest ;
+  mf:name "release-retraction" ;
+  rdfs:comment "A release's retraction: the release, the assertion it retracts, the matcher rule it declares wrong." ;
+  bridge:namingRule cascade:ReleaseRetractionNamingRule ;
+  mf:action [ qt:query <ReleaseRetractionNamingRule.rq> ; bridge:nameInputs ( "urn:uuid:9c1f5a73-2e48-4d6b-b8a0-3f7c1e9d5b24" "urn:uuid:5e4af5e8-b816-849e-9185-aed2981a566f" "https://ns.cascadeprotocol.org/cascade#SameCodeRule" ) ] ;
+  mf:result [ bridge:expectedName <urn:uuid:5175c2c3-12e4-8305-a981-4bf902985d1c> ] .
 
 <#table-row-ndc-to-rxnorm> a bridge:NamingTest ;
   mf:name "table-row-ndc-to-rxnorm" ;
@@ -429,26 +429,26 @@
   mf:action [ qt:query <ViewEntryNamingRule.rq> ; bridge:nameInputs ( "clinical/allergies.ttl" "urn:uuid:7435b3b8-2d93-8912-9d48-940c5870dc81" ) ] ;
   mf:result [ bridge:expectedName "clinical/allergies.ttl#f7e2d271f881267884f33508186278e064bb6b3621c3b568949bacd3a96a3584" ] .
 
-<#claim> a bridge:NamingTest ;
-  mf:name "claim" ;
-  rdfs:comment "A claim: the maker, the matcher rule, the justification, then the members and the versions used, each list written as its count and its items in code point order; listed here unsorted." ;
-  bridge:namingRule cascade:ClaimNamingRule ;
+<#matcher-judgment> a bridge:NamingTest ;
+  mf:name "matcher-judgment" ;
+  rdfs:comment "A matcher judgment: the maker, the matcher rule, the justification, then the members and the versions used, each list written as its count and its items in code point order; listed here unsorted." ;
+  bridge:namingRule cascade:MatcherJudgmentNamingRule ;
   mf:action [ bridge:nameInputs ( "https://ns.cascadeprotocol.org/cascade#CascadeMatcher" "https://ns.cascadeprotocol.org/cascade#SameCodeRule" "https://ns.cascadeprotocol.org/cascade#SameCode" ("urn:uuid:f83d6a9d-1d0e-84bd-826c-e3f00989c291" "urn:uuid:7435b3b8-2d93-8912-9d48-940c5870dc81") ("ni:///sha-256;eplyjFwBziuuDGwAXYG-OsnSc_l9nZRWlgn28AA-riY" "ni:///sha-256;Q2zb2hq5EC43OWgfnQ-uPPQDVO6_EFXtdyhjpb_8PnQ") ) ] ;
-  mf:result [ bridge:expectedName <urn:uuid:35ee949a-9a6f-8cbb-81ef-378e145711f0> ] .
+  mf:result [ bridge:expectedName <urn:uuid:b8cae3a2-1a7d-8821-8625-133247dfbbd0> ] .
 
-<#claim-star-with-a-table> a bridge:NamingTest ;
-  mf:name "claim-star-with-a-table" ;
+<#matcher-judgment-star-with-a-table> a bridge:NamingTest ;
+  mf:name "matcher-judgment-star-with-a-table" ;
   rdfs:comment "A star of three members, and used holding the table version the rule read." ;
-  bridge:namingRule cascade:ClaimNamingRule ;
+  bridge:namingRule cascade:MatcherJudgmentNamingRule ;
   mf:action [ bridge:nameInputs ( "https://ns.cascadeprotocol.org/cascade#CascadeMatcher" "https://ns.cascadeprotocol.org/cascade#SameMappedCodeAndDateRule" "https://ns.cascadeprotocol.org/cascade#SameMappedCodeAndDate" ("urn:uuid:351ccd8a-d25c-83d4-8025-988b8769088e" "urn:uuid:7435b3b8-2d93-8912-9d48-940c5870dc81" "urn:uuid:f83d6a9d-1d0e-84bd-826c-e3f00989c291") ("ni:///sha-256;7UF52nyQz5_3t_7QQn6dXsLuxB5n3HfJcDLlONA8eN4" "ni:///sha-256;Q2zb2hq5EC43OWgfnQ-uPPQDVO6_EFXtdyhjpb_8PnQ" "ni:///sha-256;AowVyYvDuw_s7SL5fEFIF0Sy5DmeBCX3aiqrEebgB6w" "ni:///sha-256;eplyjFwBziuuDGwAXYG-OsnSc_l9nZRWlgn28AA-riY") ) ] ;
-  mf:result [ bridge:expectedName <urn:uuid:a92032b7-b56c-874e-8787-0cf9266e2309> ] .
+  mf:result [ bridge:expectedName <urn:uuid:1c223b66-6f9b-8c9e-ac52-c6bf0b56d0f9> ] .
 
-<#claim-repeated-member-and-used> a bridge:NamingTest ;
-  mf:name "claim-repeated-member-and-used" ;
-  rdfs:comment "The first claim's inputs with a member and a used version listed twice: lists are sets, so it is the first claim's name." ;
-  bridge:namingRule cascade:ClaimNamingRule ;
+<#matcher-judgment-repeated-member-and-used> a bridge:NamingTest ;
+  mf:name "matcher-judgment-repeated-member-and-used" ;
+  rdfs:comment "The first matcher judgment's inputs with a member and a used version listed twice: lists are sets, so it is the first matcher judgment's name." ;
+  bridge:namingRule cascade:MatcherJudgmentNamingRule ;
   mf:action [ bridge:nameInputs ( "https://ns.cascadeprotocol.org/cascade#CascadeMatcher" "https://ns.cascadeprotocol.org/cascade#SameCodeRule" "https://ns.cascadeprotocol.org/cascade#SameCode" ("urn:uuid:f83d6a9d-1d0e-84bd-826c-e3f00989c291" "urn:uuid:7435b3b8-2d93-8912-9d48-940c5870dc81" "urn:uuid:f83d6a9d-1d0e-84bd-826c-e3f00989c291") ("ni:///sha-256;eplyjFwBziuuDGwAXYG-OsnSc_l9nZRWlgn28AA-riY" "ni:///sha-256;Q2zb2hq5EC43OWgfnQ-uPPQDVO6_EFXtdyhjpb_8PnQ" "ni:///sha-256;Q2zb2hq5EC43OWgfnQ-uPPQDVO6_EFXtdyhjpb_8PnQ") ) ] ;
-  mf:result [ bridge:expectedName <urn:uuid:35ee949a-9a6f-8cbb-81ef-378e145711f0> ] .
+  mf:result [ bridge:expectedName <urn:uuid:b8cae3a2-1a7d-8821-8625-133247dfbbd0> ] .
 
 <#snapshot-first> a bridge:NamingTest ;
   mf:name "snapshot-first" ;
@@ -539,7 +539,7 @@
   rdfs:comment "A finding: the same hash over its triples, its subject urn:cascade:this-finding." ;
   bridge:namingRule cascade:FindingNamingRule ;
   mf:action [ bridge:input <content/finding.nt> ] ;
-  mf:result [ bridge:expectedName <ni:///sha-256;bqnyRwmKdjmRhV0qt5Xl0YAuCsHQ-c3tRyF1ubbci08> ; bridge:canonicalContent <content/finding.nq> ] .
+  mf:result [ bridge:expectedName <ni:///sha-256;TPmeQ68gnNvFGuqxcXCC29zzk4He8-Efu_ksPNIlaYE> ; bridge:canonicalContent <content/finding.nq> ] .
 
 <#table-version-first> a bridge:NamingTest ;
   mf:name "table-version-first" ;

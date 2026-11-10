@@ -55,7 +55,7 @@ fn only(graph: &Graph, subject: &NamedOrBlankNode, predicate: &str) -> String {
 
 /// The rules whose names a vector gives without a query: a list or content rule, the runtime's.
 const WITHOUT_QUERY: [&str; 7] = [
-    "ClaimNamingRule",
+    "MatcherJudgmentNamingRule",
     "SnapshotNamingRule",
     "VersionNamingRule",
     "RevisionNamingRule",
