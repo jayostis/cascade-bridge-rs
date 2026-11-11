@@ -7,10 +7,19 @@ use oxrdf::Quad;
 use oxrdfio::{RdfFormat, RdfParser};
 use std::collections::BTreeSet;
 
-/// Each skeleton vector with the record path its manifest entry names.
-const SKELETON_VECTORS: [(&str, &str); 2] = [
-    ("skeleton-json", "$.entry[*]"),
-    ("skeleton-json-record-root", "$"),
+/// Each skeleton vector, the files it reads and the record path its manifest entry names.
+const SKELETON_VECTORS: [(&str, &str, &str); 3] = [
+    ("skeleton-json", "skeleton-json", "$.entry[*]"),
+    (
+        "skeleton-json-record-root",
+        "skeleton-json-record-root",
+        "$",
+    ),
+    (
+        "skeleton-json-bracket-path",
+        "skeleton-json",
+        "$['entry'][*]",
+    ),
 ];
 
 const VECTORS: &str = "tests/lift";
@@ -74,11 +83,7 @@ mod tests {
                 let names: Vec<String> = fixture_names(VECTORS)
                     .into_iter()
                     .filter_map(|name| name.strip_suffix(".json").map(str::to_owned))
-                    .filter(|name| {
-                        !SKELETON_VECTORS
-                            .iter()
-                            .any(|(skeleton, _)| skeleton == name)
-                    })
+                    .filter(|name| !SKELETON_VECTORS.iter().any(|(_, files, _)| files == name))
                     .collect();
                 assert!(names.len() >= 7, "{names:?}");
                 for name in names {
@@ -96,10 +101,10 @@ mod tests {
 
             #[test]
             fn reproduces_every_json_skeleton_vector_of_the_specification() {
-                for (name, path) in SKELETON_VECTORS {
+                for (name, files, path) in SKELETON_VECTORS {
                     assert_eq!(
-                        skeleton(&text(name), path),
-                        expected(name),
+                        skeleton(&text(files), path),
+                        expected(files),
                         "the {name} vector"
                     );
                 }
