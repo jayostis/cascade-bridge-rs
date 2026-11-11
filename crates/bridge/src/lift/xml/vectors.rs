@@ -2,6 +2,7 @@
 use super::{lift_slice, lift_slice_breaking};
 use crate::fixtures::{fixture, fixture_names};
 use crate::rdf::canonical_lines;
+use crate::syntax::Syntax;
 use oxigraph::store::Store;
 use oxrdf::Quad;
 use oxrdfio::{RdfFormat, RdfParser};
@@ -10,6 +11,12 @@ use std::collections::BTreeSet;
 /// Every other vector in the directory is run as a lift vector.
 const SKELETON_VECTORS: [(&str, &str); 2] =
     [("skeleton", "Unit"), ("skeleton-record-root", "Unit")];
+
+/// Each vector that reads another vector's files, and the media type its manifest entry names.
+const MEDIA_TYPE_VECTORS: [(&str, &str, &str); 2] = [
+    ("attributes-text-xml", "attributes", "text/xml"),
+    ("attributes-plus-xml", "attributes", "application/example+xml"),
+];
 
 /// Each vector whose manifest entry names elements breaking text.
 const BREAKING_VECTORS: [&str; 3] = [
@@ -179,6 +186,22 @@ mod tests {
                         .into_skeleton()
                         .expect("skeleton");
                     assert_vector(name, lines(&store));
+                }
+            }
+
+            #[test]
+            fn reproduces_every_vector_of_the_specification_that_names_another_xml_media_type() {
+                for (name, files, media_type) in MEDIA_TYPE_VECTORS {
+                    assert_eq!(
+                        Syntax::of(Some(media_type)).ok(),
+                        Some(Syntax::Xml),
+                        "the {name} vector"
+                    );
+                    assert_graph(
+                        &format!("the {name} vector"),
+                        lift_whole(&vector(files, "xml"), &[]),
+                        parsed(&vector(files, "nt")),
+                    );
                 }
             }
         }
