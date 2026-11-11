@@ -15,7 +15,11 @@ const SKELETON_VECTORS: [(&str, &str); 2] =
 /// Each vector that reads another vector's files, and the media type its manifest entry names.
 const MEDIA_TYPE_VECTORS: [(&str, &str, &str); 2] = [
     ("attributes-text-xml", "attributes", "text/xml"),
-    ("attributes-plus-xml", "attributes", "application/example+xml"),
+    (
+        "attributes-plus-xml",
+        "attributes",
+        "application/example+xml",
+    ),
 ];
 
 /// Each vector whose manifest entry names elements breaking text.

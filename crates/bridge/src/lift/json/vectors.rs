@@ -10,7 +10,11 @@ use std::collections::BTreeSet;
 /// Each skeleton vector, the files it reads and the record path its manifest entry names.
 const SKELETON_VECTORS: [(&str, &str, &str); 3] = [
     ("skeleton-json", "skeleton-json", "$.entry[*]"),
-    ("skeleton-json-record-root", "skeleton-json-record-root", "$"),
+    (
+        "skeleton-json-record-root",
+        "skeleton-json-record-root",
+        "$",
+    ),
     (
         "skeleton-json-bracket-path",
         "skeleton-json",
@@ -79,11 +83,7 @@ mod tests {
                 let names: Vec<String> = fixture_names(VECTORS)
                     .into_iter()
                     .filter_map(|name| name.strip_suffix(".json").map(str::to_owned))
-                    .filter(|name| {
-                        !SKELETON_VECTORS
-                            .iter()
-                            .any(|(_, files, _)| files == name)
-                    })
+                    .filter(|name| !SKELETON_VECTORS.iter().any(|(_, files, _)| files == name))
                     .collect();
                 assert!(names.len() >= 7, "{names:?}");
                 for name in names {
