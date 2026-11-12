@@ -5,8 +5,7 @@ Thank you for helping. This is the Cascade Bridge for Rust: it runs Cascade Brid
 implementation of it, never a second statement of it. Where the specification is silent or wrong, the fix is a pull
 request there. [`CLAUDE.md`](CLAUDE.md) holds the rules a change here follows.
 
-Please follow the organisation's code of conduct and security policy. Report a security problem privately, as that
-policy says, never in a public issue.
+Report a security problem privately, by email to contact@cascadeprotocol.org, never in a public issue.
 
 ## Set up
 
