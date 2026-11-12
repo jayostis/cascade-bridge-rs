@@ -23,11 +23,15 @@ rustup target add wasm32-unknown-unknown
 Some checks read the real adapters from sibling folders:
 [cascade-bridge-adapter-ccda](https://github.com/jayostis/cascade-bridge-adapter-ccda) and
 [cascade-bridge-adapter-fhir-r4](https://github.com/jayostis/cascade-bridge-adapter-fhir-r4), cloned beside this
-repository. You do not need them for the unit tests.
+repository. The unit tests do not need them; one step of the `tests, format and lints` check does, and CI checks them out
+for it.
+
+`package/build.sh` is a POSIX shell script, so on Windows run it from Git Bash or WSL. Its first run installs
+`wasm-bindgen-cli` with `cargo install`, which needs the network and is slow.
 
 ## Run the checks
 
-These are the commands CI runs.
+These are the checks CI runs, written as plain `cargo` and `node` so you can run them without CI's extra tooling.
 
 ```sh
 cargo fmt --all --check
@@ -55,13 +59,12 @@ request.
 - **`compatibility`**: builds the package, runs the specification's compatibility tool with your pull request and the
   counterparts it names, runs the test suites and the Node tests, type-checks the package's TypeScript consumer, and
   fails when a shipped adapter query falls back to stock Oxigraph.
-- **`ready-to-merge`**: holds a pull request until every pull request it depends on can merge (see below).
+- **`ready-to-merge`**: holds a pull request until every pull request it depends on can merge (see "A change that spans two repositories").
 
 A pull request from this repository also gets a `build-<commit>` pre-release from the `publish` workflow, which is what
 other repositories read when they depend on your change. A pull request from a fork gets none.
 
-Every dependency is pinned to an exact version and `Cargo.lock` is committed. Add a dependency with an exact version,
-and commit the lock file.
+Dependencies are pinned exactly and `Cargo.lock` is committed; [`CLAUDE.md`](CLAUDE.md) has the rule.
 
 ## Commits and pull requests
 
@@ -69,8 +72,7 @@ Use conventional commits, in the impersonal voice: `feat(bridge): ...`, `fix: ..
 was made and what alternative it did not take; no file does. Do not put a closing keyword (`closes`, `fixes`,
 `resolves`) before an issue the pull request does not finish.
 
-Write no comment or doc comment that restates a name, a signature or a test. Rename instead. A test's name is the
-sentence, and its assertion is the rule.
+[`CLAUDE.md`](CLAUDE.md) says what a comment may not do, and how to name a test.
 
 ## A change that spans two repositories
 
@@ -85,6 +87,9 @@ The `compatibility` check then runs both together, and `ready-to-merge` holds ea
 merges them one after another, and a default branch is red between the first merge and the last. A change to a named
 pull request retests nothing: re-run the dependent pull request's workflow with `gh run rerun`, and re-run
 `compatibility` and `ready-to-merge` just before you merge.
+
+A named pull request must be from a branch of its repository itself: one from a fork fails the check. A contributor
+without write access to the other repository asks a maintainer to open the counterpart.
 
 The full rules are in the specification's
 [`compatibility.md`](https://github.com/jayostis/cascade-bridge-spec/blob/main/compatibility.md).
