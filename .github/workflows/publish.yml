@@ -95,9 +95,9 @@ jobs:
             gh release download "build-$merged_head" --repo "$GITHUB_REPOSITORY" --dir "$dir/assets" ||
               fail "the assets of build-$merged_head cannot be downloaded, so $GITHUB_SHA is built"
             native="$dir/assets/cascade-bridge-x86_64-unknown-linux-gnu"
-            [ "$(find "$dir/assets" -name '*.tgz' | wc -l)" = 1 ] || fail "build-$merged_head lacks its tarball, so $GITHUB_SHA is built"
+            [ "$(find "$dir/assets" -name '*.tgz' ! -name cascade-bridge.tgz | wc -l)" = 1 ] || fail "build-$merged_head lacks its tarball, so $GITHUB_SHA is built"
             [ -f "$native" ] || fail "build-$merged_head lacks its binary, so $GITHUB_SHA is built"
-            tarball=$(find "$dir/assets" -name '*.tgz')
+            tarball=$(find "$dir/assets" -name '*.tgz' ! -name cascade-bridge.tgz)
             integrity=$(printf '%s\n' "$notes" | sed -n 's/^Integrity: *//p')
             native_sha256=$(printf '%s\n' "$notes" | sed -n 's/^Native SHA-256: *//p')
             [ "sha512-$(openssl dgst -sha512 -binary "$tarball" | openssl base64 -A)" = "$integrity" ] ||
@@ -220,7 +220,11 @@ jobs:
             fi
           fi
           if [ "$BUILT" = true ]; then
-            gh release create "$tag" "$out"/*.tgz "$out/cascade-bridge-x86_64-unknown-linux-gnu" \
+            [ "$(find "$out" -name '*.tgz' | wc -l)" = 1 ] || { echo "release: $out does not hold exactly one package" >&2; exit 1; }
+            tarball=$(find "$out" -name '*.tgz')
+            cp "$tarball" "$out/cascade-bridge.tgz"
+            [ -s "$out/cascade-bridge.tgz" ] || { echo "release: $out/cascade-bridge.tgz is missing or empty, so $tag is not made" >&2; exit 1; }
+            gh release create "$tag" "$tarball" "$out/cascade-bridge.tgz" "$out/cascade-bridge-x86_64-unknown-linux-gnu" \
               --repo "$GITHUB_REPOSITORY" \
               --target "$COMMIT" \
               --title "$tag" \

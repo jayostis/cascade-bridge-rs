@@ -61,7 +61,9 @@ request.
 - **`ready-to-merge`**: holds a pull request until every pull request it depends on can merge (see "A change that spans two repositories").
 
 A pull request from this repository also gets a `build-<commit>` pre-release from the `publish` workflow, which is what
-other repositories read when they depend on your change. A pull request from a fork gets none.
+other repositories read when they depend on your change. A pull request from a fork gets none. The release holds the
+package twice, under its versioned name and as `cascade-bridge.tgz`, so a client downloads
+`https://github.com/jayostis/cascade-bridge-rs/releases/download/build-<commit>/cascade-bridge.tgz` without the API.
 
 Dependencies are pinned exactly and `Cargo.lock` is committed; [`CLAUDE.md`](CLAUDE.md) has the rule.
 
