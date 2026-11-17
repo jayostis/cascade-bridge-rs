@@ -223,6 +223,7 @@ jobs:
             [ "$(find "$out" -name '*.tgz' | wc -l)" = 1 ] || { echo "release: $out does not hold exactly one package" >&2; exit 1; }
             tarball=$(find "$out" -name '*.tgz')
             cp "$tarball" "$out/cascade-bridge.tgz"
+            [ -s "$out/cascade-bridge.tgz" ] || { echo "release: $out/cascade-bridge.tgz is missing or empty, so $tag is not made" >&2; exit 1; }
             gh release create "$tag" "$tarball" "$out/cascade-bridge.tgz" "$out/cascade-bridge-x86_64-unknown-linux-gnu" \
               --repo "$GITHUB_REPOSITORY" \
               --target "$COMMIT" \
@@ -230,8 +231,6 @@ jobs:
               --notes-file "$out/notes.txt" \
               --prerelease \
               --latest=false
-            gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | grep -qx cascade-bridge.tgz ||
-              { echo "release: $tag lacks cascade-bridge.tgz" >&2; exit 1; }
           fi
           if [ -z "$PULL" ] && [ "$GITHUB_EVENT_NAME" = push ]; then
             PULL=$(gh api "repos/$GITHUB_REPOSITORY/commits/$COMMIT/pulls"               --jq "[.[] | select(.merge_commit_sha == \"$COMMIT\")][0].number // empty" || true)
