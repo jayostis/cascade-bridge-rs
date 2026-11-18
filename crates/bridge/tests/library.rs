@@ -447,8 +447,10 @@ mod converting_a_document {
                     graph,
                     "findings {findings}, census {census}"
                 );
-                assert!(
-                    bodies(&asked).is_some(),
+                let counted = bodies(&asked).expect("findings, which the convert asked for");
+                assert_eq!(
+                    asked.finding_count,
+                    counted.values().sum::<usize>(),
                     "findings {findings}, census {census}"
                 );
             }

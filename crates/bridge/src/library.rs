@@ -297,12 +297,13 @@ impl Loaded {
         if self.unvalidated.is_some() {
             run.findings.clear();
         }
+        let finding_count = run.annotations();
         let findings = (asked != Asked::default() && self.unvalidated.is_none())
-            .then_some(std::mem::take(&mut run.findings));
+            .then(|| std::mem::take(&mut run.findings));
         Ok(Conversion {
             records: run.units,
             triples: run.triples(),
-            finding_count: run.annotations(),
+            finding_count,
             detected: run.detected,
             unvalidated: self.unvalidated.clone(),
             skipped: self.prepared.skipped.clone(),
