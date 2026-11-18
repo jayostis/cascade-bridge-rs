@@ -4,6 +4,7 @@ use crate::error::{Error, Result};
 use crate::lift::{Paths, Unit, Valued};
 use crate::load::{instances, objects, subjects, turtle, Prefixes};
 use crate::resolver::Resolver;
+use crate::run::Asked;
 use crate::terms::{
     BRIDGE_CARRIED_IN_PART, BRIDGE_LOOKUP_IN, BRIDGE_LOOKUP_NAMES_GAP, BRIDGE_NAMES_GAP,
     BRIDGE_NO_HOME, BRIDGE_NO_PREDICATE, BRIDGE_PATH_ENTRY, BRIDGE_SOURCE_LACKS_REQUIRED,
@@ -181,16 +182,24 @@ impl Accounting {
         })
     }
 
-    pub(crate) fn findings(&self, record: &Record<'_>, unit: &Unit) -> Result<Vec<Quad>> {
+    pub(crate) fn findings(
+        &self,
+        record: &Record<'_>,
+        unit: &Unit,
+        asked: Asked,
+    ) -> Result<Vec<Quad>> {
         let mut findings = Vec::new();
         for occurrence in unit.occurrences() {
-            if !self.paths.contains(&occurrence.path) {
+            if asked.census && !self.paths.contains(&occurrence.path) {
                 findings.extend(annotation::unaccounted(
                     record,
                     &occurrence.path,
                     occurrence.within.as_deref(),
                     occurrence.count,
                 )?);
+            }
+            if !asked.findings {
+                continue;
             }
             for reported in self.reported.get(&occurrence.path).into_iter().flatten() {
                 findings.extend(annotation::gap(
@@ -202,6 +211,9 @@ impl Accounting {
                     occurrence.count,
                 )?);
             }
+        }
+        if !asked.findings {
+            return Ok(findings);
         }
         // Sorted, so a run's output does not depend on which way a hash fell.
         let mut held: Vec<&Valued> = unit.values().iter().collect();

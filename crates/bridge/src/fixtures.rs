@@ -7,7 +7,7 @@ use crate::load::load_adapter;
 use crate::query::{Profile, QueryProfile};
 use crate::records::Supplied;
 use crate::resolver::{Maps, Resolver};
-use crate::run::{convert, convert_with, prepare, Conversion, Source};
+use crate::run::{convert, convert_with, prepare, Asked, Conversion, Source};
 use crate::Result;
 use oxrdf::{Quad, Term};
 use std::fs;
@@ -194,6 +194,7 @@ pub fn profiled_under(
             facts: None,
         },
         &profile,
+        Asked::ALL,
     )?;
     Ok((conversion, profile.queries()))
 }

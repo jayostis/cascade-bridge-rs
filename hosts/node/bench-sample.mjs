@@ -75,7 +75,7 @@ function converted(adapter, document, options) {
     triples: conversion.triples,
     findings: conversion.findingCount,
     graphBytes: conversion.graph.byteLength,
-    findingsBytes: conversion.findings.byteLength,
+    findingsBytes: conversion.findings?.byteLength ?? 0,
     queries: conversion.queries,
     stages: conversion.stages,
   };
@@ -86,8 +86,9 @@ try {
   const { adapter, document, load } = loaded();
   say({ phase: "convert" });
   const [profileFirst, profileSecond] = given.profile ?? [true, false];
-  const first = converted(adapter, document, { profile: profileFirst, executor: given.executor });
-  const second = converted(adapter, document, { profile: profileSecond, executor: given.executor });
+  const asked = { findings: true, census: true };
+  const first = converted(adapter, document, { profile: profileFirst, executor: given.executor, ...asked });
+  const second = converted(adapter, document, { profile: profileSecond, executor: given.executor, ...asked });
   say({
     sample: { load, converts: [first, second], rss: process.resourceUsage().maxRSS * 1024, skipped: skip },
   });

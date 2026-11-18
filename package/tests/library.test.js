@@ -135,9 +135,10 @@ test("a budget that is not a whole number of MiB from 1 to 3072, or a positive t
 
 test("an adapter loaded for measurement leaves out what it is told to, and says so; a profiled convert times its stages", async () => {
   const { Adapter } = await bridge();
-  const whole = Adapter.load({ iri: ADAPTER, files: toLoad() }, vocabulary).convert(document(two));
+  const asked = { findings: true, census: true };
+  const whole = Adapter.load({ iri: ADAPTER, files: toLoad() }, vocabulary).convert(document(two), asked);
   const measured = Adapter.loadForMeasurement({ iri: ADAPTER, files: toLoad() }, vocabulary, ["findings"]);
-  const left = measured.convert(document(two), { profile: true });
+  const left = measured.convert(document(two), { profile: true, ...asked });
   assert.equal(whole.skippedForMeasurement, undefined);
   assert.equal(whole.stages, undefined);
   assert.deepEqual(Adapter.load({ iri: ADAPTER, files: toLoad() }, vocabulary).loadStages(), []);

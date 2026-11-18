@@ -1,3 +1,4 @@
+__wbg___wbindgen_boolean_get
 __wbg___wbindgen_is_falsy
 __wbg___wbindgen_is_null
 __wbg___wbindgen_is_undefined

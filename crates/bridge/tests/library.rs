@@ -172,7 +172,14 @@ fn profiled_queries() -> (usize, Vec<QueryProfile>) {
     let two = fixture("fixtures/in/two.xml");
     let records = convert(&loaded, &two).records;
     let (_, queries) = loaded
-        .convert_profiled(&document(&two))
+        .convert_profiled_with(
+            &document(&two),
+            ConvertOptions {
+                findings: true,
+                census: true,
+                ..ConvertOptions::default()
+            },
+        )
         .unwrap_or_else(|error| panic!("the document does not convert: {error}"));
     (records, queries)
 }
@@ -449,8 +456,8 @@ mod converting_a_document {
 
         /// returns the census only where asked, and every other finding only where the findings are
         #[test]
-        fn returns_the_census_only_where_asked_and_every_other_finding_only_where_the_findings_are(
-        ) {
+        fn returns_the_census_only_where_asked_and_every_other_finding_only_where_the_findings_are()
+        {
             let loaded = load(&tiny_to_load(), &vocabulary());
             for path in ["fixtures/in/unaccounted-child.xml", "fixtures/in/two.xml"] {
                 let bytes = fixture(path);
@@ -479,7 +486,12 @@ mod converting_a_document {
                 census,
                 Some(BTreeMap::from([(PATH_NOT_ACCOUNTED.to_owned(), 1)]))
             );
-            let others = bodies(&asking(&loaded, &fixture("fixtures/in/two.xml"), true, false));
+            let others = bodies(&asking(
+                &loaded,
+                &fixture("fixtures/in/two.xml"),
+                true,
+                false,
+            ));
             assert!(others.is_some_and(|found| !found.is_empty()));
         }
 

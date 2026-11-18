@@ -165,11 +165,13 @@ function runLibrary(parsed) {
           result =
             operation === "ask"
               ? guarded(() => on.accepts(document))
-              : guarded(() => on.convert(document, { format: given.format }));
+              : guarded(() =>
+                  on.convert(document, { format: given.format, findings: given.findings, census: given.census }),
+                );
         }
         if (result.failure === undefined && operation === "convert") {
           put("graph", result.answer.graph);
-          if (result.answer.unvalidated === undefined) put("findings", result.answer.findings);
+          if (result.answer.findings !== undefined) put("findings", result.answer.findings);
         }
         if (result.failure?.kind === "bridgeFailure") loaded = undefined;
       } else if (operation === "test") {
@@ -249,6 +251,8 @@ function runConvert(parsed) {
       { iri, bytes, envelope, facts },
       {
         format: parsed.format,
+        findings: parsed.findings !== undefined,
+        census: parsed.findings !== undefined,
         findingsRelativeTo: parsed.findings === undefined ? undefined : iriOfWritten(parsed.findings),
       },
     );
@@ -271,7 +275,7 @@ function runConvert(parsed) {
     if (parsed.findings !== undefined) {
       // Not emptied first, so a run that fails leaves a committed oracle as it was.
       at(parsed.findings, () => closeSync(openSync(parsed.findings, "a")));
-      at(parsed.findings, () => writeFileSync(parsed.findings, conversion.findings));
+      at(parsed.findings, () => writeFileSync(parsed.findings, conversion.findings ?? new Uint8Array()));
       process.stderr.write(`Findings ${parsed.findings}\n`);
     }
     if (parsed.out !== undefined) {

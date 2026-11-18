@@ -9,7 +9,7 @@ use crate::query::{Fallback, Profile};
 use crate::rdf::{canonical_lines, canonical_parts};
 use crate::records::Supplied;
 use crate::resolver::Resolver;
-use crate::run::{convert_with, prepare, Conversion, Prepared, Source};
+use crate::run::{convert_with, prepare, Asked, Conversion, Prepared, Source};
 use crate::terms::{
     BRIDGE_ARRIVED_AS, BRIDGE_CONVERSION, BRIDGE_DATASET, BRIDGE_ENVELOPE,
     BRIDGE_EXPECTED_FINDINGS, BRIDGE_EXPECTED_GRAPH, BRIDGE_FACTS, BRIDGE_IDENTITY_RELATION_TEST,
@@ -169,6 +169,7 @@ impl Entry<'_> {
                 facts: facts.as_ref().map(|(turtle, iri)| Supplied { iri, turtle }),
             },
             &Profile::new(self.executor, false, self.budgets),
+            Asked::ALL,
         )?;
         Ok((run, bytes))
     }
