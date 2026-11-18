@@ -8,7 +8,7 @@ use crate::query::Profile;
 use crate::rdf::{serialise, serialise_at};
 use crate::records::Supplied;
 use crate::resolver::{key, Maps};
-use crate::run::{self, prepare, prepare_skipping, Prepared, Source};
+use crate::run::{self, prepare, prepare_skipping, Asked, Prepared, Source};
 use crate::terms::{
     BRIDGE_ADAPTER, BRIDGE_CASCADE_VOCABULARY_REPOSITORY, BRIDGE_CRATE_FILE, BRIDGE_ENVELOPE,
     BRIDGE_LOAD_FILE, BRIDGE_SOURCE_MEDIA_TYPE, BRIDGE_TEST_MANIFEST, BRIDGE_VOCABULARY_FILE,
@@ -268,8 +268,9 @@ impl Loaded {
             &self.prepared,
             source(document),
             &Profile::new(options.executor, false, options.budgets),
+            options.asked(),
         )?;
-        self.conversion(run)
+        self.conversion(run, options.asked())
     }
 
     pub fn convert_profiled(
@@ -285,27 +286,31 @@ impl Loaded {
         options: ConvertOptions,
     ) -> Result<(Conversion, Vec<QueryProfile>)> {
         let profile = Profile::new(options.executor, true, options.budgets);
-        let run = run::convert_with(&self.prepared, source(document), &profile)?;
-        let mut conversion = profile.during(Stage::Summary, || self.conversion(run))?;
+        let run = run::convert_with(&self.prepared, source(document), &profile, options.asked())?;
+        let mut conversion =
+            profile.during(Stage::Summary, || self.conversion(run, options.asked()))?;
         conversion.stages = Some(profile.stages());
         Ok((conversion, profile.queries()))
     }
 
-    fn conversion(&self, mut run: run::Conversion) -> Result<Conversion> {
+    fn conversion(&self, mut run: run::Conversion, asked: Asked) -> Result<Conversion> {
         if self.unvalidated.is_some() {
             run.findings.clear();
         }
+        let finding_count = run.annotations();
+        let findings = (asked != Asked::default() && self.unvalidated.is_none())
+            .then(|| std::mem::take(&mut run.findings));
         Ok(Conversion {
             records: run.units,
             triples: run.triples(),
-            finding_count: run.annotations(),
+            finding_count,
             detected: run.detected,
             unvalidated: self.unvalidated.clone(),
             skipped: self.prepared.skipped.clone(),
             prefixes: self.prepared.prefixes.clone(),
             findings_prefixes: self.prepared.findings_prefixes.clone(),
             quads: run.quads,
-            findings: run.findings,
+            findings,
             stages: None,
             serialising: AtomicU64::default(),
         })
@@ -339,7 +344,7 @@ pub struct Conversion {
     prefixes: Vec<(String, String)>,
     findings_prefixes: Vec<(String, String)>,
     quads: Vec<Quad>,
-    findings: Vec<Quad>,
+    findings: Option<Vec<Quad>>,
     stages: Option<Vec<StageTime>>,
     serialising: AtomicU64,
 }
@@ -349,13 +354,17 @@ impl Conversion {
         self.serialised(|| Ok(serialise(&self.quads, format, &self.prefixes)?.into_bytes()))
     }
 
-    /// Every IRI the file standing at `relative_to` can name relative to itself is named that way.
-    pub fn findings(&self, format: Format, relative_to: Option<&str>) -> Result<Vec<u8>> {
+    /// The findings the convert asked for; `None` where it asked for neither the findings nor the
+    /// census, or the graph went unvalidated. Every IRI the file standing at `relative_to` can name
+    /// relative to itself is named that way.
+    pub fn findings(&self, format: Format, relative_to: Option<&str>) -> Result<Option<Vec<u8>>> {
+        let Some(findings) = &self.findings else {
+            return Ok(None);
+        };
         self.serialised(|| {
-            Ok(
-                serialise_at(&self.findings, format, &self.findings_prefixes, relative_to)?
-                    .into_bytes(),
-            )
+            Ok(Some(
+                serialise_at(findings, format, &self.findings_prefixes, relative_to)?.into_bytes(),
+            ))
         })
     }
 
@@ -382,10 +391,23 @@ impl Conversion {
     }
 }
 
+/// `findings` asks for every finding but the census, and `census` for the census: neither is
+/// asked for by default.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ConvertOptions {
     pub executor: Executor,
     pub budgets: Budgets,
+    pub findings: bool,
+    pub census: bool,
+}
+
+impl ConvertOptions {
+    fn asked(self) -> Asked {
+        Asked {
+            findings: self.findings,
+            census: self.census,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]

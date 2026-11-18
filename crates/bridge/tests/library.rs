@@ -6,7 +6,7 @@ use cascade_bridge::{
     Document, Error, ErrorKind, Executor, Facts, Files, Format, Loaded, Map, Named, QueryProfile,
     Result, Stage, TestOptions,
 };
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -17,6 +17,8 @@ const FACTS: &str = "https://example.org/facts/catalog.ttl";
 const MAPPING: &str = "mapping/item.rq";
 const VOCABULARY_FILE: &str = "ontologies/catalog/v1/catalog.ttl";
 const OA_HAS_SOURCE: &str = "http://www.w3.org/ns/oa#hasSource";
+const OA_HAS_BODY: &str = "http://www.w3.org/ns/oa#hasBody";
+const PATH_NOT_ACCOUNTED: &str = "https://ns.cascadeprotocol.org/cascade#SourcePathNotAccounted";
 const EARL_TEST: &str = "http://www.w3.org/ns/earl#test";
 const DOAP_REVISION: &str = "http://usefulinc.com/ns/doap#revision";
 
@@ -91,9 +93,32 @@ fn load(adapter: &Files, vocabulary: &Files) -> Loaded {
 }
 
 fn convert(adapter: &Loaded, bytes: &[u8]) -> Conversion {
+    asking(adapter, bytes, true, true)
+}
+
+fn asking(adapter: &Loaded, bytes: &[u8], findings: bool, census: bool) -> Conversion {
     adapter
-        .convert(&document(bytes))
+        .convert_with(
+            &document(bytes),
+            ConvertOptions {
+                findings,
+                census,
+                ..ConvertOptions::default()
+            },
+        )
         .unwrap_or_else(|error| panic!("the document does not convert: {error}"))
+}
+
+/// Each finding's body, counted; `None` where the conversion returned no findings.
+fn bodies(conversion: &Conversion) -> Option<BTreeMap<String, usize>> {
+    let findings = conversion
+        .findings(Format::Turtle, None)
+        .unwrap_or_else(|error| panic!("the findings are not written: {error}"))?;
+    let mut counted = BTreeMap::new();
+    for body in objects_of(&findings, OA_HAS_BODY) {
+        *counted.entry(body).or_default() += 1;
+    }
+    Some(counted)
 }
 
 fn written(bytes: Result<Vec<u8>>) -> Vec<u8> {
@@ -147,7 +172,14 @@ fn profiled_queries() -> (usize, Vec<QueryProfile>) {
     let two = fixture("fixtures/in/two.xml");
     let records = convert(&loaded, &two).records;
     let (_, queries) = loaded
-        .convert_profiled(&document(&two))
+        .convert_profiled_with(
+            &document(&two),
+            ConvertOptions {
+                findings: true,
+                census: true,
+                ..ConvertOptions::default()
+            },
+        )
         .unwrap_or_else(|error| panic!("the document does not convert: {error}"));
     (records, queries)
 }
@@ -172,6 +204,7 @@ fn past_its_time_budget(loaded: &Loaded, bytes: &[u8]) -> Error {
                     time: Duration::ZERO,
                     ..Budgets::default()
                 },
+                ..ConvertOptions::default()
             },
         )
         .err()
@@ -395,6 +428,75 @@ mod converting_a_document {
     mod convert {
         use super::*;
 
+        /// returns no findings unless asked, and the same graph whatever is asked
+        #[test]
+        fn returns_no_findings_unless_asked_and_the_same_graph_whatever_is_asked() {
+            let loaded = load(&tiny_to_load(), &vocabulary());
+            let two = fixture("fixtures/in/two.xml");
+            let plain = loaded
+                .convert(&document(&two))
+                .unwrap_or_else(|error| panic!("the document does not convert: {error}"));
+            assert_eq!(bodies(&plain), None);
+            assert_eq!(plain.finding_count, 0);
+            let graph = canonical(&written(plain.graph(Format::Turtle)));
+            assert!(names_an_item(&graph), "{graph:?}");
+            for (findings, census) in [(true, false), (false, true), (true, true)] {
+                let asked = asking(&loaded, &two, findings, census);
+                assert_eq!(
+                    canonical(&written(asked.graph(Format::Turtle))),
+                    graph,
+                    "findings {findings}, census {census}"
+                );
+                let counted = bodies(&asked).expect("findings, which the convert asked for");
+                assert_eq!(
+                    asked.finding_count,
+                    counted.values().sum::<usize>(),
+                    "findings {findings}, census {census}"
+                );
+            }
+        }
+
+        /// returns the census only where asked, and every other finding only where the findings are
+        #[test]
+        fn returns_the_census_only_where_asked_and_every_other_finding_only_where_the_findings_are()
+        {
+            let loaded = load(&tiny_to_load(), &vocabulary());
+            for path in ["fixtures/in/unaccounted-child.xml", "fixtures/in/two.xml"] {
+                let bytes = fixture(path);
+                let both = bodies(&asking(&loaded, &bytes, true, true)).expect("both asked");
+                let (census, others): (BTreeMap<_, _>, BTreeMap<_, _>) = both
+                    .into_iter()
+                    .partition(|(body, _)| body == PATH_NOT_ACCOUNTED);
+                assert_eq!(
+                    bodies(&asking(&loaded, &bytes, false, true)),
+                    Some(census),
+                    "{path}"
+                );
+                assert_eq!(
+                    bodies(&asking(&loaded, &bytes, true, false)),
+                    Some(others),
+                    "{path}"
+                );
+            }
+            let census = bodies(&asking(
+                &loaded,
+                &fixture("fixtures/in/unaccounted-child.xml"),
+                false,
+                true,
+            ));
+            assert_eq!(
+                census,
+                Some(BTreeMap::from([(PATH_NOT_ACCOUNTED.to_owned(), 1)]))
+            );
+            let others = bodies(&asking(
+                &loaded,
+                &fixture("fixtures/in/two.xml"),
+                true,
+                false,
+            ));
+            assert!(others.is_some_and(|found| !found.is_empty()));
+        }
+
         #[test]
         fn converts_each_of_two_documents_to_the_graph_a_fresh_load_gives() {
             let (adapter, vocabulary) = (tiny_to_load(), vocabulary());
@@ -440,17 +542,27 @@ mod converting_a_document {
             let two = fixture("fixtures/in/two.xml");
             let facts = fixture("fixtures/facts/catalog.ttl");
             let converted = loaded
-                .convert(&Document {
-                    facts: Some(Facts {
-                        iri: FACTS,
-                        bytes: &facts,
-                    }),
-                    ..document(&two)
-                })
+                .convert_with(
+                    &Document {
+                        facts: Some(Facts {
+                            iri: FACTS,
+                            bytes: &facts,
+                        }),
+                        ..document(&two)
+                    },
+                    ConvertOptions {
+                        findings: true,
+                        census: true,
+                        ..ConvertOptions::default()
+                    },
+                )
                 .unwrap_or_else(|error| panic!("the document does not convert: {error}"));
             let (graph_bytes, findings_bytes) = (
                 written(converted.graph(Format::Turtle)),
-                written(converted.findings(Format::Turtle, None)),
+                converted
+                    .findings(Format::Turtle, None)
+                    .unwrap_or_else(|error| panic!("the findings are not written: {error}"))
+                    .expect("findings, which the convert asked for"),
             );
             let graph = String::from_utf8_lossy(&graph_bytes);
             let findings = String::from_utf8_lossy(&findings_bytes);
@@ -586,10 +698,22 @@ mod measuring_a_load_and_a_convert {
             let two = fixture("fixtures/in/two.xml");
             let plain = convert(&loaded, &two);
             let (profiled, _) = loaded
-                .convert_profiled(&document(&two))
+                .convert_profiled_with(
+                    &document(&two),
+                    ConvertOptions {
+                        findings: true,
+                        census: true,
+                        ..ConvertOptions::default()
+                    },
+                )
                 .unwrap_or_else(|error| panic!("the document does not convert: {error}"));
             let findings = |conversion: &Conversion| {
-                canonical(&written(conversion.findings(Format::Turtle, None)))
+                canonical(
+                    &conversion
+                        .findings(Format::Turtle, None)
+                        .unwrap_or_else(|error| panic!("the findings are not written: {error}"))
+                        .expect("findings, which the convert asked for"),
+                )
             };
             assert_eq!(
                 canonical(&written(profiled.graph(Format::Turtle))),

@@ -1,6 +1,6 @@
 use cascade_bridge::{
-    describe, load, test, Document, ErrorKind, Facts, Files, Format, Loaded, Map, Named,
-    TestOptions,
+    describe, load, test, ConvertOptions, Document, ErrorKind, Facts, Files, Format, Loaded, Map,
+    Named, TestOptions,
 };
 use serde_json::{json, Value};
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -20,6 +20,16 @@ fn text<'a>(value: &'a Value, name: &str) -> Result<&'a str, String> {
     field(value, name)?
         .as_str()
         .ok_or_else(|| format!("the calls file's {name} is not a string: {value}"))
+}
+
+fn asked(value: &Value, name: &str) -> Result<bool, String> {
+    match value.get(name) {
+        None => Ok(false),
+        Some(Value::Bool(asked)) => Ok(*asked),
+        Some(other) => Err(format!(
+            "the calls file's {name} is not true or false: {other}"
+        )),
+    }
 }
 
 fn format(value: &Value) -> Result<Format, String> {
@@ -241,16 +251,18 @@ fn call(case: &mut Case, call: &Value, written: &Written) -> Result<(), String> 
         "convert" => {
             let document = DocumentRead::of(arguments)?;
             let format = format(arguments)?;
+            let options = ConvertOptions {
+                findings: asked(arguments, "findings")?,
+                census: asked(arguments, "census")?,
+                ..ConvertOptions::default()
+            };
             let Some(loaded) = case.loaded() else {
                 return Ok(());
             };
             let converted = loaded.and_then(|loaded| {
                 guarded(|| {
-                    let conversion = loaded.convert(&document.document())?;
-                    let findings = match conversion.unvalidated {
-                        Some(_) => None,
-                        None => Some(conversion.findings(format, None)?),
-                    };
+                    let conversion = loaded.convert_with(&document.document(), options)?;
+                    let findings = conversion.findings(format, None)?;
                     Ok((conversion.graph(format)?, findings))
                 })
             });

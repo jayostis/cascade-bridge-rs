@@ -61,6 +61,10 @@ export interface Description {
 
 export interface ConvertOptions {
   format?: Format;
+  /** Asks for every finding but the census: the queries', the schemas', the vocabulary's and the accounting entries'. Not asked for by default. */
+  findings?: boolean;
+  /** Asks for the census: a finding for each path of a record no accounting entry carries. Not asked for by default. */
+  census?: boolean;
   findingsRelativeTo?: string;
   /** Times each query, and counts its executions and rows, into `Conversion.queries`. */
   profile?: boolean;
@@ -97,7 +101,8 @@ export type Skip = "schema" | "shapes" | "findings";
 
 export interface Conversion {
   graph: Uint8Array;
-  findings: Uint8Array;
+  /** The findings `ConvertOptions.findings` and `ConvertOptions.census` asked for; absent where neither was, or where `unvalidated` is set. */
+  findings?: Uint8Array;
   records: number;
   triples: number;
   findingCount: number;
@@ -408,6 +413,16 @@ fn executor(options: &JsValue) -> Result<Executor, JsValue> {
     }
 }
 
+fn switch(options: &JsValue, key: &str) -> Result<bool, JsValue> {
+    let value = get(options, key)?;
+    if absent(&value) {
+        return Ok(false);
+    }
+    value
+        .as_bool()
+        .ok_or_else(|| mistaken(format!("options.{key} is not true or false")))
+}
+
 fn positive(options: &JsValue, key: &str) -> Result<Option<f64>, JsValue> {
     let value = get(options, key)?;
     if absent(&value) {
@@ -569,6 +584,8 @@ impl Adapter {
                     ConvertOptions {
                         executor: self::executor(&options)?,
                         budgets: self::budgets(&options)?,
+                        findings: switch(&options, "findings")?,
+                        census: switch(&options, "census")?,
                     },
                 ),
                 None => (Format::Turtle, None, false, ConvertOptions::default()),
@@ -596,15 +613,12 @@ impl Adapter {
             "graph",
             &array(&conversion.graph(format).map_err(thrown)?),
         );
-        set(
-            &value,
-            "findings",
-            &array(
-                &conversion
-                    .findings(format, relative_to.as_deref())
-                    .map_err(thrown)?,
-            ),
-        );
+        if let Some(findings) = conversion
+            .findings(format, relative_to.as_deref())
+            .map_err(thrown)?
+        {
+            set(&value, "findings", &array(&findings));
+        }
         set(&value, "records", &(conversion.records as f64).into());
         set(&value, "triples", &(conversion.triples as f64).into());
         set(

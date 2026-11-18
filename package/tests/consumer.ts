@@ -25,9 +25,9 @@ const document: Document = {
 
 const loaded: Adapter = Adapter.load(adapter, vocabulary);
 const accepted: boolean = loaded.accepts(document);
-const conversion: Conversion = loaded.convert(document);
+const conversion: Conversion = loaded.convert(document, { findings: true, census: true });
 const graph: Uint8Array = conversion.graph;
-const findings: Uint8Array = conversion.findings;
+const findings: Uint8Array | undefined = conversion.findings;
 loaded.free();
 void [accepted, graph, findings];
 

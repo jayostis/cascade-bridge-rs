@@ -1499,11 +1499,19 @@ mod answering_a_calls_file {
                     "format": "turtle" } } ] },
             { "name": "convert", "calls": [
                 load_with_the_vocabulary(&["fixtures/"]),
+                { "convert": { "document": with_facts, "format": "ntriples",
+                    "findings": true, "census": true } },
                 { "convert": { "document": with_facts, "format": "ntriples" } } ] }
         ] }));
-        for file in ["describe/1.graph", "convert/2.graph", "convert/2.findings"] {
+        for file in [
+            "describe/1.graph",
+            "convert/2.graph",
+            "convert/2.findings",
+            "convert/3.graph",
+        ] {
             assert!(held.contains_key(file), "{file}: {held:#?}");
         }
+        assert!(!held.contains_key("convert/3.findings"), "{held:#?}");
     }
 
     #[test]

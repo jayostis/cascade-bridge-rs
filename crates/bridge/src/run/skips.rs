@@ -108,7 +108,7 @@ const LEFT_OUT: [Left; 3] = [
 fn profiled(prepared: &Prepared, input: &Input, kept: bool) -> (Duration, Profile) {
     let profile = Profile::new(Default::default(), kept, Default::default());
     let started = Instant::now();
-    convert_with(prepared, input.source(), &profile).expect("conversion");
+    convert_with(prepared, input.source(), &profile, super::Asked::ALL).expect("conversion");
     (started.elapsed(), profile)
 }
 

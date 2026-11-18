@@ -59,6 +59,8 @@ impl Convert {
         ConvertOptions {
             executor: self.executor,
             budgets: self.budgets,
+            findings: self.findings.is_some(),
+            census: self.findings.is_some(),
         }
     }
 }
@@ -481,7 +483,8 @@ fn convert(arguments: &Convert) -> Result<u8, String> {
         let at = iri_of(path)?;
         let findings = conversion
             .findings(arguments.format, Some(&at))
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())?
+            .unwrap_or_default();
         written(path, &findings)?;
         eprintln!("Findings {path}");
     }

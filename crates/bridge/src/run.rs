@@ -122,6 +122,24 @@ impl Conversion {
     }
 }
 
+/// Which findings a convert makes: the census, every other finding, both or neither.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct Asked {
+    pub(crate) findings: bool,
+    pub(crate) census: bool,
+}
+
+impl Asked {
+    pub(crate) const ALL: Self = Self {
+        findings: true,
+        census: true,
+    };
+
+    fn any(self) -> bool {
+        self.findings || self.census
+    }
+}
+
 pub(crate) struct Source<'a> {
     pub(crate) iri: &'a str,
     pub(crate) envelope: Option<&'a str>,
@@ -397,13 +415,14 @@ pub(crate) fn accepts(prepared: &Prepared, source: Source<'_>) -> Result<bool> {
 
 #[cfg(test)]
 pub(crate) fn convert(prepared: &Prepared, source: Source<'_>) -> Result<Conversion> {
-    convert_with(prepared, source, &Profile::default())
+    convert_with(prepared, source, &Profile::default(), Asked::ALL)
 }
 
 pub(crate) fn convert_with(
     prepared: &Prepared,
     source: Source<'_>,
     profile: &Profile,
+    asked: Asked,
 ) -> Result<Conversion> {
     let named = source
         .envelope
@@ -416,6 +435,7 @@ pub(crate) fn convert_with(
     let paths = prepared
         .accounting
         .as_ref()
+        .filter(|_| asked.any())
         .map_or(Paths::Dropped, Accounting::paths);
     let reading = reading(prepared, named);
     let arrived_in = Document::new(source.bytes, source.facts).explained_by(ErrorKind::Facts)?;
@@ -451,6 +471,7 @@ pub(crate) fn convert_with(
             &arrived_in,
             &shared,
             profile,
+            asked,
         )?;
         conversion.quads.extend(produced);
         conversion.findings.extend(findings);
@@ -465,18 +486,20 @@ pub(crate) fn convert_with(
             version: Some(env!("CARGO_PKG_VERSION")),
         },
     ));
-    let envelope = admitting(lift.as_ref(), &reading).map(|chosen| &prepared.envelopes[chosen]);
-    conversion.findings.extend(
-        document_findings(
-            prepared,
-            envelope,
-            source.iri,
-            lift.as_ref(),
-            &text,
-            profile,
-        )
-        .explained_by(ErrorKind::Document)?,
-    );
+    if asked.findings {
+        let envelope = admitting(lift.as_ref(), &reading).map(|chosen| &prepared.envelopes[chosen]);
+        conversion.findings.extend(
+            document_findings(
+                prepared,
+                envelope,
+                source.iri,
+                lift.as_ref(),
+                &text,
+                profile,
+            )
+            .explained_by(ErrorKind::Document)?,
+        );
+    }
     conversion.detected = prepared
         .detect
         .as_ref()
@@ -503,6 +526,7 @@ fn unit_converted(
     arrived_in: &Document,
     shared: &Shared,
     profile: &Profile,
+    asked: Asked,
 ) -> Result<(Vec<Quad>, Vec<Quad>)> {
     let selector = unit.selector();
     let selector_type = prepared.syntax.selector_type();
@@ -511,16 +535,22 @@ fn unit_converted(
         selector: &selector,
         selector_type,
     };
-    let mut findings = validated(schema, &record, &unit.text, profile)?;
-    if let Some(accounting) = &prepared.accounting {
-        findings.extend(profile.during(Stage::Accounting, || accounting.findings(&record, unit))?);
+    let mut findings = if asked.findings {
+        validated(schema, &record, &unit.text, profile)?
+    } else {
+        Vec::new()
+    };
+    if let Some(accounting) = prepared.accounting.as_ref().filter(|_| asked.any()) {
+        findings.extend(profile.during(Stage::Accounting, || {
+            accounting.findings(&record, unit, asked)
+        })?);
     }
     fill(unit, &selector, profile)?;
     let data = Dataset::over(&unit.store, shared);
     let versioned = profile.during(Stage::Records, || {
         records::versioned(mapped(prepared, &data, profile)?)
     })?;
-    for dropped in &versioned.dropped {
+    for dropped in versioned.dropped.iter().filter(|_| asked.findings) {
         findings.extend(annotation::not_kept(
             &record,
             dropped.selector.as_deref(),
@@ -530,6 +560,9 @@ fn unit_converted(
     let produced = profile.during(Stage::Records, || {
         arrived_in.arrived(versioned, &selector, selector_type, &data)
     })?;
+    if !asked.findings {
+        return Ok((produced, findings));
+    }
     if let Some(vocabulary) = &prepared.vocabulary {
         findings.extend(profile.during(Stage::OutputValidation, || {
             vocabulary.findings(&record, &produced)
