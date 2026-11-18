@@ -26,10 +26,23 @@ function document(bytes) {
 test("loads the tiny adapter from a Map and converts a document", async () => {
   const { Adapter } = await bridge();
   const adapter = Adapter.load({ iri: ADAPTER, files: toLoad() }, vocabulary);
-  const { graph, findings } = adapter.convert(document(two));
+  const { graph, findings, findingCount } = adapter.convert(document(two));
   assert.ok(graph instanceof Uint8Array, `the graph is ${typeof graph}`);
-  assert.ok(findings instanceof Uint8Array, `the findings are ${typeof findings}`);
+  assert.equal(findings, undefined, "no findings, which the convert did not ask for");
+  assert.equal(findingCount, 0);
   assert.match(new TextDecoder().decode(graph), /urn:example:item:1/);
+});
+
+test("returns the findings and the census only where asked, by two switches", async () => {
+  const { Adapter } = await bridge();
+  const adapter = Adapter.load({ iri: ADAPTER, files: toLoad() }, vocabulary);
+  const child = tiny.get("fixtures/in/unaccounted-child.xml");
+  const census = /SourcePathNotAccounted/;
+  const asked = (options) => new TextDecoder().decode(adapter.convert(document(child), options).findings);
+  assert.match(asked({ census: true }), census);
+  assert.doesNotMatch(asked({ findings: true }), census);
+  assert.match(asked({ findings: true, census: true }), census);
+  assert.throws(() => adapter.convert(document(child), { census: "yes" }), TypeError);
 });
 
 test("a document that does not parse throws a BridgeError of kind document", async () => {
