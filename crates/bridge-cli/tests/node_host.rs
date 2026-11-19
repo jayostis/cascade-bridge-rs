@@ -879,11 +879,13 @@ mod measuring_for_the_benchmark {
         for (name, expected) in [
             ("two/convert/first", "clock"),
             ("two/convert/second", "clock"),
+            ("two/convert/profiled", "clock"),
             ("two/memory.grow/first", "cost"),
             ("two/memory.grow/second", "cost"),
             ("two/wasm-memory/first", "cost"),
             ("two/wasm-memory/second", "cost"),
             ("two/rss", "clock"),
+            ("two/records-per-second", "clock"),
             ("two/records", "output"),
             ("two/triples", "output"),
             ("two/findings", "output"),
@@ -894,9 +896,18 @@ mod measuring_for_the_benchmark {
             ("two/query-time/item.rq", "clock"),
             ("two/query-rows/item.rq", "output"),
             ("two/query-time/detect.rq", "clock"),
+            ("two/stage/mapping", "clock"),
+            ("two/stage/unaccounted", "clock"),
+            ("two/output/graph", "output"),
+            ("two/output/findings", "output"),
             ("catalog/load", "clock"),
+            ("catalog/load/read-files", "clock"),
+            ("catalog/load/prepare", "clock"),
             ("catalog/load/files-read", "cost"),
             ("catalog/load/missing-files", "cost"),
+            ("catalog/boot/read-wasm", "clock"),
+            ("catalog/boot/compile-wasm", "clock"),
+            ("catalog/boot/instantiate-wasm", "clock"),
         ] {
             assert_eq!(kind(name), expected, "{name}");
         }
@@ -922,6 +933,46 @@ mod measuring_for_the_benchmark {
         let said = String::from_utf8_lossy(&converted.stderr).into_owned();
         let triples = file["two/triples"]["value"].as_u64().expect("a count");
         assert!(said.contains(&format!(" {triples} triples")), "{said}");
+    }
+
+    /// writes the quad count and the SHA-256 of the canonical N-Quads of each output
+    #[test]
+    fn writes_the_quad_count_and_the_sha_256_of_the_canonical_n_quads_of_each_output() {
+        let two = tiny().join("fixtures/in/two.xml");
+        let file = benched(&[&two], &[]);
+        let graph = &file["two/output/graph"];
+        assert_eq!(graph["value"], file["two/triples"]["value"]);
+        for output in ["two/output/graph", "two/output/findings"] {
+            let digest = file[output]["sha256"].as_str().expect("a digest");
+            assert!(
+                digest.len() == 64 && digest.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase()),
+                "{output}: {digest}"
+            );
+        }
+    }
+
+    /// writes the same output digests whichever executor converts
+    #[test]
+    fn writes_the_same_output_digests_whichever_executor_converts() {
+        let two = tiny().join("fixtures/in/two.xml");
+        let by_default = benched(&[&two], &[]);
+        for executor in ["compiled", "spareval"] {
+            let file = benched(&[&two], &["--executor", executor]);
+            for output in ["two/output/graph", "two/output/findings"] {
+                assert_eq!(
+                    file[output]["sha256"], by_default[output]["sha256"],
+                    "{executor} {output}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn records_the_cpu_model_and_the_other_load_it_was_told_of() {
+        let two = tiny().join("fixtures/in/two.xml");
+        let file = benched(&[&two], &["--other-load", "a compile on the same machine"]);
+        assert!(file["env"]["cpu"].as_str().is_some_and(|model| !model.is_empty()));
+        assert_eq!(file["env"]["otherLoad"], "a compile on the same machine");
     }
 
     #[test]
@@ -1016,14 +1067,27 @@ mod measuring_for_the_benchmark {
                 .keys()
                 .filter(|name| name.starts_with("catalog-one/"))
                 .collect();
-            assert_eq!(
-                named,
-                [
-                    "catalog-one/convert/first",
-                    "catalog-one/convert/second",
-                    "catalog-one/triples"
-                ]
-            );
+            for measured in [
+                "catalog-one/convert/first",
+                "catalog-one/convert/second",
+                "catalog-one/triples",
+                "catalog-one/output/graph",
+                "catalog-one/output/findings",
+            ] {
+                assert!(named.iter().any(|name| *name == measured), "{measured} in {named:?}");
+            }
+            for unasked in ["catalog-one/rss", "catalog-one/findings", "catalog-one/memory.grow/first"] {
+                assert!(!named.iter().any(|name| *name == unasked), "{unasked} in {named:?}");
+            }
+        }
+
+        /// writes the stages and the output digests whatever measures the manifest asks for
+        #[test]
+        fn writes_the_stages_and_the_output_digests_whatever_measures_the_manifest_asks_for() {
+            let (_scratch, manifest) = manifest_of_one_input(ONE_ITEM_SHA256);
+            let file = benched_with(&["--inputs", manifest.as_str()]);
+            assert!(file.contains_key("catalog-one/stage/unaccounted"), "{:?}", file.keys());
+            assert!(file["catalog-one/output/graph"]["sha256"].is_string());
         }
 
         /// refuses an input whose bytes are not the SHA-256 the manifest gives, naming the one it found
@@ -1034,6 +1098,49 @@ mod measuring_for_the_benchmark {
             let said = String::from_utf8_lossy(&refused.stderr);
             assert_eq!(refused.status.code(), Some(2), "{said}");
             assert!(said.contains(ONE_ITEM_SHA256), "{said}");
+        }
+    }
+
+    /// with `--baseline-adapter <directory>`
+    mod with_baseline_adapter {
+        use super::*;
+
+        /// measures the adapter beside the baseline and writes a file for each, naming the commit of each adapter
+        #[test]
+        fn measures_the_adapter_beside_the_baseline_and_writes_a_file_for_each() {
+            let scratch = scratch();
+            let baseline = scratch.path().join("baseline-adapter");
+            copied_to(&tiny(), &baseline);
+            let two = tiny().join("fixtures/in/two.xml");
+            let (head_out, baseline_out) = (
+                scratch.path().join("head.json"),
+                scratch.path().join("baseline.json"),
+            );
+            let adapter = tiny();
+            let vocabularies = vocabularies();
+            let run = bench(&[
+                adapter.to_str().expect("a path"),
+                two.to_str().expect("a path"),
+                "--vocabularies",
+                vocabularies.to_str().expect("a path"),
+                "--allow-fallbacks",
+                "--samples",
+                "1",
+                "--baseline-adapter",
+                baseline.to_str().expect("a path"),
+                "--baseline-out",
+                baseline_out.to_str().expect("a path"),
+                "--out",
+                head_out.to_str().expect("a path"),
+            ]);
+            let said = String::from_utf8_lossy(&run.stderr).into_owned();
+            assert_eq!(run.status.code(), Some(0), "{said}");
+            let shown = String::from_utf8_lossy(&run.stdout).into_owned();
+            assert!(shown.contains("| baseline | this | change |"), "{shown}");
+            assert!(shown.contains("same output"), "{shown}");
+            for path in [&head_out, &baseline_out] {
+                assert!(path.exists(), "{path:?}");
+            }
         }
     }
 

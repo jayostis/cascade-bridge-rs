@@ -2,3 +2,4 @@ target/
 *.earl.ttl
 package/dist/
 package/dist.partial/
+node_modules/

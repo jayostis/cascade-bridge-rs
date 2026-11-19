@@ -3,25 +3,29 @@
 // cascade-bridge-spec's bench/result.schema.json.
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gunzipSync } from "node:zlib";
 import { at, iriOf, Refusal } from "./host.mjs";
 
-const USAGE = `usage: node hosts/node/bench.mjs --inputs <bench/manifest.json> [--only <glob>] [--pull-requests] [options]
+const USAGE = `usage: node hosts/node/bench.mjs --inputs <bench/manifest.json> [--only <glob>[,<glob>...]] [--pull-requests] [options]
        node hosts/node/bench.mjs <adapter-dir> <document>... [--envelope <iri>] [options]
 options: [--vocabularies <directory>] [--samples <n>] [--timeout <seconds>] [--package <directory>]
-         [--executor compiled|spareval|both] [--out <file.json>] [--baseline <directory> [--baseline-out <file.json>]]
+         [--executor compiled|spareval|both] [--out <file.json>] [--profile-samples <n>] [--other-load <text>]
+         [--baseline <package directory>] [--baseline-adapter <adapter directory>] [--baseline-out <file.json>]
          [--allow-fallbacks]`;
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SAMPLE = join(HERE, "bench-sample.mjs");
+const DIGEST = join(HERE, "bench-digest.mjs");
 const SECONDS = 6;
+// The most the module accepts: the timeout, not the budget, is what stops a convert.
+const MEMORY_BUDGET_MIB = 3072;
 
 function parse(argv) {
-  const parsed = { documents: [], samples: 5, package: join(HERE, "../../package/dist") };
+  const parsed = { documents: [], samples: 5, profileSamples: 1, package: join(HERE, "../../package/dist") };
   const rest = [...argv];
   const next = () => {
     if (rest.length === 0) throw new Refusal(USAGE);
@@ -44,7 +48,10 @@ function parse(argv) {
       parsed.executor = next();
       if (!["compiled", "spareval", "both"].includes(parsed.executor)) throw new Refusal(USAGE);
     } else if (argument === "--out") parsed.out = next();
+    else if (argument === "--profile-samples") parsed.profileSamples = number(argument, next(), true);
+    else if (argument === "--other-load") parsed.otherLoad = next();
     else if (argument === "--baseline") parsed.baseline = next();
+    else if (argument === "--baseline-adapter") parsed.baselineAdapter = next();
     else if (argument === "--baseline-out") parsed.baselineOut = next();
     else if (argument === "--inputs") parsed.manifest = next();
     else if (argument === "--only") parsed.only = next();
@@ -60,7 +67,8 @@ function parse(argv) {
     throw new Refusal(USAGE);
   }
   if (fromManifest && parsed.envelope !== undefined) throw new Refusal(USAGE);
-  if (parsed.baselineOut !== undefined && parsed.baseline === undefined) throw new Refusal(USAGE);
+  if (parsed.baselineOut !== undefined && parsed.baseline === undefined && parsed.baselineAdapter === undefined)
+    throw new Refusal(USAGE);
   return parsed;
 }
 
@@ -70,12 +78,15 @@ function digested(path) {
   return { sha256: createHash("sha256").update(bytes).digest("hex"), bytes: bytes.byteLength };
 }
 
-function globbed(glob) {
-  const pattern = glob
-    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-    .replaceAll("*", ".*")
-    .replaceAll("?", ".");
-  return new RegExp(`^${pattern}$`);
+// A comma-separated list of globs, as one expression.
+function globbed(globs) {
+  const patterns = globs.split(",").map((glob) =>
+    glob
+      .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+      .replaceAll("*", ".*")
+      .replaceAll("?", "."),
+  );
+  return new RegExp(`^(?:${patterns.join("|")})$`);
 }
 
 // The adapter's directory is the manifest's grandparent.
@@ -152,6 +163,7 @@ function checkoutCommit(directory) {
   return { [basename(top)]: `${head}${dirty ? "-dirty" : ""}` };
 }
 
+
 function osName() {
   if (process.platform === "win32") return `${os.version()} ${os.release()}`;
   if (process.platform === "linux") {
@@ -163,8 +175,8 @@ function osName() {
   return `${os.type()} ${os.release()}`;
 }
 
-function environment(side) {
-  return {
+function environment(side, parsed) {
+  const env = {
     os: osName(),
     runner: process.env.RUNNER_ENVIRONMENT ?? "local",
     cpus: os.availableParallelism(),
@@ -172,18 +184,27 @@ function environment(side) {
     host: "node",
     profile: side.built.profile ?? null,
   };
+  const cpu = os.cpus()[0]?.model.trim();
+  if (cpu) env.cpu = cpu;
+  if (parsed.otherLoad !== undefined) env.otherLoad = parsed.otherLoad;
+  return env;
 }
 
 // A sample's measures, or how it ended without them: refused, or killed at the timeout
-// in the phase it last said it started.
-function sampled(side, input, parsed) {
+// in the phase it last said it started. A profile sample's first convert is profiled, and
+// where it has an output directory its second writes the outputs there.
+function sampled(side, input, parsed, mode, outputDirectory) {
   const given = {
+    mode,
+    outputDirectory,
     package: side.directory,
-    adapter: parsed.adapter,
+    adapter: side.adapter,
     vocabularies: parsed.vocabularies,
     document: input.path,
     envelope: input.envelope,
     executor: parsed.executor,
+    memoryBudgetMiB: MEMORY_BUDGET_MIB,
+    timeBudgetSeconds: input.timeout,
   };
   return new Promise((done, failed) => {
     const child = spawn(process.execPath, [SAMPLE, JSON.stringify(given)], { stdio: ["ignore", "pipe", "pipe"] });
@@ -211,6 +232,23 @@ function sampled(side, input, parsed) {
   });
 }
 
+// The canonical digest of one output file, in a process of its own so that its memory is nobody's measure.
+function digestOf(path) {
+  return new Promise((done, failed) => {
+    const child = spawn(process.execPath, ["--max-old-space-size=12288", DIGEST, path], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let out = "";
+    let err = "";
+    child.stdout.on("data", (chunk) => (out += chunk));
+    child.stderr.on("data", (chunk) => (err += chunk));
+    child.on("error", failed);
+    child.on("close", (code) =>
+      code === 0 ? done(JSON.parse(out)) : failed(new Error(`the digest of ${path} exited ${code}: ${err.trim()}`)),
+    );
+  });
+}
+
 function median(values) {
   const sorted = [...values].sort((a, b) => a - b);
   const middle = Math.floor(sorted.length / 2);
@@ -226,7 +264,7 @@ function written(value, digits) {
 }
 
 function spread(name, unit, kind, values, extra) {
-  const digits = unit === "s" ? SECONDS : 0;
+  const digits = unit === "s" ? SECONDS : unit === "{count}/s" ? 3 : 0;
   const entry = {
     name,
     unit,
@@ -265,12 +303,32 @@ function fallbacksOf(queries) {
     .reduce((count, { fallback, executions, giveUps }) => count + (fallback === undefined ? giveUps : executions), 0);
 }
 
-function inputResults(input, outcomes, adapterIri) {
+// The stage the specification's engine/stages.md names for each engine stage that has one.
+const SPECIFICATION_STAGE = {
+  mapping: "transform (Message Translator)",
+  documentTable: "link records (Aggregator)",
+  records: "name versions, write arrivals (Message History)",
+  sourceValidation: "check, validate (Message Validator)",
+  outputValidation: "check, validate (Message Validator)",
+  findings: "findings (Invalid Message Channel)",
+};
+
+function kebab(text) {
+  return text.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+}
+
+// Always written, whatever the manifest's `measures` say: an input with no digest cannot be
+// checked for equivalence, and the stages are what a speed-up is looked for in.
+const ALWAYS = ["output", "stage", "records-per-second"];
+
+function inputResults(input, side) {
+  const outcomes = side.outcomes.get(input.id);
   const failed = outcomes.find((outcome) => outcome.sample === undefined);
   if (failed?.timeout !== undefined) return [one(`${input.id}/timeout/${failed.timeout}`, "s", failed.seconds)];
   if (failed !== undefined)
     return [{ ...one(`${input.id}/refused/${failed.refused}`, "{count}", 1), extra: failed.message }];
   const samples = outcomes.map(({ sample }) => sample);
+  const profiled = side.profiles.get(input.id).flatMap(({ sample }) => (sample === undefined ? [] : [sample]));
   const results = [];
   const variants = ["first", "second"];
   variants.forEach((variant, index) => {
@@ -285,6 +343,17 @@ function inputResults(input, outcomes, adapterIri) {
       ),
     );
   });
+  if (profiled.length > 0) {
+    results.push(
+      spread(
+        `${input.id}/convert/profiled`,
+        "s",
+        "clock",
+        profiled.map(({ converts }) => converts[0].seconds),
+        "the first convert with profile on, which the stage and query rows are read from",
+      ),
+    );
+  }
   if (samples[0].converts[0].grows !== undefined) {
     variants.forEach((variant, index) => {
       const grows = samples.map(({ converts }) => converts[index].grows);
@@ -302,87 +371,118 @@ function inputResults(input, outcomes, adapterIri) {
       "clock",
       samples.map(({ rss }) => rss),
     ),
+    spread(
+      `${input.id}/records-per-second`,
+      "{count}/s",
+      "clock",
+      samples.map(({ converts: [first] }) => first.records / first.seconds),
+      "records of the first convert over its seconds",
+    ),
   );
   const first = samples[0].converts[0];
+  const profile = profiled[0]?.converts[0];
   results.push(
     one(`${input.id}/records`, "{count}", first.records),
     one(`${input.id}/triples`, "{count}", first.triples),
     one(`${input.id}/findings`, "{count}", first.findings),
-    one(
-      `${input.id}/index-built`,
-      "{count}",
-      first.stages?.some(({ stage }) => stage === "index") ? 1 : 0,
-      "only the compiled executor builds an index",
-    ),
+  );
+  if (profile !== undefined) {
+    results.push(
+      one(
+        `${input.id}/index-built`,
+        "{count}",
+        profile.stages?.some(({ stage }) => stage === "index") ? 1 : 0,
+        "only the compiled executor builds an index",
+      ),
+    );
+  }
+  results.push(
     one(`${input.id}/output-bytes/graph`, "By", first.graphBytes, "turtle"),
     one(`${input.id}/output-bytes/findings`, "By", first.findingsBytes, "turtle"),
   );
-  if (first.queries !== undefined) {
+  if (profile?.queries !== undefined) {
     results.push(
-      one(`${input.id}/fallbacks`, "{count}", fallbacksOf(first.queries), "record executions the general evaluator answered"),
+      one(`${input.id}/fallbacks`, "{count}", fallbacksOf(profile.queries), "record executions the general evaluator answered"),
     );
-    const names = queryNames(first.queries, adapterIri);
-    for (const query of first.queries) {
-      const seconds = samples.map(
+    const names = queryNames(profile.queries, side.adapterIri);
+    for (const query of profile.queries) {
+      const seconds = profiled.map(
         ({ converts }) => converts[0].queries.find(({ iri }) => iri === query.iri)?.seconds ?? 0,
       );
       results.push(spread(`${input.id}/query-time/${names.get(query.iri)}`, "s", "clock", seconds));
     }
-    for (const query of first.queries) {
+    for (const query of profile.queries) {
       results.push(
         one(`${input.id}/query-rows/${names.get(query.iri)}`, "{count}", query.rows, `${query.executions} executions`),
       );
     }
   }
+  if (profile?.stages !== undefined) {
+    for (const { stage } of profile.stages) {
+      const seconds = profiled.map(
+        ({ converts }) => converts[0].stages.find((timed) => timed.stage === stage)?.seconds ?? 0,
+      );
+      results.push(spread(`${input.id}/stage/${kebab(stage)}`, "s", "clock", seconds, SPECIFICATION_STAGE[stage]));
+    }
+    const unaccounted = profiled.map(({ converts: [convert] }) =>
+      Math.max(0, convert.seconds - convert.stages.reduce((sum, { seconds }) => sum + seconds, 0)),
+    );
+    results.push(
+      spread(`${input.id}/stage/unaccounted`, "s", "clock", unaccounted, "the profiled convert's seconds no stage spent"),
+    );
+  }
+  const digests = side.digests.get(input.id);
+  if (digests !== undefined) {
+    for (const kind of ["graph", "findings"]) {
+      results.push({
+        ...one(`${input.id}/output/${kind}`, "{count}", digests[kind].quads, "canonical N-Quads, RDFC-1.0"),
+        sha256: digests[kind].sha256,
+      });
+    }
+  }
   return input.measures === undefined
     ? results
-    : results.filter(({ name }) => input.measures.includes(name.split("/")[1]));
+    : results.filter(({ name }) => {
+        const measure = name.split("/")[1];
+        return ALWAYS.includes(measure) || input.measures.includes(measure);
+      });
 }
 
-function loadResults(outcomes) {
-  const loads = outcomes.filter(({ sample }) => sample !== undefined).map(({ sample }) => sample.load);
+function loadResults(side, inputs) {
+  const loads = inputs
+    .flatMap(({ id }) => side.outcomes.get(id))
+    .filter(({ sample }) => sample !== undefined)
+    .map(({ sample }) => sample);
   if (loads.length === 0) return [];
-  const adapter = segment(loads[0].identifier ?? "adapter");
+  const adapter = segment(loads[0].load.identifier ?? "adapter");
+  const each = (pick) => loads.map(pick);
   return [
-    spread(
-      `${adapter}/load`,
-      "s",
-      "clock",
-      loads.map(({ seconds }) => seconds),
-    ),
-    spread(
-      `${adapter}/load/files-read`,
-      "{count}",
-      "cost",
-      loads.map(({ filesRead }) => filesRead),
-    ),
-    spread(
-      `${adapter}/load/missing-files`,
-      "{count}",
-      "cost",
-      loads.map(({ missingFiles }) => missingFiles),
-    ),
+    spread(`${adapter}/load`, "s", "clock", each(({ load }) => load.seconds)),
+    spread(`${adapter}/load/read-files`, "s", "clock", each(({ load }) => load.readFilesSeconds)),
+    spread(`${adapter}/load/prepare`, "s", "clock", each(({ load }) => load.prepareSeconds)),
+    spread(`${adapter}/load/files-read`, "{count}", "cost", each(({ load }) => load.filesRead)),
+    spread(`${adapter}/load/missing-files`, "{count}", "cost", each(({ load }) => load.missingFiles)),
+    spread(`${adapter}/boot/read-wasm`, "s", "clock", each(({ boot }) => boot.readWasmSeconds)),
+    spread(`${adapter}/boot/compile-wasm`, "s", "clock", each(({ boot }) => boot.compileSeconds)),
+    spread(`${adapter}/boot/instantiate-wasm`, "s", "clock", each(({ boot }) => boot.instantiateSeconds)),
   ];
 }
 
-function resultFile(side, inputs, adapterIri, commits) {
-  const all = inputs.flatMap((input) => side.outcomes.get(input.id));
+function resultFile(side, inputs, commits, parsed) {
   const engine =
     side.built.commit === undefined
       ? {}
       : { [side.manifest.name]: `${side.built.commit}${side.built.dirty ? "-dirty" : ""}` };
   return {
-    env: environment(side),
-    commit: { ...commits, ...engine },
-    results: [
-      ...inputs.flatMap((input) => inputResults(input, side.outcomes.get(input.id), adapterIri)),
-      ...loadResults(all),
-    ],
+    env: environment(side, parsed),
+    commit: { ...checkoutCommit(side.adapter), ...commits, ...engine },
+    results: [...inputs.flatMap((input) => inputResults(input, side)), ...loadResults(side, inputs)],
   };
 }
 
 function shown(entry) {
   if (entry === undefined) return "";
+  if (entry.sha256 !== undefined) return `${entry.value.toLocaleString("en")} (sha256 ${entry.sha256.slice(0, 12)})`;
   const value = entry.unit === "s" ? `${decimal(entry.value, 3)} s` : entry.value.toLocaleString("en");
   if (entry.range === undefined) return value;
   const [low, high] = entry.range.split("-").map(Number);
@@ -395,6 +495,8 @@ function shown(entry) {
 
 function change(before, after) {
   if (before === undefined || after === undefined || before.unit !== after.unit) return "";
+  if (before.sha256 !== undefined || after.sha256 !== undefined)
+    return before.sha256 === after.sha256 ? "same output" : "NOT EQUIVALENT";
   if (after.kind === "clock") return before.value === 0 ? "" : `${(after.value / before.value).toFixed(2)}×`;
   const difference = after.value - before.value;
   if (difference === 0) return "=";
@@ -402,7 +504,7 @@ function change(before, after) {
   return `${difference > 0 ? "+" : "−"}${Math.abs(difference).toLocaleString("en")}${percent}`;
 }
 
-function table(inputs, files, sides) {
+function table(inputs, files) {
   const [head] = files.slice(-1);
   const base = files.length > 1 ? files[0] : undefined;
   const names = [...new Set(files.flatMap((file) => file.results.map(({ name }) => name)))];
@@ -411,8 +513,11 @@ function table(inputs, files, sides) {
     .map(([repository, sha]) => `${repository} ${sha}`)
     .join(", ")}`;
   if (base !== undefined)
-    said += `, against ${sides[0].manifest.name} ${base.commit[sides[0].manifest.name] ?? sides[0].directory}`;
-  said += `; ${head.env.os}, ${head.env.cpus} CPUs, wasm (${head.env.profile}) under Node ${head.env.node}.\n`;
+    said += `, against ${Object.entries(base.commit)
+      .filter(([repository, sha]) => head.commit[repository] !== sha)
+      .map(([repository, sha]) => `${repository} ${sha}`)
+      .join(", ")}`;
+  said += `; ${head.env.os}, ${head.env.cpu ?? "unknown CPU"}, ${head.env.cpus} CPUs, wasm (${head.env.profile}) under Node ${head.env.node}.\n`;
   for (const input of inputs)
     said += `Input ${input.id}: ${input.path}, sha256 ${input.sha256}, ${input.bytes.toLocaleString("en")} bytes.\n`;
   said += "\n";
@@ -429,62 +534,101 @@ function table(inputs, files, sides) {
   return said;
 }
 
+function failure(outcome) {
+  return outcome.sample !== undefined ? undefined : (outcome.refused ?? `timed out in ${outcome.timeout}`);
+}
+
 async function run(parsed) {
   let inputs;
   if (parsed.manifest === undefined) inputs = parsed.documents.map((path) => inputOf(path, parsed));
   else ({ adapter: parsed.adapter, inputs } = listed(parsed));
-  at(parsed.adapter, () => statSync(join(parsed.adapter, "ro-crate-metadata.json")));
+  for (const adapter of [parsed.adapter, parsed.baselineAdapter]) {
+    if (adapter !== undefined) at(adapter, () => statSync(join(adapter, "ro-crate-metadata.json")));
+  }
   if (parsed.vocabularies !== undefined) at(parsed.vocabularies, () => statSync(parsed.vocabularies));
   const ids = inputs.map(({ id }) => id);
   const twice = ids.find((id, index) => ids.indexOf(id) !== index);
   if (twice !== undefined) throw new Refusal(`two documents are both named ${twice}; rename one`);
-  const sides = [...(parsed.baseline === undefined ? [] : [parsed.baseline]), parsed.package].map((directory) => ({
+  const baselined = parsed.baseline !== undefined || parsed.baselineAdapter !== undefined;
+  const made = (directory, adapter) => ({
     ...packageOf(directory),
+    adapter,
+    adapterIri: `${iriOf(adapter)}/`,
     outcomes: new Map(ids.map((id) => [id, []])),
-  }));
-  for (const input of inputs) {
-    for (let n = 1; n <= parsed.samples; n++) {
+    profiles: new Map(ids.map((id) => [id, []])),
+    digests: new Map(),
+  });
+  const sides = [
+    ...(baselined ? [made(parsed.baseline ?? parsed.package, parsed.baselineAdapter ?? parsed.adapter)] : []),
+    made(parsed.package, parsed.adapter),
+  ];
+  const scratch = mkdtempSync(join(os.tmpdir(), "bench-"));
+  try {
+    for (const input of inputs) {
+      for (let n = 1; n <= parsed.samples; n++) {
+        for (const side of sides) {
+          const outcomes = side.outcomes.get(input.id);
+          if (outcomes.some(({ sample }) => sample === undefined)) continue;
+          const outcome = await sampled(side, input, parsed, "timing");
+          if (outcome.timeout !== undefined) outcome.seconds = input.timeout;
+          outcomes.push(outcome);
+          const ended =
+            outcome.sample !== undefined
+              ? `${outcome.sample.converts.map(({ seconds }) => `${seconds.toFixed(2)} s`).join(", ")}`
+              : failure(outcome);
+          process.stderr.write(
+            `${input.id} sample ${n}/${parsed.samples} ${side.manifest.name} ${side.built.commit?.slice(0, 7) ?? side.directory}: ${ended}\n`,
+          );
+        }
+      }
       for (const side of sides) {
-        const outcomes = side.outcomes.get(input.id);
-        if (outcomes.some(({ sample }) => sample === undefined)) continue;
-        const outcome = await sampled(side, input, parsed);
-        if (outcome.timeout !== undefined) outcome.seconds = input.timeout;
-        outcomes.push(outcome);
-        const ended =
-          outcome.sample !== undefined
-            ? `${outcome.sample.converts.map(({ seconds }) => `${seconds.toFixed(2)} s`).join(", ")}`
-            : (outcome.refused ?? `timed out in ${outcome.timeout}`);
-        process.stderr.write(
-          `${input.id} sample ${n}/${parsed.samples} ${side.manifest.name} ${side.built.commit?.slice(0, 7) ?? side.directory}: ${ended}\n`,
-        );
+        if (side.outcomes.get(input.id).some(({ sample }) => sample === undefined)) continue;
+        const directory = join(scratch, `${sides.indexOf(side)}-${input.id}`);
+        mkdirSync(directory);
+        for (let n = 1; n <= parsed.profileSamples; n++) {
+          const outcome = await sampled(side, input, parsed, "profile", n === 1 ? directory : undefined);
+          side.profiles.get(input.id).push(outcome);
+          const ended = failure(outcome);
+          process.stderr.write(
+            `${input.id} profile ${n}/${parsed.profileSamples} ${side.manifest.name}: ${
+              ended ?? `${outcome.sample.converts[0].seconds.toFixed(2)} s profiled`
+            }\n`,
+          );
+          if (n === 1 && ended === undefined) {
+            const [graph, findings] = await Promise.all(
+              ["graph", "findings"].map((kind) => digestOf(join(directory, `${kind}.nt`))),
+            );
+            side.digests.set(input.id, { graph, findings });
+            process.stderr.write(`${input.id} output ${graph.quads} + ${findings.quads} quads, graph sha256 ${graph.sha256}\n`);
+          }
+          rmSync(join(directory, "graph.nt"), { force: true });
+          rmSync(join(directory, "findings.nt"), { force: true });
+        }
       }
     }
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
   }
-  const adapterIri = `${iriOf(parsed.adapter)}/`;
-  const commits = {
-    ...checkoutCommit(parsed.adapter),
-    ...(parsed.vocabularies === undefined ? {} : checkoutCommit(parsed.vocabularies)),
-  };
-  const files = sides.map((side) => resultFile(side, inputs, adapterIri, commits));
+  const commits = parsed.vocabularies === undefined ? {} : checkoutCommit(parsed.vocabularies);
+  const files = sides.map((side) => resultFile(side, inputs, commits, parsed));
   const writes = [
-    [parsed.baselineOut, parsed.baseline === undefined ? undefined : files[0]],
+    [parsed.baselineOut, baselined ? files[0] : undefined],
     [parsed.out, files.at(-1)],
   ];
   for (const [path, file] of writes) {
     if (path !== undefined && file !== undefined)
       at(path, () => writeFileSync(path, `${JSON.stringify(file, null, 2)}\n`));
   }
-  process.stdout.write(table(inputs, files, sides));
+  process.stdout.write(table(inputs, files));
   const head = sides.at(-1);
   const fellBack =
     parsed.executor === "spareval" || parsed.allowFallbacks
       ? []
       : inputs
-          .map(({ id }) => [id, fallbacksOf(head.outcomes.get(id).find(({ sample }) => sample)?.sample.converts[0].queries)])
+          .map(({ id }) => [id, fallbacksOf(head.profiles.get(id).find(({ sample }) => sample)?.sample.converts[0].queries)])
           .filter(([, count]) => count > 0);
   for (const [id, count] of fellBack)
-    process.stderr.write(`bench: ${id}/fallbacks: ${count} record executions fell back to the general evaluator (--allow-fallbacks to measure anyway)
-`);
+    process.stderr.write(`bench: ${id}/fallbacks: ${count} record executions fell back to the general evaluator (--allow-fallbacks to measure anyway)\n`);
   return fellBack.length === 0 ? 0 : 1;
 }
 
