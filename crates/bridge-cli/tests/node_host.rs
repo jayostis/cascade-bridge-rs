@@ -1109,9 +1109,9 @@ mod measuring_for_the_benchmark {
             }
         }
 
-        /// with `--digest-only` writes only the output digests, the same as a full run writes
+        /// writes only the output digests given `--digest-only`, the same as a full run writes
         #[test]
-        fn with_digest_only_writes_only_the_output_digests_the_same_as_a_full_run_writes() {
+        fn writes_only_the_output_digests_the_same_as_a_full_run_writes_given_digest_only() {
             let two = tiny().join("fixtures/in/two.xml");
             let full = benched(&[&two], &["--executor", "spareval"]);
             let only = benched(&[&two], &["--executor", "spareval", "--digest-only"]);
