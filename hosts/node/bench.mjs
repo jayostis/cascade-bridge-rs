@@ -13,7 +13,7 @@ import { at, iriOf, Refusal } from "./host.mjs";
 const USAGE = `usage: node hosts/node/bench.mjs --inputs <bench/manifest.json> [--only <glob>[,<glob>...]] [--pull-requests] [options]
        node hosts/node/bench.mjs <adapter-dir> <document>... [--envelope <iri>] [options]
 options: [--vocabularies <directory>] [--samples <n>] [--timeout <seconds>] [--package <directory>]
-         [--executor compiled|spareval|both] [--out <file.json>] [--profile-samples <n>] [--other-load <text>]
+         [--executor compiled|spareval|both] [--out <file.json>] [--profile-samples <n>] [--other-load <text>] [--glossary <file.json>]
          [--baseline <package directory>] [--baseline-adapter <adapter directory>] [--baseline-out <file.json>]
          [--allow-fallbacks]`;
 
@@ -50,6 +50,7 @@ function parse(argv) {
     } else if (argument === "--out") parsed.out = next();
     else if (argument === "--profile-samples") parsed.profileSamples = number(argument, next(), true);
     else if (argument === "--other-load") parsed.otherLoad = next();
+    else if (argument === "--glossary") parsed.glossary = next();
     else if (argument === "--baseline") parsed.baseline = next();
     else if (argument === "--baseline-adapter") parsed.baselineAdapter = next();
     else if (argument === "--baseline-out") parsed.baselineOut = next();
@@ -303,18 +304,33 @@ function fallbacksOf(queries) {
     .reduce((count, { fallback, executions, giveUps }) => count + (fallback === undefined ? giveUps : executions), 0);
 }
 
-// The stage the specification's engine/stages.md names for each engine stage that has one.
-const SPECIFICATION_STAGE = {
-  mapping: "transform (Message Translator)",
-  documentTable: "link records (Aggregator)",
-  records: "name versions, write arrivals (Message History)",
-  sourceValidation: "check, validate (Message Validator)",
-  outputValidation: "check, validate (Message Validator)",
-  findings: "findings (Invalid Message Channel)",
-};
-
 function kebab(text) {
   return text.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+}
+
+// What a row's name means, from the glossary: its name without the input or adapter in front, or that with
+// its last segment as `*`; a stage by its own name. A name the glossary lacks refuses the run.
+function meaning(name, glossary) {
+  const tail = name.split("/").slice(1);
+  const [head, ...rest] = tail;
+  const found =
+    head === "stage" && rest.length === 1
+      ? glossary.stages[rest[0]]
+      : (glossary.rows[tail.join("/")] ?? (rest.length > 0 ? glossary.rows[`${head}/*`] : undefined));
+  if (found === undefined) throw new Refusal(`${name}: the glossary has no sentence for it`);
+  return found;
+}
+
+// Each row's `extra`: its meaning, the input's description where it has one, and what the row said of itself.
+function explained(results, glossary, inputs) {
+  if (glossary === undefined) return results;
+  const described = new Map(inputs.map(({ id }) => [id, glossary.inputs[id]]));
+  return results.map((entry) => {
+    const [first, ...tail] = entry.name.split("/");
+    const input = ["convert/first", "records"].includes(tail.join("/")) ? described.get(first) : undefined;
+    const extra = [meaning(entry.name, glossary), input, entry.extra].filter((part) => part !== undefined).join(" ");
+    return { ...entry, extra };
+  });
 }
 
 // Always written, whatever the manifest's `measures` say: an input with no digest cannot be
@@ -350,7 +366,6 @@ function inputResults(input, side) {
         "s",
         "clock",
         profiled.map(({ converts }) => converts[0].seconds),
-        "the first convert with profile on, which the stage and query rows are read from",
       ),
     );
   }
@@ -376,7 +391,6 @@ function inputResults(input, side) {
       "{count}/s",
       "clock",
       samples.map(({ converts: [first] }) => first.records / first.seconds),
-      "records of the first convert over its seconds",
     ),
   );
   const first = samples[0].converts[0];
@@ -392,17 +406,16 @@ function inputResults(input, side) {
         `${input.id}/index-built`,
         "{count}",
         profile.stages?.some(({ stage }) => stage === "index") ? 1 : 0,
-        "only the compiled executor builds an index",
       ),
     );
   }
   results.push(
-    one(`${input.id}/output-bytes/graph`, "By", first.graphBytes, "turtle"),
-    one(`${input.id}/output-bytes/findings`, "By", first.findingsBytes, "turtle"),
+    one(`${input.id}/output-bytes/graph`, "By", first.graphBytes),
+    one(`${input.id}/output-bytes/findings`, "By", first.findingsBytes),
   );
   if (profile?.queries !== undefined) {
     results.push(
-      one(`${input.id}/fallbacks`, "{count}", fallbacksOf(profile.queries), "record executions the general evaluator answered"),
+      one(`${input.id}/fallbacks`, "{count}", fallbacksOf(profile.queries)),
     );
     const names = queryNames(profile.queries, side.adapterIri);
     for (const query of profile.queries) {
@@ -413,7 +426,7 @@ function inputResults(input, side) {
     }
     for (const query of profile.queries) {
       results.push(
-        one(`${input.id}/query-rows/${names.get(query.iri)}`, "{count}", query.rows, `${query.executions} executions`),
+        one(`${input.id}/query-rows/${names.get(query.iri)}`, "{count}", query.rows, `executions: ${query.executions}`),
       );
     }
   }
@@ -422,20 +435,18 @@ function inputResults(input, side) {
       const seconds = profiled.map(
         ({ converts }) => converts[0].stages.find((timed) => timed.stage === stage)?.seconds ?? 0,
       );
-      results.push(spread(`${input.id}/stage/${kebab(stage)}`, "s", "clock", seconds, SPECIFICATION_STAGE[stage]));
+      results.push(spread(`${input.id}/stage/${kebab(stage)}`, "s", "clock", seconds));
     }
     const unaccounted = profiled.map(({ converts: [convert] }) =>
       Math.max(0, convert.seconds - convert.stages.reduce((sum, { seconds }) => sum + seconds, 0)),
     );
-    results.push(
-      spread(`${input.id}/stage/unaccounted`, "s", "clock", unaccounted, "the profiled convert's seconds no stage spent"),
-    );
+    results.push(spread(`${input.id}/stage/unaccounted`, "s", "clock", unaccounted));
   }
   const digests = side.digests.get(input.id);
   if (digests !== undefined) {
     for (const kind of ["graph", "findings"]) {
       results.push({
-        ...one(`${input.id}/output/${kind}`, "{count}", digests[kind].quads, "canonical N-Quads, RDFC-1.0"),
+        ...one(`${input.id}/output/${kind}`, "{count}", digests[kind].quads),
         sha256: digests[kind].sha256,
       });
     }
@@ -468,7 +479,7 @@ function loadResults(side, inputs) {
   ];
 }
 
-function resultFile(side, inputs, commits, parsed) {
+function resultFile(side, inputs, commits, parsed, glossary) {
   const engine =
     side.built.commit === undefined
       ? {}
@@ -476,7 +487,11 @@ function resultFile(side, inputs, commits, parsed) {
   return {
     env: environment(side, parsed),
     commit: { ...checkoutCommit(side.adapter), ...commits, ...engine },
-    results: [...inputs.flatMap((input) => inputResults(input, side)), ...loadResults(side, inputs)],
+    results: explained(
+      [...inputs.flatMap((input) => inputResults(input, side)), ...loadResults(side, inputs)],
+      glossary,
+      inputs,
+    ),
   };
 }
 
@@ -610,7 +625,15 @@ async function run(parsed) {
     rmSync(scratch, { recursive: true, force: true });
   }
   const commits = parsed.vocabularies === undefined ? {} : checkoutCommit(parsed.vocabularies);
-  const files = sides.map((side) => resultFile(side, inputs, commits, parsed));
+  const glossary =
+    parsed.glossary === undefined ? undefined : JSON.parse(at(parsed.glossary, () => readFileSync(parsed.glossary, "utf8")));
+  if (glossary !== undefined && parsed.manifest !== undefined) {
+    for (const { id } of inputs) {
+      if (glossary.inputs[id] === undefined) process.stderr.write(`bench: ${parsed.glossary} has no description of the input ${id}
+`);
+    }
+  }
+  const files = sides.map((side) => resultFile(side, inputs, commits, parsed, glossary));
   const writes = [
     [parsed.baselineOut, baselined ? files[0] : undefined],
     [parsed.out, files.at(-1)],

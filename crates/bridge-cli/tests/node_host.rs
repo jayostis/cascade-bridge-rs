@@ -1023,6 +1023,72 @@ mod measuring_for_the_benchmark {
         );
     }
 
+    /// with `--glossary <file>`
+    mod with_glossary {
+        use super::*;
+
+        fn specifications_glossary() -> PathBuf {
+            match std::env::var_os("CASCADE_BRIDGE_SPEC") {
+                Some(named) => PathBuf::from(named),
+                None => workspace().join("../cascade-bridge-spec"),
+            }
+            .join("bench/glossary.json")
+        }
+
+        /// gives every name it writes the sentence the specification's glossary has for it
+        #[test]
+        #[ignore = "reads a checkout of jayostis/cascade-bridge-spec beside this one"]
+        fn gives_every_name_it_writes_the_sentence_the_specifications_glossary_has_for_it() {
+            let two = tiny().join("fixtures/in/two.xml");
+            let glossary = specifications_glossary();
+            let file = benched(&[&two], &["--glossary", glossary.to_str().expect("a path")]);
+            for (name, entry) in &file {
+                if name == "env" || name == "commit" {
+                    continue;
+                }
+                assert!(
+                    entry["extra"]
+                        .as_str()
+                        .is_some_and(|extra| !extra.is_empty()),
+                    "{name} has no sentence"
+                );
+            }
+        }
+
+        /// refuses a run that writes a stage the glossary has no sentence for, naming the row
+        #[test]
+        #[ignore = "reads a checkout of jayostis/cascade-bridge-spec beside this one"]
+        fn refuses_a_run_that_writes_a_stage_the_glossary_has_no_sentence_for_naming_the_row() {
+            let scratch = scratch();
+            let mut glossary: serde_json::Value = serde_json::from_slice(
+                &std::fs::read(specifications_glossary()).expect("the glossary"),
+            )
+            .expect("JSON");
+            glossary["stages"]
+                .as_object_mut()
+                .expect("stages")
+                .remove("mapping");
+            let lacking = scratch.path().join("glossary.json");
+            std::fs::write(&lacking, glossary.to_string()).expect("the glossary");
+            let (adapter, two, vocabularies) =
+                (tiny(), tiny().join("fixtures/in/two.xml"), vocabularies());
+            let run = bench(&[
+                adapter.to_str().expect("a path"),
+                two.to_str().expect("a path"),
+                "--vocabularies",
+                vocabularies.to_str().expect("a path"),
+                "--allow-fallbacks",
+                "--samples",
+                "1",
+                "--glossary",
+                lacking.to_str().expect("a path"),
+            ]);
+            let said = String::from_utf8_lossy(&run.stderr);
+            assert_eq!(run.status.code(), Some(2), "{said}");
+            assert!(said.contains("two/stage/mapping"), "{said}");
+        }
+    }
+
     /// with `--executor <name>`
     mod with_executor {
         use super::*;
