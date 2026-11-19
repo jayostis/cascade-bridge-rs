@@ -1146,10 +1146,10 @@ mod measuring_for_the_benchmark {
             assert!(said.contains("A catalog of one item."), "{said}");
         }
 
-        /// refuses an input the manifest does not describe, naming it
+        /// writes rows without a description for a manifest that describes no input
         #[test]
         #[ignore = "reads a checkout of jayostis/cascade-bridge-spec beside this one"]
-        fn refuses_an_input_the_manifest_does_not_describe_naming_it() {
+        fn writes_rows_without_a_description_for_a_manifest_that_describes_no_input() {
             let (_scratch, manifest) = manifest_of_one_input(ONE_ITEM_SHA256);
             let mut listing: serde_json::Value =
                 serde_json::from_slice(&std::fs::read(&manifest).expect("the manifest"))
@@ -1158,6 +1158,38 @@ mod measuring_for_the_benchmark {
                 .as_object_mut()
                 .expect("an input")
                 .remove("description");
+            std::fs::write(&manifest, listing.to_string()).expect("the manifest");
+            let glossary = specifications_glossary();
+            let file = benched_with(&[
+                "--inputs",
+                manifest.as_str(),
+                "--glossary",
+                glossary.to_str().expect("a path"),
+            ]);
+            let said = file["catalog-one/convert/first"]["extra"]
+                .as_str()
+                .expect("a sentence");
+            assert!(!said.contains("A catalog of one item."), "{said}");
+        }
+
+        /// refuses an undescribed input when the manifest describes another, naming it
+        #[test]
+        #[ignore = "reads a checkout of jayostis/cascade-bridge-spec beside this one"]
+        fn refuses_an_undescribed_input_when_the_manifest_describes_another_naming_it() {
+            let (_scratch, manifest) = manifest_of_one_input(ONE_ITEM_SHA256);
+            let mut listing: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(&manifest).expect("the manifest"))
+                    .expect("JSON");
+            let mut second = listing["inputs"][0].clone();
+            second["id"] = serde_json::json!("catalog-two");
+            second
+                .as_object_mut()
+                .expect("an input")
+                .remove("description");
+            listing["inputs"]
+                .as_array_mut()
+                .expect("the inputs")
+                .push(second);
             std::fs::write(&manifest, listing.to_string()).expect("the manifest");
             let glossary = specifications_glossary();
             let run = bench(&[
@@ -1170,7 +1202,7 @@ mod measuring_for_the_benchmark {
             ]);
             let said = String::from_utf8_lossy(&run.stderr);
             assert_eq!(run.status.code(), Some(2), "{said}");
-            assert!(said.contains("catalog-one"), "{said}");
+            assert!(said.contains("catalog-two"), "{said}");
         }
     }
 

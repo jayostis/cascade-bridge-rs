@@ -590,7 +590,9 @@ async function run(parsed) {
   if (parsed.vocabularies !== undefined) at(parsed.vocabularies, () => statSync(parsed.vocabularies));
   const glossary = parsed.glossary === undefined ? undefined : jsonAt(parsed.glossary);
   const stages = glossary === undefined ? undefined : jsonAt(parsed.engineGlossary ?? ENGINE_GLOSSARY).stages;
-  if (glossary !== undefined && parsed.manifest !== undefined) {
+  // A manifest that describes none of its inputs is an adapter that has not written them yet, and its
+  // rows carry no description; one that describes some and not others is a slip, and is refused.
+  if (glossary !== undefined && parsed.manifest !== undefined && inputs.some(({ description }) => description !== undefined)) {
     const undescribed = inputs.find(({ description }) => description === undefined);
     if (undescribed !== undefined) throw new Refusal(`${parsed.manifest}: the input ${undescribed.id} has no description`);
   }
