@@ -1109,6 +1109,21 @@ mod measuring_for_the_benchmark {
             }
         }
 
+        /// with `--digest-only` writes only the output digests, the same as a full run writes
+        #[test]
+        fn with_digest_only_writes_only_the_output_digests_the_same_as_a_full_run_writes() {
+            let two = tiny().join("fixtures/in/two.xml");
+            let full = benched(&[&two], &["--executor", "spareval"]);
+            let only = benched(&[&two], &["--executor", "spareval", "--digest-only"]);
+            assert_eq!(
+                named_under(&only, "two"),
+                ["two/output/findings", "two/output/graph"]
+            );
+            for output in ["two/output/graph", "two/output/findings"] {
+                assert_eq!(only[output]["sha256"], full[output]["sha256"], "{output}");
+            }
+        }
+
         /// refuses a name it does not know, with the usage
         #[test]
         fn refuses_a_name_it_does_not_know_with_the_usage() {

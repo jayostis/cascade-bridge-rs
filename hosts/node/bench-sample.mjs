@@ -2,9 +2,10 @@
 // It says each phase as it starts, then what it measured, one JSON object per line.
 //
 // `given.mode` is "timing" (default), whose two converts are unprofiled, so their seconds are
-// those of a caller that asked for no profile, or "profile", whose first convert is profiled and
+// those of a caller that asked for no profile, "profile", whose first convert is profiled and
 // whose second writes `graph.nt` and `findings.nt` to `given.outputDirectory` as N-Triples, for
-// the digest. A profiled convert is slower than an unprofiled one, so the two are never mixed.
+// the digest, or "digest", whose one convert writes them. A profiled convert is slower than an
+// unprofiled one, so the two are never mixed.
 //
 // `given.skip` is a measurement's load: it names what the sample leaves out ("schema",
 // "shapes", "findings"), possibly nothing, and times the load by stage. A sample that
@@ -135,14 +136,18 @@ try {
   const { adapter, document, load } = loaded();
   say({ phase: "convert" });
   const profiling = given.mode === "profile";
-  const first = converted(adapter, document, { profile: profiling }, false);
-  say({ phase: "convert again" });
-  const second = converted(adapter, document, profiling ? { format: "ntriples" } : {}, profiling);
+  const digesting = given.mode === "digest";
+  const first = converted(adapter, document, digesting ? { format: "ntriples" } : { profile: profiling }, digesting);
+  const converts = [first];
+  if (!digesting) {
+    say({ phase: "convert again" });
+    converts.push(converted(adapter, document, profiling ? { format: "ntriples" } : {}, profiling));
+  }
   say({
     sample: {
       boot: booting,
       load,
-      converts: [first, second],
+      converts,
       rss: process.resourceUsage().maxRSS * 1024,
       skipped: skip,
     },

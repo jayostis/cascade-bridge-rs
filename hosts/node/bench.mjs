@@ -13,7 +13,7 @@ import { at, iriOf, Refusal } from "./host.mjs";
 const USAGE = `usage: node hosts/node/bench.mjs --inputs <bench/manifest.json> [--only <glob>[,<glob>...]] [--pull-requests] [options]
        node hosts/node/bench.mjs <adapter-dir> <document>... [--envelope <iri>] [options]
 options: [--vocabularies <directory>] [--samples <n>] [--timeout <seconds>] [--package <directory>]
-         [--executor compiled|spareval|both] [--out <file.json>] [--profile-samples <n>] [--other-load <text>] [--glossary <file.json>]
+         [--executor compiled|spareval|both] [--out <file.json>] [--profile-samples <n>] [--other-load <text>] [--glossary <file.json>] [--digest-only]
          [--baseline <package directory>] [--baseline-adapter <adapter directory>] [--baseline-out <file.json>]
          [--allow-fallbacks]`;
 
@@ -51,6 +51,7 @@ function parse(argv) {
     else if (argument === "--profile-samples") parsed.profileSamples = number(argument, next(), true);
     else if (argument === "--other-load") parsed.otherLoad = next();
     else if (argument === "--glossary") parsed.glossary = next();
+    else if (argument === "--digest-only") parsed.digestOnly = true;
     else if (argument === "--baseline") parsed.baseline = next();
     else if (argument === "--baseline-adapter") parsed.baselineAdapter = next();
     else if (argument === "--baseline-out") parsed.baselineOut = next();
@@ -337,12 +338,23 @@ function explained(results, glossary, inputs) {
 // checked for equivalence, and the stages are what a speed-up is looked for in.
 const ALWAYS = ["output", "stage", "records-per-second"];
 
+function digestRows(input, side) {
+  const digests = side.digests.get(input.id);
+  return digests === undefined
+    ? []
+    : ["graph", "findings"].map((kind) => ({
+        ...one(`${input.id}/output/${kind}`, "{count}", digests[kind].quads),
+        sha256: digests[kind].sha256,
+      }));
+}
+
 function inputResults(input, side) {
   const outcomes = side.outcomes.get(input.id);
   const failed = outcomes.find((outcome) => outcome.sample === undefined);
   if (failed?.timeout !== undefined) return [one(`${input.id}/timeout/${failed.timeout}`, "s", failed.seconds)];
   if (failed !== undefined)
     return [{ ...one(`${input.id}/refused/${failed.refused}`, "{count}", 1), extra: failed.message }];
+  if (side.digestOnly) return digestRows(input, side);
   const samples = outcomes.map(({ sample }) => sample);
   const profiled = side.profiles.get(input.id).flatMap(({ sample }) => (sample === undefined ? [] : [sample]));
   const results = [];
@@ -442,15 +454,7 @@ function inputResults(input, side) {
     );
     results.push(spread(`${input.id}/stage/unaccounted`, "s", "clock", unaccounted));
   }
-  const digests = side.digests.get(input.id);
-  if (digests !== undefined) {
-    for (const kind of ["graph", "findings"]) {
-      results.push({
-        ...one(`${input.id}/output/${kind}`, "{count}", digests[kind].quads),
-        sha256: digests[kind].sha256,
-      });
-    }
-  }
+  results.push(...digestRows(input, side));
   return input.measures === undefined
     ? results
     : results.filter(({ name }) => {
@@ -488,7 +492,7 @@ function resultFile(side, inputs, commits, parsed, glossary) {
     env: environment(side, parsed),
     commit: { ...checkoutCommit(side.adapter), ...commits, ...engine },
     results: explained(
-      [...inputs.flatMap((input) => inputResults(input, side)), ...loadResults(side, inputs)],
+      [...inputs.flatMap((input) => inputResults(input, side)), ...(side.digestOnly ? [] : loadResults(side, inputs))],
       glossary,
       inputs,
     ),
@@ -553,6 +557,16 @@ function failure(outcome) {
   return outcome.sample !== undefined ? undefined : (outcome.refused ?? `timed out in ${outcome.timeout}`);
 }
 
+// The digests of the outputs a sample wrote to `directory`, which are then removed.
+async function digestOutputs(side, input, directory) {
+  const [graph, findings] = await Promise.all(["graph", "findings"].map((kind) => digestOf(join(directory, `${kind}.nt`))));
+  side.digests.set(input.id, { graph, findings });
+  process.stderr.write(`${input.id} output ${graph.quads} + ${findings.quads} quads, graph sha256 ${graph.sha256}
+`);
+  rmSync(join(directory, "graph.nt"), { force: true });
+  rmSync(join(directory, "findings.nt"), { force: true });
+}
+
 async function run(parsed) {
   let inputs;
   if (parsed.manifest === undefined) inputs = parsed.documents.map((path) => inputOf(path, parsed));
@@ -572,6 +586,7 @@ async function run(parsed) {
     outcomes: new Map(ids.map((id) => [id, []])),
     profiles: new Map(ids.map((id) => [id, []])),
     digests: new Map(),
+    digestOnly: parsed.digestOnly === true,
   });
   const sides = [
     ...(baselined ? [made(parsed.baseline ?? parsed.package, parsed.baselineAdapter ?? parsed.adapter)] : []),
@@ -580,6 +595,20 @@ async function run(parsed) {
   const scratch = mkdtempSync(join(os.tmpdir(), "bench-"));
   try {
     for (const input of inputs) {
+      if (parsed.digestOnly) {
+        for (const side of sides) {
+          const directory = join(scratch, `${sides.indexOf(side)}-${input.id}`);
+          mkdirSync(directory);
+          const outcome = await sampled(side, input, parsed, "digest", directory);
+          if (outcome.timeout !== undefined) outcome.seconds = input.timeout;
+          side.outcomes.get(input.id).push(outcome);
+          const ended = failure(outcome) ?? `${outcome.sample.converts[0].seconds.toFixed(2)} s`;
+          process.stderr.write(`${input.id} digest ${side.manifest.name}: ${ended}
+`);
+          if (outcome.sample !== undefined) await digestOutputs(side, input, directory);
+        }
+        continue;
+      }
       for (let n = 1; n <= parsed.samples; n++) {
         for (const side of sides) {
           const outcomes = side.outcomes.get(input.id);
@@ -609,15 +638,7 @@ async function run(parsed) {
               ended ?? `${outcome.sample.converts[0].seconds.toFixed(2)} s profiled`
             }\n`,
           );
-          if (n === 1 && ended === undefined) {
-            const [graph, findings] = await Promise.all(
-              ["graph", "findings"].map((kind) => digestOf(join(directory, `${kind}.nt`))),
-            );
-            side.digests.set(input.id, { graph, findings });
-            process.stderr.write(`${input.id} output ${graph.quads} + ${findings.quads} quads, graph sha256 ${graph.sha256}\n`);
-          }
-          rmSync(join(directory, "graph.nt"), { force: true });
-          rmSync(join(directory, "findings.nt"), { force: true });
+          if (n === 1 && ended === undefined) await digestOutputs(side, input, directory);
         }
       }
     }
