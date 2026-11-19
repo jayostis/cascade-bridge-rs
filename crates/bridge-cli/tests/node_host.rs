@@ -945,7 +945,10 @@ mod measuring_for_the_benchmark {
         for output in ["two/output/graph", "two/output/findings"] {
             let digest = file[output]["sha256"].as_str().expect("a digest");
             assert!(
-                digest.len() == 64 && digest.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase()),
+                digest.len() == 64
+                    && digest
+                        .bytes()
+                        .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase()),
                 "{output}: {digest}"
             );
         }
@@ -971,7 +974,9 @@ mod measuring_for_the_benchmark {
     fn records_the_cpu_model_and_the_other_load_it_was_told_of() {
         let two = tiny().join("fixtures/in/two.xml");
         let file = benched(&[&two], &["--other-load", "a compile on the same machine"]);
-        assert!(file["env"]["cpu"].as_str().is_some_and(|model| !model.is_empty()));
+        assert!(file["env"]["cpu"]
+            .as_str()
+            .is_some_and(|model| !model.is_empty()));
         assert_eq!(file["env"]["otherLoad"], "a compile on the same machine");
     }
 
@@ -1074,10 +1079,20 @@ mod measuring_for_the_benchmark {
                 "catalog-one/output/graph",
                 "catalog-one/output/findings",
             ] {
-                assert!(named.iter().any(|name| *name == measured), "{measured} in {named:?}");
+                assert!(
+                    named.iter().any(|name| *name == measured),
+                    "{measured} in {named:?}"
+                );
             }
-            for unasked in ["catalog-one/rss", "catalog-one/findings", "catalog-one/memory.grow/first"] {
-                assert!(!named.iter().any(|name| *name == unasked), "{unasked} in {named:?}");
+            for unasked in [
+                "catalog-one/rss",
+                "catalog-one/findings",
+                "catalog-one/memory.grow/first",
+            ] {
+                assert!(
+                    !named.iter().any(|name| *name == unasked),
+                    "{unasked} in {named:?}"
+                );
             }
         }
 
@@ -1086,7 +1101,11 @@ mod measuring_for_the_benchmark {
         fn writes_the_stages_and_the_output_digests_whatever_measures_the_manifest_asks_for() {
             let (_scratch, manifest) = manifest_of_one_input(ONE_ITEM_SHA256);
             let file = benched_with(&["--inputs", manifest.as_str()]);
-            assert!(file.contains_key("catalog-one/stage/unaccounted"), "{:?}", file.keys());
+            assert!(
+                file.contains_key("catalog-one/stage/unaccounted"),
+                "{:?}",
+                file.keys()
+            );
             assert!(file["catalog-one/output/graph"]["sha256"].is_string());
         }
 
