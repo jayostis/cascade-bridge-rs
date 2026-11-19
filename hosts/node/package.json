@@ -1,0 +1,11 @@
+{
+  "name": "cascade-bridge-rs-node-host",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "rdf-canonize": "5.0.0"
+  }
+}

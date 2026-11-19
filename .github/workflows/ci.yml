@@ -57,6 +57,9 @@ jobs:
           node-version: 22
       - run: sh package/build.sh --fast
         working-directory: ${{ github.event.repository.name }}
+      # rdf-canonize, which hosts/node/bench.mjs digests each output with.
+      - run: npm ci --no-audit --no-fund
+        working-directory: ${{ github.event.repository.name }}/hosts/node
       - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
       - run: node --test .github/scripts/junit-properties.test.mjs
         working-directory: ${{ github.event.repository.name }}

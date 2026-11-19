@@ -1,0 +1,89 @@
+# No logic here on purpose: the run lives in cascade-bridge-spec's perf action, called from the specification this run picked.
+name: perf
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened]
+  schedule:
+    - cron: "43 3 * * *"
+  workflow_dispatch:
+    inputs:
+      which:
+        description: "pull-requests: the inputs marked for pull requests. all: every input."
+        type: choice
+        options: [pull-requests, all]
+        default: pull-requests
+      reference:
+        description: "Also run the reference executor job (the nightly run does)."
+        type: boolean
+        default: false
+
+concurrency:
+  group: perf-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  # The only jobs that may write to the repository, and only to its perf-data branch.
+  perf-data:
+    name: perf-data
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: ${{ github.event.repository.name }}
+          persist-credentials: false
+      - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
+        with:
+          checkout-only: 'true'
+      - uses: ./cascade-bridge-spec/.github/actions/perf
+        with:
+          publish: 'true'
+          inputs: ${{ github.event_name == 'schedule' && 'all' || inputs.which || 'pull-requests' }}
+
+  perf-reference:
+    name: perf-reference
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.reference))
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: ${{ github.event.repository.name }}
+          persist-credentials: false
+      - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
+        with:
+          checkout-only: 'true'
+      - uses: ./cascade-bridge-spec/.github/actions/perf
+        with:
+          publish: 'true'
+          reference: 'true'
+          inputs: ${{ inputs.which || 'all' }}
+
+  perf-pull-request:
+    name: perf-pull-request
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: ${{ github.event.repository.name }}
+          persist-credentials: false
+      - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
+        with:
+          checkout-only: 'true'
+      - uses: ./cascade-bridge-spec/.github/actions/perf

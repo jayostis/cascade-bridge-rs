@@ -129,6 +129,9 @@ jobs:
       - if: matrix.memory
         run: sh package/build.sh
         working-directory: ${{ github.event.repository.name }}
+      - if: matrix.memory
+        run: npm ci --no-audit --no-fund
+        working-directory: ${{ github.event.repository.name }}/hosts/node
       - name: peak wasm memory of the x10 C-CDA, findings on
         if: matrix.memory
         run: |

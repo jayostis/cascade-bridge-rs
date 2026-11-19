@@ -281,6 +281,7 @@ fn manifest_of_one_input(sha256: &str) -> (tempfile::TempDir, String) {
     let manifest = adapter.join("bench/manifest.json");
     let listing = serde_json::json!({ "inputs": [{
         "id": "catalog-one",
+        "description": "A catalog of one item.",
         "path": "bench/one.xml",
         "sha256": sha256,
         "bytes": ONE_ITEM.len(),
@@ -879,6 +880,7 @@ mod measuring_for_the_benchmark {
         for (name, expected) in [
             ("two/convert/first", "clock"),
             ("two/convert/second", "clock"),
+            ("two/convert/profiled", "clock"),
             ("two/memory.grow/first", "cost"),
             ("two/memory.grow/second", "cost"),
             ("two/wasm-memory/first", "cost"),
@@ -894,9 +896,18 @@ mod measuring_for_the_benchmark {
             ("two/query-time/item.rq", "clock"),
             ("two/query-rows/item.rq", "output"),
             ("two/query-time/detect.rq", "clock"),
+            ("two/stage/mapping", "clock"),
+            ("two/stage/unaccounted", "clock"),
+            ("two/output/graph", "output"),
+            ("two/output/findings", "output"),
             ("catalog/load", "clock"),
+            ("catalog/load/read-files", "clock"),
+            ("catalog/load/prepare", "clock"),
             ("catalog/load/files-read", "cost"),
             ("catalog/load/missing-files", "cost"),
+            ("catalog/boot/read-wasm", "clock"),
+            ("catalog/boot/compile-wasm", "clock"),
+            ("catalog/boot/instantiate-wasm", "clock"),
         ] {
             assert_eq!(kind(name), expected, "{name}");
         }
@@ -922,6 +933,51 @@ mod measuring_for_the_benchmark {
         let said = String::from_utf8_lossy(&converted.stderr).into_owned();
         let triples = file["two/triples"]["value"].as_u64().expect("a count");
         assert!(said.contains(&format!(" {triples} triples")), "{said}");
+    }
+
+    /// writes the quad count and the SHA-256 of the canonical N-Quads of each output
+    #[test]
+    fn writes_the_quad_count_and_the_sha_256_of_the_canonical_n_quads_of_each_output() {
+        let two = tiny().join("fixtures/in/two.xml");
+        let file = benched(&[&two], &[]);
+        let graph = &file["two/output/graph"];
+        assert_eq!(graph["value"], file["two/triples"]["value"]);
+        for output in ["two/output/graph", "two/output/findings"] {
+            let digest = file[output]["sha256"].as_str().expect("a digest");
+            assert!(
+                digest.len() == 64
+                    && digest
+                        .bytes()
+                        .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase()),
+                "{output}: {digest}"
+            );
+        }
+    }
+
+    /// writes the same output digests whichever executor converts
+    #[test]
+    fn writes_the_same_output_digests_whichever_executor_converts() {
+        let two = tiny().join("fixtures/in/two.xml");
+        let by_default = benched(&[&two], &[]);
+        for executor in ["compiled", "spareval"] {
+            let file = benched(&[&two], &["--executor", executor]);
+            for output in ["two/output/graph", "two/output/findings"] {
+                assert_eq!(
+                    file[output]["sha256"], by_default[output]["sha256"],
+                    "{executor} {output}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn records_the_cpu_model_and_the_other_load_it_was_told_of() {
+        let two = tiny().join("fixtures/in/two.xml");
+        let file = benched(&[&two], &["--other-load", "a compile on the same machine"]);
+        assert!(file["env"]["cpu"]
+            .as_str()
+            .is_some_and(|model| !model.is_empty()));
+        assert_eq!(file["env"]["otherLoad"], "a compile on the same machine");
     }
 
     #[test]
@@ -967,6 +1023,263 @@ mod measuring_for_the_benchmark {
         );
     }
 
+    /// with `--glossary <file>`
+    mod with_glossary {
+        use super::*;
+
+        fn specification() -> PathBuf {
+            match std::env::var_os("CASCADE_BRIDGE_SPEC") {
+                Some(named) => PathBuf::from(named),
+                None => workspace().join("../cascade-bridge-spec"),
+            }
+        }
+
+        fn specifications_glossary() -> PathBuf {
+            specification().join("bench/glossary.json")
+        }
+
+        fn engines_glossary() -> PathBuf {
+            node_host_directory().join("bench-glossary.json")
+        }
+
+        /// gives each stage a sentence and names only a row of the specification's stages as its specification stage
+        #[test]
+        #[ignore = "reads a checkout of jayostis/cascade-bridge-spec beside this one"]
+        fn gives_each_stage_a_sentence_and_names_only_a_row_of_the_specifications_stages_as_its_specification_stage(
+        ) {
+            let table = std::fs::read_to_string(specification().join("engine/stages.md"))
+                .expect("the specification's stages");
+            let rows: BTreeSet<&str> = table
+                .lines()
+                .filter_map(|line| line.strip_prefix("| "))
+                .filter_map(|line| line.split(" |").next())
+                .collect();
+            let glossary: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(engines_glossary()).expect("the glossary"))
+                    .expect("JSON");
+            for (stage, entry) in glossary["stages"].as_object().expect("stages") {
+                assert!(
+                    entry["sentence"].as_str().is_some_and(|s| !s.is_empty()),
+                    "{stage} has no sentence"
+                );
+                if let Some(named) = entry.get("specificationStage") {
+                    let named = named.as_str().expect("a row name");
+                    assert!(
+                        rows.contains(named),
+                        "{stage}: {named} is no stage of stages.md"
+                    );
+                }
+            }
+        }
+
+        /// gives every name it writes a sentence from the specification's glossary or the engine's
+        #[test]
+        #[ignore = "reads a checkout of jayostis/cascade-bridge-spec beside this one"]
+        fn gives_every_name_it_writes_a_sentence_from_the_specifications_glossary_or_the_engines() {
+            let two = tiny().join("fixtures/in/two.xml");
+            let glossary = specifications_glossary();
+            let file = benched(&[&two], &["--glossary", glossary.to_str().expect("a path")]);
+            for (name, entry) in &file {
+                if name == "env" || name == "commit" {
+                    continue;
+                }
+                assert!(
+                    entry["extra"]
+                        .as_str()
+                        .is_some_and(|extra| !extra.is_empty()),
+                    "{name} has no sentence"
+                );
+            }
+        }
+
+        /// refuses a run that writes a stage the engine's glossary has no sentence for, naming the row
+        #[test]
+        #[ignore = "reads a checkout of jayostis/cascade-bridge-spec beside this one"]
+        fn refuses_a_run_that_writes_a_stage_the_engines_glossary_has_no_sentence_for_naming_the_row(
+        ) {
+            let scratch = scratch();
+            let mut glossary: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(engines_glossary()).expect("the glossary"))
+                    .expect("JSON");
+            glossary["stages"]
+                .as_object_mut()
+                .expect("stages")
+                .remove("mapping");
+            let lacking = scratch.path().join("engine-glossary.json");
+            std::fs::write(&lacking, glossary.to_string()).expect("the glossary");
+            let (adapter, two, vocabularies) =
+                (tiny(), tiny().join("fixtures/in/two.xml"), vocabularies());
+            let specifications = specifications_glossary();
+            let run = bench(&[
+                adapter.to_str().expect("a path"),
+                two.to_str().expect("a path"),
+                "--vocabularies",
+                vocabularies.to_str().expect("a path"),
+                "--allow-fallbacks",
+                "--samples",
+                "1",
+                "--glossary",
+                specifications.to_str().expect("a path"),
+                "--engine-glossary",
+                lacking.to_str().expect("a path"),
+            ]);
+            let said = String::from_utf8_lossy(&run.stderr);
+            assert_eq!(run.status.code(), Some(2), "{said}");
+            assert!(said.contains("two/stage/mapping"), "{said}");
+        }
+
+        /// gives the manifest's description of an input to the row of its first convert
+        #[test]
+        #[ignore = "reads a checkout of jayostis/cascade-bridge-spec beside this one"]
+        fn gives_the_manifests_description_of_an_input_to_the_row_of_its_first_convert() {
+            let (_scratch, manifest) = manifest_of_one_input(ONE_ITEM_SHA256);
+            let glossary = specifications_glossary();
+            let file = benched_with(&[
+                "--inputs",
+                manifest.as_str(),
+                "--glossary",
+                glossary.to_str().expect("a path"),
+            ]);
+            let said = file["catalog-one/convert/first"]["extra"]
+                .as_str()
+                .expect("a sentence");
+            assert!(said.contains("A catalog of one item."), "{said}");
+        }
+
+        /// writes rows without a description for a manifest that describes no input
+        #[test]
+        #[ignore = "reads a checkout of jayostis/cascade-bridge-spec beside this one"]
+        fn writes_rows_without_a_description_for_a_manifest_that_describes_no_input() {
+            let (_scratch, manifest) = manifest_of_one_input(ONE_ITEM_SHA256);
+            let mut listing: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(&manifest).expect("the manifest"))
+                    .expect("JSON");
+            listing["inputs"][0]
+                .as_object_mut()
+                .expect("an input")
+                .remove("description");
+            std::fs::write(&manifest, listing.to_string()).expect("the manifest");
+            let glossary = specifications_glossary();
+            let file = benched_with(&[
+                "--inputs",
+                manifest.as_str(),
+                "--glossary",
+                glossary.to_str().expect("a path"),
+            ]);
+            let said = file["catalog-one/convert/first"]["extra"]
+                .as_str()
+                .expect("a sentence");
+            assert!(!said.contains("A catalog of one item."), "{said}");
+        }
+
+        /// refuses an undescribed input when the manifest describes another, naming it
+        #[test]
+        #[ignore = "reads a checkout of jayostis/cascade-bridge-spec beside this one"]
+        fn refuses_an_undescribed_input_when_the_manifest_describes_another_naming_it() {
+            let (_scratch, manifest) = manifest_of_one_input(ONE_ITEM_SHA256);
+            let mut listing: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(&manifest).expect("the manifest"))
+                    .expect("JSON");
+            let mut second = listing["inputs"][0].clone();
+            second["id"] = serde_json::json!("catalog-two");
+            second
+                .as_object_mut()
+                .expect("an input")
+                .remove("description");
+            listing["inputs"]
+                .as_array_mut()
+                .expect("the inputs")
+                .push(second);
+            std::fs::write(&manifest, listing.to_string()).expect("the manifest");
+            let glossary = specifications_glossary();
+            let run = bench(&[
+                "--inputs",
+                manifest.as_str(),
+                "--glossary",
+                glossary.to_str().expect("a path"),
+                "--samples",
+                "1",
+            ]);
+            let said = String::from_utf8_lossy(&run.stderr);
+            assert_eq!(run.status.code(), Some(2), "{said}");
+            assert!(said.contains("catalog-two"), "{said}");
+        }
+    }
+
+    /// given N-Triples to digest
+    mod given_n_triples_to_digest {
+        use super::*;
+
+        const REPEATED_AND_CASED: &str = "<http://e/s> <http://e/p> \"a\" .\n\
+<http://e/s> <http://e/p> \"a\" .\n\
+<http://e/s> <http://e/p> \"b\"@EN-us .\n\
+_:x <http://e/q> \"c\" .\n\
+_:x <http://e/q> \"c\" .\n\
+_:y <http://e/q> _:x .\n";
+
+        const REFERRING_TO_EACH_OTHER: &str = "_:a <http://e/p> _:b .\n_:b <http://e/p> _:a .\n";
+
+        fn digested(triples: &str) -> serde_json::Value {
+            let scratch = scratch();
+            let file = scratch.path().join("triples.nt");
+            std::fs::write(&file, triples).expect("the triples");
+            let run = Command::new("node")
+                .arg(node_host_directory().join("bench-digest.mjs"))
+                .arg(&file)
+                .output()
+                .expect("run the digest");
+            assert!(
+                run.status.success(),
+                "{}",
+                String::from_utf8_lossy(&run.stderr)
+            );
+            serde_json::from_slice(&run.stdout).expect("JSON")
+        }
+
+        fn digested_by_rdf_canonize(triples: &str) -> serde_json::Value {
+            let scratch = scratch();
+            let file = scratch.path().join("triples.nt");
+            std::fs::write(&file, triples).expect("the triples");
+            let script = "import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import canonize from 'rdf-canonize';
+const text = readFileSync(process.env.TRIPLES, 'utf8');
+const canonical = await canonize.canonize(text, { algorithm: 'RDFC-1.0', inputFormat: 'application/n-quads', format: 'application/n-quads' });
+console.log(JSON.stringify({ quads: canonical.trimEnd().split('\\n').length, sha256: createHash('sha256').update(canonical).digest('hex') }));";
+            let run = Command::new("node")
+                .args(["--input-type=module", "-e", script])
+                .env("TRIPLES", &file)
+                .current_dir(node_host_directory())
+                .output()
+                .expect("run rdf-canonize");
+            assert!(
+                run.status.success(),
+                "{}",
+                String::from_utf8_lossy(&run.stderr)
+            );
+            serde_json::from_slice(&run.stdout).expect("JSON")
+        }
+
+        /// digests a triple written twice and a language tag as written the way rdf-canonize does
+        #[test]
+        fn digests_a_triple_written_twice_and_a_language_tag_as_written_the_way_rdf_canonize_does()
+        {
+            assert_eq!(
+                digested(REPEATED_AND_CASED),
+                digested_by_rdf_canonize(REPEATED_AND_CASED)
+            );
+        }
+
+        /// writes no digest, only the count, where rdf-canonize stops at its work limit
+        #[test]
+        fn writes_no_digest_only_the_count_where_rdf_canonize_stops_at_its_work_limit() {
+            let said = digested(REFERRING_TO_EACH_OTHER);
+            assert_eq!(said["quads"], 2);
+            assert!(said.get("sha256").is_none(), "{said}");
+            assert!(said["gaveUp"].is_string(), "{said}");
+        }
+    }
+
     /// with `--executor <name>`
     mod with_executor {
         use super::*;
@@ -984,6 +1297,21 @@ mod measuring_for_the_benchmark {
                     file["two/triples"]["value"], by_default["two/triples"]["value"],
                     "{executor}"
                 );
+            }
+        }
+
+        /// writes only the output digests given `--digest-only`, the same as a full run writes
+        #[test]
+        fn writes_only_the_output_digests_the_same_as_a_full_run_writes_given_digest_only() {
+            let two = tiny().join("fixtures/in/two.xml");
+            let full = benched(&[&two], &["--executor", "spareval"]);
+            let only = benched(&[&two], &["--executor", "spareval", "--digest-only"]);
+            assert_eq!(
+                named_under(&only, "two"),
+                ["two/output/findings", "two/output/graph"]
+            );
+            for output in ["two/output/graph", "two/output/findings"] {
+                assert_eq!(only[output]["sha256"], full[output]["sha256"], "{output}");
             }
         }
 
@@ -1016,14 +1344,41 @@ mod measuring_for_the_benchmark {
                 .keys()
                 .filter(|name| name.starts_with("catalog-one/"))
                 .collect();
-            assert_eq!(
-                named,
-                [
-                    "catalog-one/convert/first",
-                    "catalog-one/convert/second",
-                    "catalog-one/triples"
-                ]
+            for measured in [
+                "catalog-one/convert/first",
+                "catalog-one/convert/second",
+                "catalog-one/triples",
+                "catalog-one/output/graph",
+                "catalog-one/output/findings",
+            ] {
+                assert!(
+                    named.iter().any(|name| *name == measured),
+                    "{measured} in {named:?}"
+                );
+            }
+            for unasked in [
+                "catalog-one/rss",
+                "catalog-one/findings",
+                "catalog-one/memory.grow/first",
+            ] {
+                assert!(
+                    !named.iter().any(|name| *name == unasked),
+                    "{unasked} in {named:?}"
+                );
+            }
+        }
+
+        /// writes the stages and the output digests whatever measures the manifest asks for
+        #[test]
+        fn writes_the_stages_and_the_output_digests_whatever_measures_the_manifest_asks_for() {
+            let (_scratch, manifest) = manifest_of_one_input(ONE_ITEM_SHA256);
+            let file = benched_with(&["--inputs", manifest.as_str()]);
+            assert!(
+                file.contains_key("catalog-one/stage/unaccounted"),
+                "{:?}",
+                file.keys()
             );
+            assert!(file["catalog-one/output/graph"]["sha256"].is_string());
         }
 
         /// refuses an input whose bytes are not the SHA-256 the manifest gives, naming the one it found
@@ -1034,6 +1389,49 @@ mod measuring_for_the_benchmark {
             let said = String::from_utf8_lossy(&refused.stderr);
             assert_eq!(refused.status.code(), Some(2), "{said}");
             assert!(said.contains(ONE_ITEM_SHA256), "{said}");
+        }
+    }
+
+    /// with `--baseline-adapter <directory>`
+    mod with_baseline_adapter {
+        use super::*;
+
+        /// measures the adapter beside the baseline and writes a file for each, naming the commit of each adapter
+        #[test]
+        fn measures_the_adapter_beside_the_baseline_and_writes_a_file_for_each() {
+            let scratch = scratch();
+            let baseline = scratch.path().join("baseline-adapter");
+            copied_to(&tiny(), &baseline);
+            let two = tiny().join("fixtures/in/two.xml");
+            let (head_out, baseline_out) = (
+                scratch.path().join("head.json"),
+                scratch.path().join("baseline.json"),
+            );
+            let adapter = tiny();
+            let vocabularies = vocabularies();
+            let run = bench(&[
+                adapter.to_str().expect("a path"),
+                two.to_str().expect("a path"),
+                "--vocabularies",
+                vocabularies.to_str().expect("a path"),
+                "--allow-fallbacks",
+                "--samples",
+                "1",
+                "--baseline-adapter",
+                baseline.to_str().expect("a path"),
+                "--baseline-out",
+                baseline_out.to_str().expect("a path"),
+                "--out",
+                head_out.to_str().expect("a path"),
+            ]);
+            let said = String::from_utf8_lossy(&run.stderr).into_owned();
+            assert_eq!(run.status.code(), Some(0), "{said}");
+            let shown = String::from_utf8_lossy(&run.stdout).into_owned();
+            assert!(shown.contains("| baseline | this | change |"), "{shown}");
+            assert!(shown.contains("same output"), "{shown}");
+            for path in [&head_out, &baseline_out] {
+                assert!(path.exists(), "{path:?}");
+            }
         }
     }
 
