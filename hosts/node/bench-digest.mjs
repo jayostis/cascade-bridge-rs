@@ -1,5 +1,6 @@
 // The digest of one output of `bench.mjs`: the SHA-256 of the file's triples as canonical
-// N-Quads (W3C RDFC-1.0, https://www.w3.org/TR/rdf-canon/), and how many there are.
+// N-Quads (W3C RDFC-1.0, https://www.w3.org/TR/rdf-canon/), and how many distinct there are.
+// Where rdf-canonize gives up at its work limit the object has `gaveUp`, its message, in place of `sha256`.
 // `node bench-digest.mjs <file.nt>` prints one JSON object. The file is the Bridge's N-Triples,
 // one triple to a line, read here because rdf-canonize's own N-Quads reader takes time that
 // grows with the square of the file.
@@ -41,7 +42,7 @@ function quadOf(line) {
           termType: "Literal",
           value: unescaped(text),
           datatype: { termType: "NamedNode", value: literalDatatype },
-          ...(language === undefined ? {} : { language: language.toLowerCase() }),
+          ...(language === undefined ? {} : { language }),
         };
   return {
     subject: term(subjectIri, subjectBlank),
@@ -51,15 +52,29 @@ function quadOf(line) {
   };
 }
 
+function keyOf({ subject, predicate, object }) {
+  const { termType, value, datatype, language } = object;
+  return `${subject.termType}${subject.value}\0${predicate.value}\0${termType}${value}\0${datatype?.value ?? ""}\0${language ?? ""}`;
+}
+
+// A dataset is a set: a triple written twice is one quad.
+const seen = new Set();
 const dataset = [];
 for await (const line of createInterface({ input: createReadStream(process.argv[2], "utf8"), crlfDelay: Infinity })) {
-  if (line.trim() !== "" && !line.startsWith("#")) dataset.push(quadOf(line));
+  if (line.trim() === "" || line.startsWith("#")) continue;
+  const quad = quadOf(line);
+  const key = keyOf(quad);
+  if (!seen.has(key)) {
+    seen.add(key);
+    dataset.push(quad);
+  }
 }
-const canonical =
-  dataset.length === 0 ? "" : await canonize.canonize(dataset, { algorithm: "RDFC-1.0", format: "application/n-quads" });
-process.stdout.write(
-  `${JSON.stringify({
-    quads: canonical === "" ? 0 : canonical.trimEnd().split("\n").length,
-    sha256: createHash("sha256").update(canonical).digest("hex"),
-  })}\n`,
-);
+const counted = { quads: dataset.length };
+try {
+  const canonical =
+    dataset.length === 0 ? "" : await canonize.canonize(dataset, { algorithm: "RDFC-1.0", format: "application/n-quads" });
+  process.stdout.write(`${JSON.stringify({ ...counted, sha256: createHash("sha256").update(canonical).digest("hex") })}\n`);
+} catch (error) {
+  if (!(error instanceof Error) || !error.message.startsWith("Maximum deep iterations exceeded")) throw error;
+  process.stdout.write(`${JSON.stringify({ ...counted, gaveUp: error.message })}\n`);
+}

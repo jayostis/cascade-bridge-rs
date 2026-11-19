@@ -281,6 +281,7 @@ fn manifest_of_one_input(sha256: &str) -> (tempfile::TempDir, String) {
     let manifest = adapter.join("bench/manifest.json");
     let listing = serde_json::json!({ "inputs": [{
         "id": "catalog-one",
+        "description": "A catalog of one item.",
         "path": "bench/one.xml",
         "sha256": sha256,
         "bytes": ONE_ITEM.len(),
@@ -885,7 +886,6 @@ mod measuring_for_the_benchmark {
             ("two/wasm-memory/first", "cost"),
             ("two/wasm-memory/second", "cost"),
             ("two/rss", "clock"),
-            ("two/records-per-second", "clock"),
             ("two/records", "output"),
             ("two/triples", "output"),
             ("two/findings", "output"),
@@ -1027,18 +1027,55 @@ mod measuring_for_the_benchmark {
     mod with_glossary {
         use super::*;
 
-        fn specifications_glossary() -> PathBuf {
+        fn specification() -> PathBuf {
             match std::env::var_os("CASCADE_BRIDGE_SPEC") {
                 Some(named) => PathBuf::from(named),
                 None => workspace().join("../cascade-bridge-spec"),
             }
-            .join("bench/glossary.json")
         }
 
-        /// gives every name it writes the sentence the specification's glossary has for it
+        fn specifications_glossary() -> PathBuf {
+            specification().join("bench/glossary.json")
+        }
+
+        fn engines_glossary() -> PathBuf {
+            node_host_directory().join("bench-glossary.json")
+        }
+
+        /// gives each stage a sentence and names only a row of the specification's stages as its specification stage
         #[test]
         #[ignore = "reads a checkout of jayostis/cascade-bridge-spec beside this one"]
-        fn gives_every_name_it_writes_the_sentence_the_specifications_glossary_has_for_it() {
+        fn gives_each_stage_a_sentence_and_names_only_a_row_of_the_specifications_stages_as_its_specification_stage(
+        ) {
+            let table = std::fs::read_to_string(specification().join("engine/stages.md"))
+                .expect("the specification's stages");
+            let rows: BTreeSet<&str> = table
+                .lines()
+                .filter_map(|line| line.strip_prefix("| "))
+                .filter_map(|line| line.split(" |").next())
+                .collect();
+            let glossary: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(engines_glossary()).expect("the glossary"))
+                    .expect("JSON");
+            for (stage, entry) in glossary["stages"].as_object().expect("stages") {
+                assert!(
+                    entry["sentence"].as_str().is_some_and(|s| !s.is_empty()),
+                    "{stage} has no sentence"
+                );
+                if let Some(named) = entry.get("specificationStage") {
+                    let named = named.as_str().expect("a row name");
+                    assert!(
+                        rows.contains(named),
+                        "{stage}: {named} is no stage of stages.md"
+                    );
+                }
+            }
+        }
+
+        /// gives every name it writes a sentence from the specification's glossary or the engine's
+        #[test]
+        #[ignore = "reads a checkout of jayostis/cascade-bridge-spec beside this one"]
+        fn gives_every_name_it_writes_a_sentence_from_the_specifications_glossary_or_the_engines() {
             let two = tiny().join("fixtures/in/two.xml");
             let glossary = specifications_glossary();
             let file = benched(&[&two], &["--glossary", glossary.to_str().expect("a path")]);
@@ -1055,23 +1092,24 @@ mod measuring_for_the_benchmark {
             }
         }
 
-        /// refuses a run that writes a stage the glossary has no sentence for, naming the row
+        /// refuses a run that writes a stage the engine's glossary has no sentence for, naming the row
         #[test]
         #[ignore = "reads a checkout of jayostis/cascade-bridge-spec beside this one"]
-        fn refuses_a_run_that_writes_a_stage_the_glossary_has_no_sentence_for_naming_the_row() {
+        fn refuses_a_run_that_writes_a_stage_the_engines_glossary_has_no_sentence_for_naming_the_row(
+        ) {
             let scratch = scratch();
-            let mut glossary: serde_json::Value = serde_json::from_slice(
-                &std::fs::read(specifications_glossary()).expect("the glossary"),
-            )
-            .expect("JSON");
+            let mut glossary: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(engines_glossary()).expect("the glossary"))
+                    .expect("JSON");
             glossary["stages"]
                 .as_object_mut()
                 .expect("stages")
                 .remove("mapping");
-            let lacking = scratch.path().join("glossary.json");
+            let lacking = scratch.path().join("engine-glossary.json");
             std::fs::write(&lacking, glossary.to_string()).expect("the glossary");
             let (adapter, two, vocabularies) =
                 (tiny(), tiny().join("fixtures/in/two.xml"), vocabularies());
+            let specifications = specifications_glossary();
             let run = bench(&[
                 adapter.to_str().expect("a path"),
                 two.to_str().expect("a path"),
@@ -1081,11 +1119,132 @@ mod measuring_for_the_benchmark {
                 "--samples",
                 "1",
                 "--glossary",
+                specifications.to_str().expect("a path"),
+                "--engine-glossary",
                 lacking.to_str().expect("a path"),
             ]);
             let said = String::from_utf8_lossy(&run.stderr);
             assert_eq!(run.status.code(), Some(2), "{said}");
             assert!(said.contains("two/stage/mapping"), "{said}");
+        }
+
+        /// gives the manifest's description of an input to the row of its first convert
+        #[test]
+        #[ignore = "reads a checkout of jayostis/cascade-bridge-spec beside this one"]
+        fn gives_the_manifests_description_of_an_input_to_the_row_of_its_first_convert() {
+            let (_scratch, manifest) = manifest_of_one_input(ONE_ITEM_SHA256);
+            let glossary = specifications_glossary();
+            let file = benched_with(&[
+                "--inputs",
+                manifest.as_str(),
+                "--glossary",
+                glossary.to_str().expect("a path"),
+            ]);
+            let said = file["catalog-one/convert/first"]["extra"]
+                .as_str()
+                .expect("a sentence");
+            assert!(said.contains("A catalog of one item."), "{said}");
+        }
+
+        /// refuses an input the manifest does not describe, naming it
+        #[test]
+        #[ignore = "reads a checkout of jayostis/cascade-bridge-spec beside this one"]
+        fn refuses_an_input_the_manifest_does_not_describe_naming_it() {
+            let (_scratch, manifest) = manifest_of_one_input(ONE_ITEM_SHA256);
+            let mut listing: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(&manifest).expect("the manifest"))
+                    .expect("JSON");
+            listing["inputs"][0]
+                .as_object_mut()
+                .expect("an input")
+                .remove("description");
+            std::fs::write(&manifest, listing.to_string()).expect("the manifest");
+            let glossary = specifications_glossary();
+            let run = bench(&[
+                "--inputs",
+                manifest.as_str(),
+                "--glossary",
+                glossary.to_str().expect("a path"),
+                "--samples",
+                "1",
+            ]);
+            let said = String::from_utf8_lossy(&run.stderr);
+            assert_eq!(run.status.code(), Some(2), "{said}");
+            assert!(said.contains("catalog-one"), "{said}");
+        }
+    }
+
+    /// given N-Triples to digest
+    mod given_n_triples_to_digest {
+        use super::*;
+
+        const REPEATED_AND_CASED: &str = "<http://e/s> <http://e/p> \"a\" .\n\
+<http://e/s> <http://e/p> \"a\" .\n\
+<http://e/s> <http://e/p> \"b\"@EN-us .\n\
+_:x <http://e/q> \"c\" .\n\
+_:x <http://e/q> \"c\" .\n\
+_:y <http://e/q> _:x .\n";
+
+        const REFERRING_TO_EACH_OTHER: &str = "_:a <http://e/p> _:b .\n_:b <http://e/p> _:a .\n";
+
+        fn digested(triples: &str) -> serde_json::Value {
+            let scratch = scratch();
+            let file = scratch.path().join("triples.nt");
+            std::fs::write(&file, triples).expect("the triples");
+            let run = Command::new("node")
+                .arg(node_host_directory().join("bench-digest.mjs"))
+                .arg(&file)
+                .output()
+                .expect("run the digest");
+            assert!(
+                run.status.success(),
+                "{}",
+                String::from_utf8_lossy(&run.stderr)
+            );
+            serde_json::from_slice(&run.stdout).expect("JSON")
+        }
+
+        fn digested_by_rdf_canonize(triples: &str) -> serde_json::Value {
+            let scratch = scratch();
+            let file = scratch.path().join("triples.nt");
+            std::fs::write(&file, triples).expect("the triples");
+            let script = "import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import canonize from 'rdf-canonize';
+const text = readFileSync(process.env.TRIPLES, 'utf8');
+const canonical = await canonize.canonize(text, { algorithm: 'RDFC-1.0', inputFormat: 'application/n-quads', format: 'application/n-quads' });
+console.log(JSON.stringify({ quads: canonical.trimEnd().split('\\n').length, sha256: createHash('sha256').update(canonical).digest('hex') }));";
+            let run = Command::new("node")
+                .args(["--input-type=module", "-e", script])
+                .env("TRIPLES", &file)
+                .current_dir(node_host_directory())
+                .output()
+                .expect("run rdf-canonize");
+            assert!(
+                run.status.success(),
+                "{}",
+                String::from_utf8_lossy(&run.stderr)
+            );
+            serde_json::from_slice(&run.stdout).expect("JSON")
+        }
+
+        /// digests a triple written twice and a language tag as written the way rdf-canonize does
+        #[test]
+        fn digests_a_triple_written_twice_and_a_language_tag_as_written_the_way_rdf_canonize_does()
+        {
+            assert_eq!(
+                digested(REPEATED_AND_CASED),
+                digested_by_rdf_canonize(REPEATED_AND_CASED)
+            );
+        }
+
+        /// writes no digest, only the count, where rdf-canonize stops at its work limit
+        #[test]
+        fn writes_no_digest_only_the_count_where_rdf_canonize_stops_at_its_work_limit() {
+            let said = digested(REFERRING_TO_EACH_OTHER);
+            assert_eq!(said["quads"], 2);
+            assert!(said.get("sha256").is_none(), "{said}");
+            assert!(said["gaveUp"].is_string(), "{said}");
         }
     }
 

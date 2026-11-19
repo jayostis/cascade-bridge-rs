@@ -1,0 +1,55 @@
+{
+  "stages": {
+    "source-validation": {
+      "sentence": "Checking each source record, and the document as a whole where the adapter gives a document schema, against the adapter's schema (XSD or JSON Schema). A failure is a finding, never a refusal.",
+      "specificationStage": "check, validate"
+    },
+    "lift": {
+      "sentence": "Reading the source document into the triples the adapter's queries can ask about, one record at a time.",
+      "specificationStage": "read and chunk"
+    },
+    "index": {
+      "sentence": "Building the lookup structure that compiled queries read, from a record's triples. A query the general evaluator answers needs none."
+    },
+    "mapping": {
+      "sentence": "Running the adapter's mapping queries on each record, without the time of building their lookup structure.",
+      "specificationStage": "transform"
+    },
+    "records": {
+      "sentence": "Turning what the mapping produced into each record's graph: naming its versions, keeping one where the mapping wrote several, and writing their arrivals.",
+      "specificationStage": "name versions, write arrivals"
+    },
+    "document-table": {
+      "sentence": "Running the adapter's document-table query on every record of the document, to link a record to any other record, in the document or not.",
+      "specificationStage": "link records"
+    },
+    "accounting": {
+      "sentence": "Working out, against the adapter's accounting file, what became of each part of each source record."
+    },
+    "dataset": {
+      "sentence": "Putting the facts about a record into the store its queries run over."
+    },
+    "output-validation": {
+      "sentence": "Checking each record's output against the vocabulary's SHACL shapes."
+    },
+    "findings": {
+      "sentence": "Running the adapter's findings queries to find what the source record got wrong or left out.",
+      "specificationStage": "findings"
+    },
+    "unresolved-addresses": {
+      "sentence": "Finding the references to records the document does not hold, which keep their computed names."
+    },
+    "detect": {
+      "sentence": "Running the adapter's detect query, which reports whether the adapter reads this document. The Bridge converts every record whatever the answer; it never routes."
+    },
+    "summary": {
+      "sentence": "Counting the graph's distinct triples and the findings once every record is done."
+    },
+    "serialising": {
+      "sentence": "Writing the graph and the findings out as Turtle or N-Triples."
+    },
+    "unaccounted": {
+      "sentence": "Seconds of the profiled convert that none of the stages accounts for, such as writing the document and the import into the graph."
+    }
+  }
+}

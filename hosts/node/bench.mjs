@@ -13,13 +13,14 @@ import { at, iriOf, Refusal } from "./host.mjs";
 const USAGE = `usage: node hosts/node/bench.mjs --inputs <bench/manifest.json> [--only <glob>[,<glob>...]] [--pull-requests] [options]
        node hosts/node/bench.mjs <adapter-dir> <document>... [--envelope <iri>] [options]
 options: [--vocabularies <directory>] [--samples <n>] [--timeout <seconds>] [--package <directory>]
-         [--executor compiled|spareval|both] [--out <file.json>] [--profile-samples <n>] [--other-load <text>] [--glossary <file.json>] [--digest-only]
+         [--executor compiled|spareval|both] [--out <file.json>] [--profile-samples <n>] [--other-load <text>] [--glossary <file.json>] [--engine-glossary <file.json>] [--digest-only]
          [--baseline <package directory>] [--baseline-adapter <adapter directory>] [--baseline-out <file.json>]
          [--allow-fallbacks]`;
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SAMPLE = join(HERE, "bench-sample.mjs");
 const DIGEST = join(HERE, "bench-digest.mjs");
+const ENGINE_GLOSSARY = join(HERE, "bench-glossary.json");
 const SECONDS = 6;
 // The most the module accepts: the timeout, not the budget, is what stops a convert.
 const MEMORY_BUDGET_MIB = 3072;
@@ -51,6 +52,7 @@ function parse(argv) {
     else if (argument === "--profile-samples") parsed.profileSamples = number(argument, next(), true);
     else if (argument === "--other-load") parsed.otherLoad = next();
     else if (argument === "--glossary") parsed.glossary = next();
+    else if (argument === "--engine-glossary") parsed.engineGlossary = next();
     else if (argument === "--digest-only") parsed.digestOnly = true;
     else if (argument === "--baseline") parsed.baseline = next();
     else if (argument === "--baseline-adapter") parsed.baselineAdapter = next();
@@ -69,9 +71,14 @@ function parse(argv) {
     throw new Refusal(USAGE);
   }
   if (fromManifest && parsed.envelope !== undefined) throw new Refusal(USAGE);
+  if (parsed.engineGlossary !== undefined && parsed.glossary === undefined) throw new Refusal(USAGE);
   if (parsed.baselineOut !== undefined && parsed.baseline === undefined && parsed.baselineAdapter === undefined)
     throw new Refusal(USAGE);
   return parsed;
+}
+
+function jsonAt(path) {
+  return JSON.parse(at(path, () => readFileSync(path, "utf8")));
 }
 
 function digested(path) {
@@ -112,6 +119,7 @@ function listed(parsed) {
         id: input.id,
         ...found,
         envelope: input.envelope,
+        description: input.description,
         measures: input.measures,
         timeout: parsed.timeout ?? input.timeoutSeconds,
       };
@@ -266,7 +274,7 @@ function written(value, digits) {
 }
 
 function spread(name, unit, kind, values, extra) {
-  const digits = unit === "s" ? SECONDS : unit === "{count}/s" ? 3 : 0;
+  const digits = unit === "s" ? SECONDS : 0;
   const entry = {
     name,
     unit,
@@ -309,43 +317,54 @@ function kebab(text) {
   return text.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
 }
 
-// What a row's name means, from the glossary: its name without the input or adapter in front, or that with
-// its last segment as `*`; a stage by its own name. A name the glossary lacks refuses the run.
-function meaning(name, glossary) {
+// What a row's name means: a stage by the engine's own sentence for it, any other row by the
+// specification's glossary under its name without the input or adapter in front, or that with its last
+// segment as `*`. A name neither glossary has refuses the run.
+function meaning(name, glossary, stages) {
   const tail = name.split("/").slice(1);
   const [head, ...rest] = tail;
-  const found =
-    head === "stage" && rest.length === 1
-      ? glossary.stages[rest[0]]
-      : (glossary.rows[tail.join("/")] ?? (rest.length > 0 ? glossary.rows[`${head}/*`] : undefined));
-  if (found === undefined) throw new Refusal(`${name}: the glossary has no sentence for it`);
+  if (head === "stage" && rest.length === 1) {
+    const stage = stages[rest[0]];
+    if (stage === undefined) throw new Refusal(`${name}: the engine's glossary has no sentence for it`);
+    return stage.specificationStage === undefined
+      ? stage.sentence
+      : `${stage.sentence} (Specification stage: ${stage.specificationStage}.)`;
+  }
+  const found = glossary.rows[tail.join("/")] ?? (rest.length > 0 ? glossary.rows[`${head}/*`] : undefined);
+  if (found === undefined) throw new Refusal(`${name}: the specification's glossary has no sentence for it`);
   return found;
 }
 
 // Each row's `extra`: its meaning, the input's description where it has one, and what the row said of itself.
-function explained(results, glossary, inputs) {
+function explained(results, glossary, stages, inputs) {
   if (glossary === undefined) return results;
-  const described = new Map(inputs.map(({ id }) => [id, glossary.inputs[id]]));
+  const described = new Map(inputs.map(({ id, description }) => [id, description]));
   return results.map((entry) => {
     const [first, ...tail] = entry.name.split("/");
     const input = ["convert/first", "records"].includes(tail.join("/")) ? described.get(first) : undefined;
-    const extra = [meaning(entry.name, glossary), input, entry.extra].filter((part) => part !== undefined).join(" ");
+    const extra = [meaning(entry.name, glossary, stages), input, entry.extra].filter((part) => part !== undefined).join(" ");
     return { ...entry, extra };
   });
 }
 
 // Always written, whatever the manifest's `measures` say: an input with no digest cannot be
 // checked for equivalence, and the stages are what a speed-up is looked for in.
-const ALWAYS = ["output", "stage", "records-per-second"];
+const ALWAYS = ["output", "stage"];
 
 function digestRows(input, side) {
   const digests = side.digests.get(input.id);
   return digests === undefined
     ? []
-    : ["graph", "findings"].map((kind) => ({
-        ...one(`${input.id}/output/${kind}`, "{count}", digests[kind].quads),
-        sha256: digests[kind].sha256,
-      }));
+    : ["graph", "findings"].map((kind) => {
+        const { quads, sha256, gaveUp } = digests[kind];
+        const row = one(
+          `${input.id}/output/${kind}`,
+          "{count}",
+          quads,
+          sha256 === undefined ? `UNVERIFIED: no SHA-256, because rdf-canonize stopped at its work limit: ${gaveUp}` : undefined,
+        );
+        return sha256 === undefined ? row : { ...row, sha256 };
+      });
 }
 
 function inputResults(input, side) {
@@ -397,12 +416,6 @@ function inputResults(input, side) {
       "By",
       "clock",
       samples.map(({ rss }) => rss),
-    ),
-    spread(
-      `${input.id}/records-per-second`,
-      "{count}/s",
-      "clock",
-      samples.map(({ converts: [first] }) => first.records / first.seconds),
     ),
   );
   const first = samples[0].converts[0];
@@ -483,7 +496,7 @@ function loadResults(side, inputs) {
   ];
 }
 
-function resultFile(side, inputs, commits, parsed, glossary) {
+function resultFile(side, inputs, commits, parsed, glossary, stages) {
   const engine =
     side.built.commit === undefined
       ? {}
@@ -494,6 +507,7 @@ function resultFile(side, inputs, commits, parsed, glossary) {
     results: explained(
       [...inputs.flatMap((input) => inputResults(input, side)), ...(side.digestOnly ? [] : loadResults(side, inputs))],
       glossary,
+      stages,
       inputs,
     ),
   };
@@ -561,8 +575,7 @@ function failure(outcome) {
 async function digestOutputs(side, input, directory) {
   const [graph, findings] = await Promise.all(["graph", "findings"].map((kind) => digestOf(join(directory, `${kind}.nt`))));
   side.digests.set(input.id, { graph, findings });
-  process.stderr.write(`${input.id} output ${graph.quads} + ${findings.quads} quads, graph sha256 ${graph.sha256}
-`);
+  process.stderr.write(`${input.id} output ${graph.quads} + ${findings.quads} quads, graph sha256 ${graph.sha256 ?? "none"}\n`);
   rmSync(join(directory, "graph.nt"), { force: true });
   rmSync(join(directory, "findings.nt"), { force: true });
 }
@@ -575,6 +588,12 @@ async function run(parsed) {
     if (adapter !== undefined) at(adapter, () => statSync(join(adapter, "ro-crate-metadata.json")));
   }
   if (parsed.vocabularies !== undefined) at(parsed.vocabularies, () => statSync(parsed.vocabularies));
+  const glossary = parsed.glossary === undefined ? undefined : jsonAt(parsed.glossary);
+  const stages = glossary === undefined ? undefined : jsonAt(parsed.engineGlossary ?? ENGINE_GLOSSARY).stages;
+  if (glossary !== undefined && parsed.manifest !== undefined) {
+    const undescribed = inputs.find(({ description }) => description === undefined);
+    if (undescribed !== undefined) throw new Refusal(`${parsed.manifest}: the input ${undescribed.id} has no description`);
+  }
   const ids = inputs.map(({ id }) => id);
   const twice = ids.find((id, index) => ids.indexOf(id) !== index);
   if (twice !== undefined) throw new Refusal(`two documents are both named ${twice}; rename one`);
@@ -646,15 +665,7 @@ async function run(parsed) {
     rmSync(scratch, { recursive: true, force: true });
   }
   const commits = parsed.vocabularies === undefined ? {} : checkoutCommit(parsed.vocabularies);
-  const glossary =
-    parsed.glossary === undefined ? undefined : JSON.parse(at(parsed.glossary, () => readFileSync(parsed.glossary, "utf8")));
-  if (glossary !== undefined && parsed.manifest !== undefined) {
-    for (const { id } of inputs) {
-      if (glossary.inputs[id] === undefined) process.stderr.write(`bench: ${parsed.glossary} has no description of the input ${id}
-`);
-    }
-  }
-  const files = sides.map((side) => resultFile(side, inputs, commits, parsed, glossary));
+  const files = sides.map((side) => resultFile(side, inputs, commits, parsed, glossary, stages));
   const writes = [
     [parsed.baselineOut, baselined ? files[0] : undefined],
     [parsed.out, files.at(-1)],
