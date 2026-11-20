@@ -58,7 +58,7 @@ export function faults(shipped, named) {
   for (const debug of made.sections.filter((section) => section.startsWith(".debug")))
     found.push(`the named module holds ${debug}: it would weigh as much again and name nothing more`);
   if (!kept.code.equals(made.code))
-    found.push("the code differs between the shipped module and the named one: a profile of it would be of other code");
+    found.push(`the code differs between the shipped module (${kept.code.length} bytes) and the named one (${made.code.length}): a profile of it would be of other code`);
   return found;
 }
 

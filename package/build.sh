@@ -94,7 +94,7 @@ rm -rf "$staged"
 if [ "$profile" = wasm ]; then
   features="--enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals --enable-reference-types --enable-multivalue"
   "$opt" -O3 -g --strip-producers $features "$staged/cascade_bridge_bg.wasm" -o "$staged/cascade_bridge_bg.names.wasm"
-  "$opt" --strip-debug --strip-producers $features "$staged/cascade_bridge_bg.names.wasm" -o "$staged/cascade_bridge_bg.wasm"
+  "$opt" -O3 --strip-debug --strip-producers $features "$staged/cascade_bridge_bg.wasm" -o "$staged/cascade_bridge_bg.wasm"
   node package/wasm-names.mjs "$staged/cascade_bridge_bg.wasm" "$staged/cascade_bridge_bg.names.wasm"
 fi
 # The declarations name Symbol.dispose, so they bring the library that declares it.
