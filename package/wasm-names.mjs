@@ -1,4 +1,4 @@
-// The module the package ships has no name section, and the module a profile is read from has one and the same code:
+// The module the package ships has no name section, and the module a profile is read from has one and every other section the same:
 // `node package/wasm-names.mjs <shipped.wasm> <named.wasm>` says where it does not.
 // `node package/wasm-names.mjs drop <custom section> <in.wasm> <out.wasm>` writes a module without one custom section.
 import { readFileSync, writeFileSync } from "node:fs";
@@ -23,6 +23,7 @@ export function inspect(bytes) {
   };
   const sections = [];
   let code = Buffer.alloc(0);
+  const bodies = new Map();
   let functionNames = 0;
   while (at < buffer.length) {
     const id = buffer[at++];
@@ -30,6 +31,7 @@ export function inspect(bytes) {
     if (id === CODE) code = buffer.subarray(at, end);
     if (id !== 0) {
       sections.push(String(id));
+      bodies.set(id, buffer.subarray(at, end));
     } else {
       const name = buffer.subarray(at + 1, at + 1 + buffer[at]).toString();
       sections.push(name);
@@ -45,7 +47,7 @@ export function inspect(bytes) {
     }
     at = end;
   }
-  return { sections, code, functionNames };
+  return { sections, code, bodies, functionNames };
 }
 
 export function withoutSection(bytes, dropped) {
@@ -81,8 +83,12 @@ export function faults(shipped, named) {
     found.push("the named module holds no function names: a profile of it would show wasm-function[N]");
   for (const debug of made.sections.filter((section) => section.startsWith(".debug")))
     found.push(`the named module holds ${debug}: it would weigh as much again and name nothing more`);
-  if (!kept.code.equals(made.code))
-    found.push(`the code differs between the shipped module (${kept.code.length} bytes) and the named one (${made.code.length}): a profile of it would be of other code`);
+  for (const id of new Set([...kept.bodies.keys(), ...made.bodies.keys()])) {
+    const a = kept.bodies.get(id);
+    const b = made.bodies.get(id);
+    if (a === undefined || b === undefined || !a.equals(b))
+      found.push(`${id === CODE ? "the code" : `section ${id}`} differs between the shipped module (${a?.length ?? "absent"} bytes) and the named one (${b?.length ?? "absent"}): a profile of it would be of other code`);
+  }
   return found;
 }
 

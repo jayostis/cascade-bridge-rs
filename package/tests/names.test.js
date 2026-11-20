@@ -68,6 +68,12 @@ test("a named module whose code differs from the shipped module's is a fault, as
   assert.match(found[0], /code differs/);
 });
 
+test("a named module whose other non-custom sections differ from the shipped module's is a fault, though its code is the same", () => {
+  const found = faults(module(), module({ names: ["lift"], extra: section(6, [0]) }));
+  assert.equal(found.length, 1);
+  assert.match(found[0], /section 6 differs/);
+});
+
 test("the command exits 0 on a pair with no fault and 1, saying what, on one with", () => {
   const folder = mkdtempSync(join(tmpdir(), "names-"));
   const write = (name, bytes) => {
