@@ -90,7 +90,10 @@ fi
 # Staged, so a run that stops partway leaves nothing that passes for a finished package.
 staged=$dist.partial
 rm -rf "$staged"
-"$bindgen_root/bin/wasm-bindgen" --target web --out-name cascade_bridge --out-dir "$staged" "$built"
+mkdir -p "$staged"
+node package/wasm-names.mjs drop target_features "$built" "$staged/linked.wasm"
+"$bindgen_root/bin/wasm-bindgen" --target web --out-name cascade_bridge --out-dir "$staged" "$staged/linked.wasm"
+rm "$staged/linked.wasm"
 if [ "$profile" = wasm ]; then
   features="--enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals --enable-reference-types --enable-multivalue"
   "$opt" -O3 -g --strip-producers $features "$staged/cascade_bridge_bg.wasm" -o "$staged/cascade_bridge_bg.names.wasm"

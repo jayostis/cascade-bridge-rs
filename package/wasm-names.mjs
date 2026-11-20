@@ -1,6 +1,7 @@
 // The module the package ships has no name section, and the module a profile is read from has one and the same code:
 // `node package/wasm-names.mjs <shipped.wasm> <named.wasm>` says where it does not.
-import { readFileSync } from "node:fs";
+// `node package/wasm-names.mjs drop <custom section> <in.wasm> <out.wasm>` writes a module without one custom section.
+import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const FUNCTION_NAMES = 1;
@@ -47,6 +48,29 @@ export function inspect(bytes) {
   return { sections, code, functionNames };
 }
 
+export function withoutSection(bytes, dropped) {
+  const buffer = Buffer.from(bytes);
+  const kept = [buffer.subarray(0, 8)];
+  let at = 8;
+  while (at < buffer.length) {
+    const start = at;
+    const id = buffer[at++];
+    let size = 0;
+    let shift = 0;
+    let byte;
+    do {
+      byte = buffer[at++];
+      size |= (byte & 127) << shift;
+      shift += 7;
+    } while (byte & 128);
+    const end = at + size;
+    const named = id === 0 && buffer.subarray(at + 1, at + 1 + buffer[at]).toString() === dropped;
+    if (!named) kept.push(buffer.subarray(start, end));
+    at = end;
+  }
+  return Buffer.concat(kept);
+}
+
 export function faults(shipped, named) {
   const kept = inspect(shipped);
   const made = inspect(named);
@@ -63,9 +87,14 @@ export function faults(shipped, named) {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const [shipped, named] = process.argv.slice(2);
-  if (shipped === undefined || named === undefined) {
-    process.stderr.write("usage: node package/wasm-names.mjs <shipped.wasm> <named.wasm>\n");
+  const [shipped, named, ...rest] = process.argv.slice(2);
+  if (shipped === "drop" && rest.length === 2) {
+    const [input, output] = rest;
+    writeFileSync(output, withoutSection(readFileSync(input), named));
+    process.exit(0);
+  }
+  if (shipped === undefined || named === undefined || shipped === "drop") {
+    process.stderr.write("usage: node package/wasm-names.mjs <shipped.wasm> <named.wasm> | drop <custom section> <in.wasm> <out.wasm>\n");
     process.exit(2);
   }
   const found = faults(readFileSync(shipped), readFileSync(named));
