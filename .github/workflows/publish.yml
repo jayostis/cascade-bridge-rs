@@ -97,19 +97,25 @@ jobs:
             native="$dir/assets/cascade-bridge-x86_64-unknown-linux-gnu"
             [ "$(find "$dir/assets" -name '*.tgz' ! -name cascade-bridge.tgz | wc -l)" = 1 ] || fail "build-$merged_head lacks its tarball, so $GITHUB_SHA is built"
             [ -f "$native" ] || fail "build-$merged_head lacks its binary, so $GITHUB_SHA is built"
+            named="$dir/assets/cascade_bridge_bg.names.wasm"
+            [ -f "$named" ] || fail "build-$merged_head lacks its named module, so $GITHUB_SHA is built"
             tarball=$(find "$dir/assets" -name '*.tgz' ! -name cascade-bridge.tgz)
             integrity=$(printf '%s\n' "$notes" | sed -n 's/^Integrity: *//p')
             native_sha256=$(printf '%s\n' "$notes" | sed -n 's/^Native SHA-256: *//p')
+            named_sha256=$(printf '%s\n' "$notes" | sed -n 's/^Names SHA-256: *//p')
             [ "sha512-$(openssl dgst -sha512 -binary "$tarball" | openssl base64 -A)" = "$integrity" ] ||
               fail "the tarball of build-$merged_head matches no Integrity in its notes, so $GITHUB_SHA is built"
             [ "$(sha256sum "$native" | cut -d' ' -f1)" = "$native_sha256" ] ||
               fail "the binary of build-$merged_head matches no Native SHA-256 in its notes, so $GITHUB_SHA is built"
+            [ "$(sha256sum "$named" | cut -d' ' -f1)" = "$named_sha256" ] ||
+              fail "the named module of build-$merged_head matches no Names SHA-256 in its notes, so $GITHUB_SHA is built"
             tar -xzf "$tarball" -C "$dir/unpacked" || fail "the tarball of build-$merged_head cannot be unpacked, so $GITHUB_SHA is built"
             node -e 'const m = require(process.argv[1]).cascadeBridge; process.exit(m?.profile === "wasm" && m?.dirty === false ? 0 : 1)' \
               "$dir/unpacked/package/package.json" || fail "build-$merged_head is not a clean wasm profile build, so $GITHUB_SHA is built"
             rm -rf package/dist
             if ! mv "$dir/unpacked/package" package/dist ||
               ! node package/stamp.mjs package/dist/package.json package/dist/package.json "$GITHUB_SHA" ||
+              ! cp "$named" package/dist/cascade_bridge_bg.names.wasm ||
               ! cp "$native" "$RUNNER_TEMP/cascade-bridge-x86_64-unknown-linux-gnu"; then
               rm -rf package/dist
               fail "the package of build-$merged_head cannot be restamped, so $GITHUB_SHA is built"
@@ -173,14 +179,15 @@ jobs:
           sources=$(node -e 'console.log(require("./package.json").cascadeBridge.sources)')
           native="$RUNNER_TEMP/cascade-bridge-x86_64-unknown-linux-gnu"
           native_sha256=$(sha256sum "$native" | cut -d' ' -f1)
+          named_sha256=$(sha256sum cascade_bridge_bg.names.wasm | cut -d' ' -f1)
           {
-            printf 'Commit: %s\nSources: %s\nIntegrity: %s\nNative SHA-256: %s\n' \
-              "$COMMIT" "$sources" "$integrity" "$native_sha256"
+            printf 'Commit: %s\nSources: %s\nIntegrity: %s\nNative SHA-256: %s\nNames SHA-256: %s\n' \
+              "$COMMIT" "$sources" "$integrity" "$native_sha256" "$named_sha256"
             if [ "$GITHUB_EVENT_NAME" = pull_request ]; then printf 'Pull request: %s\n' "$PULL"; fi
             if [ -n "${REUSED-}" ]; then printf 'Reused: build-%s\n' "$REUSED"; fi
           } > "$out/notes.txt"
           mv "$tarball" "$out/"
-          cp "$native" "$out/"
+          cp "$native" cascade_bridge_bg.names.wasm "$out/"
           echo built=true >> "$GITHUB_OUTPUT"
       - if: steps.pack.outputs.built == 'true'
         uses: actions/upload-artifact@v7
@@ -224,7 +231,7 @@ jobs:
             tarball=$(find "$out" -name '*.tgz')
             cp "$tarball" "$out/cascade-bridge.tgz"
             [ -s "$out/cascade-bridge.tgz" ] || { echo "release: $out/cascade-bridge.tgz is missing or empty, so $tag is not made" >&2; exit 1; }
-            gh release create "$tag" "$tarball" "$out/cascade-bridge.tgz" "$out/cascade-bridge-x86_64-unknown-linux-gnu" \
+            gh release create "$tag" "$tarball" "$out/cascade-bridge.tgz" "$out/cascade-bridge-x86_64-unknown-linux-gnu" "$out/cascade_bridge_bg.names.wasm" \
               --repo "$GITHUB_REPOSITORY" \
               --target "$COMMIT" \
               --title "$tag" \

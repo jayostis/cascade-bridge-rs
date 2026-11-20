@@ -74,6 +74,7 @@ fresh() {
   for made in cascade_bridge_bg.wasm cascade_bridge.js cascade_bridge.d.ts node.js LICENSE package.json; do
     [ -f "$dist/$made" ] || return 1
   done
+  [ "$profile" != wasm ] || [ -f "$dist/cascade_bridge_bg.names.wasm" ] || return 1
   [ ! "$built" -nt "$dist/cascade_bridge_bg.wasm" ] || return 1
   for hand in package/build.sh package/node.js package/package.json LICENSE; do
     [ ! "$hand" -nt "$dist/package.json" ] || return 1
@@ -89,11 +90,15 @@ fi
 # Staged, so a run that stops partway leaves nothing that passes for a finished package.
 staged=$dist.partial
 rm -rf "$staged"
-"$bindgen_root/bin/wasm-bindgen" --target web --out-name cascade_bridge --out-dir "$staged" "$built"
+mkdir -p "$staged"
+node package/wasm-names.mjs drop target_features "$built" "$staged/linked.wasm"
+"$bindgen_root/bin/wasm-bindgen" --target web --out-name cascade_bridge --out-dir "$staged" "$staged/linked.wasm"
+rm "$staged/linked.wasm"
 if [ "$profile" = wasm ]; then
-  "$opt" -O3 --strip-debug --strip-producers --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext \
-    --enable-mutable-globals --enable-reference-types --enable-multivalue \
-    "$staged/cascade_bridge_bg.wasm" -o "$staged/cascade_bridge_bg.wasm"
+  features="--enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals --enable-reference-types --enable-multivalue"
+  "$opt" -O3 -g --strip-producers $features "$staged/cascade_bridge_bg.wasm" -o "$staged/cascade_bridge_bg.names.wasm"
+  "$opt" -O3 --strip-debug --strip-producers $features "$staged/cascade_bridge_bg.wasm" -o "$staged/cascade_bridge_bg.wasm"
+  node package/wasm-names.mjs "$staged/cascade_bridge_bg.wasm" "$staged/cascade_bridge_bg.names.wasm"
 fi
 # The declarations name Symbol.dispose, so they bring the library that declares it.
 {

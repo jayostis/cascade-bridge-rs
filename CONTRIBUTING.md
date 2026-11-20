@@ -64,6 +64,10 @@ A pull request from this repository also gets a `build-<commit>` pre-release fro
 other repositories read when they depend on your change. A pull request from a fork gets none. The release holds the
 package twice, under its versioned name and as `cascade-bridge.tgz`, so a client downloads
 `https://github.com/jayostis/cascade-bridge-rs/releases/download/build-<commit>/cascade-bridge.tgz` without the API.
+Beside them is `cascade_bridge_bg.names.wasm`: the same module with its function names kept, for a CPU profile to name
+the Rust functions it shows (`node --cpu-prof` shows `wasm-function[N]` for the package's own). The package never holds
+it. To read a profile of a build, put it over `cascade_bridge_bg.wasm` in a scratch copy of the unpacked package, never in a runtime's build cache (the runtime's `build:package` copies that folder wholesale, so the package it made would ship the named module); `sh package/build.sh`
+makes it as `package/dist/cascade_bridge_bg.names.wasm`.
 
 Dependencies are pinned exactly and `Cargo.lock` is committed; [`CLAUDE.md`](CLAUDE.md) has the rule.
 
