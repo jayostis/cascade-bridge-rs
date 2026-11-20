@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { faults, inspect } from "../wasm-names.mjs";
+import { faults, inspect, withoutSection } from "../wasm-names.mjs";
 
 const script = fileURLToPath(new URL("../wasm-names.mjs", import.meta.url));
 
@@ -80,4 +80,22 @@ test("the command exits 0 on a pair with no fault and 1, saying what, on one wit
   const failed = spawnSync(process.execPath, [script, named, named], { encoding: "utf8" });
   assert.equal(failed.status, 1);
   assert.match(failed.stdout, /shipped module keeps its names/);
+});
+
+test("dropping a custom section leaves the other sections byte for byte, and a module without it as it was", () => {
+  const features = custom("target_features", [1, 0x2b, 4, ...text("simd")]);
+  const named = module({ names: ["lift"], extra: features });
+  const dropped = withoutSection(named, "target_features");
+  assert.deepEqual(inspect(dropped).sections, ["1", "3", "10", "name"]);
+  assert.deepEqual(Buffer.from(dropped), Buffer.from(module({ names: ["lift"] })));
+  assert.deepEqual(Buffer.from(withoutSection(module(), "target_features")), Buffer.from(module()));
+});
+
+test("the command's drop writes the module without the section it names", () => {
+  const folder = mkdtempSync(join(tmpdir(), "names-"));
+  const input = join(folder, "in.wasm");
+  const output = join(folder, "out.wasm");
+  writeFileSync(input, module({ names: ["lift"], extra: custom("target_features", [0]) }));
+  execFileSync(process.execPath, [script, "drop", "target_features", input, output]);
+  assert.deepEqual(inspect(readFileSync(output)).sections, ["1", "3", "10", "name"]);
 });
