@@ -456,7 +456,7 @@ pub fn test(
         },
     )?;
     let subject = ReportSubject {
-        iri: "https://github.com/jayostis/cascade-bridge-rs".to_owned(),
+        iri: "https://github.com/the-cascade-protocol/cascade-bridge-rs".to_owned(),
         name: NAME.to_owned(),
         version: VERSION.to_owned(),
     };

@@ -321,7 +321,7 @@ fn in_results(held: &BTreeMap<String, String>, file: &str) -> String {
 /// standard error what it converted. Its exit status is all a calling program learns: 0 with the
 /// graph written, 2 with nothing on standard output.
 ///
-/// [engine/command.md](https://github.com/jayostis/cascade-bridge-spec/blob/main/engine/command.md#convert)
+/// [engine/command.md](https://github.com/the-cascade-protocol/cascade-bridge-spec/blob/main/engine/command.md#convert)
 mod converting_a_document {
     use super::*;
 
@@ -863,7 +863,7 @@ mod validating_against_the_vocabulary {
 /// `test` runs every entry of an adapter's test manifest and prints each entry's outcome; an
 /// adapter's CI runs it. It exits 1 where an entry failed.
 ///
-/// [engine/command.md](https://github.com/jayostis/cascade-bridge-spec/blob/main/engine/command.md#test)
+/// [engine/command.md](https://github.com/the-cascade-protocol/cascade-bridge-spec/blob/main/engine/command.md#test)
 mod running_an_adapters_tests {
     use super::*;
 
@@ -1465,7 +1465,7 @@ mod telling_why_a_command_stopped {
 /// returned into a results directory; the specification's tooling runs its library cases through
 /// it. It judges nothing.
 ///
-/// [engine/command.md](https://github.com/jayostis/cascade-bridge-spec/blob/main/engine/command.md#library)
+/// [engine/command.md](https://github.com/the-cascade-protocol/cascade-bridge-spec/blob/main/engine/command.md#library)
 mod answering_a_calls_file {
     use super::*;
 

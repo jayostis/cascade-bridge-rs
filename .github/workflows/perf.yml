@@ -41,7 +41,7 @@ jobs:
         with:
           path: ${{ github.event.repository.name }}
           persist-credentials: false
-      - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
+      - uses: the-cascade-protocol/cascade-bridge-spec/.github/actions/start@main
         with:
           checkout-only: 'true'
       - uses: ./cascade-bridge-spec/.github/actions/perf
@@ -61,7 +61,7 @@ jobs:
         with:
           path: ${{ github.event.repository.name }}
           persist-credentials: false
-      - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
+      - uses: the-cascade-protocol/cascade-bridge-spec/.github/actions/start@main
         with:
           checkout-only: 'true'
       - uses: ./cascade-bridge-spec/.github/actions/perf
@@ -83,7 +83,7 @@ jobs:
         with:
           path: ${{ github.event.repository.name }}
           persist-credentials: false
-      - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
+      - uses: the-cascade-protocol/cascade-bridge-spec/.github/actions/start@main
         with:
           checkout-only: 'true'
       - uses: ./cascade-bridge-spec/.github/actions/perf

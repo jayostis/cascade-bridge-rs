@@ -1,5 +1,5 @@
-// tests/naming/ is a copy of tests/vectors/naming/ in jayostis/cascade-vocabulary and
-// tests/versioning/ of fixtures/versioning/ in jayostis/cascade-bridge-spec, the authorities.
+// tests/naming/ is a copy of tests/vectors/naming/ in the-cascade-protocol/cascade-vocabulary and
+// tests/versioning/ of fixtures/versioning/ in the-cascade-protocol/cascade-bridge-spec, the authorities.
 use super::{normalised_base_url, versioned};
 use crate::error::ErrorKind;
 use crate::fixtures::fixture;

@@ -1044,7 +1044,7 @@ mod measuring_for_the_benchmark {
 
         /// gives each stage a sentence and names only a row of the specification's stages as its specification stage
         #[test]
-        #[ignore = "reads a checkout of jayostis/cascade-bridge-spec beside this one"]
+        #[ignore = "reads a checkout of the-cascade-protocol/cascade-bridge-spec beside this one"]
         fn gives_each_stage_a_sentence_and_names_only_a_row_of_the_specifications_stages_as_its_specification_stage(
         ) {
             let table = std::fs::read_to_string(specification().join("engine/stages.md"))
@@ -1074,7 +1074,7 @@ mod measuring_for_the_benchmark {
 
         /// gives every name it writes a sentence from the specification's glossary or the engine's
         #[test]
-        #[ignore = "reads a checkout of jayostis/cascade-bridge-spec beside this one"]
+        #[ignore = "reads a checkout of the-cascade-protocol/cascade-bridge-spec beside this one"]
         fn gives_every_name_it_writes_a_sentence_from_the_specifications_glossary_or_the_engines() {
             let two = tiny().join("fixtures/in/two.xml");
             let glossary = specifications_glossary();
@@ -1094,7 +1094,7 @@ mod measuring_for_the_benchmark {
 
         /// refuses a run that writes a stage the engine's glossary has no sentence for, naming the row
         #[test]
-        #[ignore = "reads a checkout of jayostis/cascade-bridge-spec beside this one"]
+        #[ignore = "reads a checkout of the-cascade-protocol/cascade-bridge-spec beside this one"]
         fn refuses_a_run_that_writes_a_stage_the_engines_glossary_has_no_sentence_for_naming_the_row(
         ) {
             let scratch = scratch();
@@ -1130,7 +1130,7 @@ mod measuring_for_the_benchmark {
 
         /// gives the manifest's description of an input to the row of its first convert
         #[test]
-        #[ignore = "reads a checkout of jayostis/cascade-bridge-spec beside this one"]
+        #[ignore = "reads a checkout of the-cascade-protocol/cascade-bridge-spec beside this one"]
         fn gives_the_manifests_description_of_an_input_to_the_row_of_its_first_convert() {
             let (_scratch, manifest) = manifest_of_one_input(ONE_ITEM_SHA256);
             let glossary = specifications_glossary();
@@ -1148,7 +1148,7 @@ mod measuring_for_the_benchmark {
 
         /// writes rows without a description for a manifest that describes no input
         #[test]
-        #[ignore = "reads a checkout of jayostis/cascade-bridge-spec beside this one"]
+        #[ignore = "reads a checkout of the-cascade-protocol/cascade-bridge-spec beside this one"]
         fn writes_rows_without_a_description_for_a_manifest_that_describes_no_input() {
             let (_scratch, manifest) = manifest_of_one_input(ONE_ITEM_SHA256);
             let mut listing: serde_json::Value =
@@ -1174,7 +1174,7 @@ mod measuring_for_the_benchmark {
 
         /// refuses an undescribed input when the manifest describes another, naming it
         #[test]
-        #[ignore = "reads a checkout of jayostis/cascade-bridge-spec beside this one"]
+        #[ignore = "reads a checkout of the-cascade-protocol/cascade-bridge-spec beside this one"]
         fn refuses_an_undescribed_input_when_the_manifest_describes_another_naming_it() {
             let (_scratch, manifest) = manifest_of_one_input(ONE_ITEM_SHA256);
             let mut listing: serde_json::Value =
