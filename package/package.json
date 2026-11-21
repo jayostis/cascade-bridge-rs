@@ -5,7 +5,7 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jayostis/cascade-bridge-rs.git"
+    "url": "git+https://github.com/the-cascade-protocol/cascade-bridge-rs.git"
   },
   "type": "module",
   "exports": {

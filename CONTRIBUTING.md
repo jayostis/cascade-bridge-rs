@@ -1,7 +1,7 @@
 # Contributing to cascade-bridge-rs
 
 Thank you for helping. This is the Cascade Bridge for Rust: it runs Cascade Bridge Adapters. The contract is the
-[Cascade Bridge Specification](https://github.com/jayostis/cascade-bridge-spec), and this repository is one
+[Cascade Bridge Specification](https://github.com/the-cascade-protocol/cascade-bridge-spec), and this repository is one
 implementation of it, never a second statement of it. Where the specification is silent or wrong, the fix is a pull
 request there. [`CLAUDE.md`](CLAUDE.md) holds the rules a change here follows.
 
@@ -20,8 +20,8 @@ rustup target add wasm32-unknown-unknown
 ```
 
 Some checks read the real adapters from sibling folders:
-[cascade-bridge-adapter-ccda](https://github.com/jayostis/cascade-bridge-adapter-ccda) and
-[cascade-bridge-adapter-fhir-r4](https://github.com/jayostis/cascade-bridge-adapter-fhir-r4), cloned beside this
+[cascade-bridge-adapter-ccda](https://github.com/the-cascade-protocol/cascade-bridge-adapter-ccda) and
+[cascade-bridge-adapter-fhir-r4](https://github.com/the-cascade-protocol/cascade-bridge-adapter-fhir-r4), cloned beside this
 repository. The unit tests do not need them; one step of the `tests, format and lints` check does, and CI checks them out
 for it.
 
@@ -63,7 +63,7 @@ request.
 A pull request from this repository also gets a `build-<commit>` pre-release from the `publish` workflow, which is what
 other repositories read when they depend on your change. A pull request from a fork gets none. The release holds the
 package twice, under its versioned name and as `cascade-bridge.tgz`, so a client downloads
-`https://github.com/jayostis/cascade-bridge-rs/releases/download/build-<commit>/cascade-bridge.tgz` without the API.
+`https://github.com/the-cascade-protocol/cascade-bridge-rs/releases/download/build-<commit>/cascade-bridge.tgz` without the API.
 Beside them is `cascade_bridge_bg.names.wasm`: the same module with its function names kept, for a CPU profile to name
 the Rust functions it shows (`node --cpu-prof` shows `wasm-function[N]` for the package's own). The package never holds
 it. To read a profile of a build, put it over `cascade_bridge_bg.wasm` in a scratch copy of the unpacked package, never in a runtime's build cache (the runtime's `build:package` copies that folder wholesale, so the package it made would ship the named module); `sh package/build.sh`
@@ -85,7 +85,7 @@ Nothing here pins another repository. A change that must land here and in anothe
 a pair of pull requests, each naming the other in its description on a line of its own, with the full URL:
 
 ```
-Depends-On: https://github.com/jayostis/cascade-bridge-spec/pull/123
+Depends-On: https://github.com/the-cascade-protocol/cascade-bridge-spec/pull/123
 ```
 
 The `compatibility` check then runs both together, and `ready-to-merge` holds each until the other can merge. A person
@@ -97,7 +97,7 @@ A named pull request must be from a branch of its repository itself: one from a 
 without write access to the other repository asks a maintainer to open the counterpart.
 
 The full rules are in the specification's
-[`compatibility.md`](https://github.com/jayostis/cascade-bridge-spec/blob/main/compatibility.md).
+[`compatibility.md`](https://github.com/the-cascade-protocol/cascade-bridge-spec/blob/main/compatibility.md).
 
 ## Licence
 

@@ -1,4 +1,4 @@
-// tests/lift/ is a copy of fixtures/lift/ in jayostis/cascade-bridge-spec, the authority.
+// tests/lift/ is a copy of fixtures/lift/ in the-cascade-protocol/cascade-bridge-spec, the authority.
 use super::{lift_slice, lift_slice_breaking};
 use crate::fixtures::{fixture, fixture_names};
 use crate::rdf::canonical_lines;

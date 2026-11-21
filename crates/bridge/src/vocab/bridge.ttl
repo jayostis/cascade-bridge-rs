@@ -15,7 +15,7 @@
   dct:created "2026-09-06"^^xsd:date ;
   owl:versionInfo "v1-draft" ;
   rdfs:comment "DRAFT. No compatibility is promised before a numbered release."@en ;
-  rdfs:seeAlso <https://github.com/jayostis/cascade-bridge-spec> .
+  rdfs:seeAlso <https://github.com/the-cascade-protocol/cascade-bridge-spec> .
 
 # Adapter terms
 

@@ -20,14 +20,14 @@ mod passing_the_specifications_adapters {
 
     /// passes every entry of the synthetic XML adapter that a Bridge can judge
     #[test]
-    #[ignore = "reads a checkout of jayostis/cascade-bridge-spec beside this one"]
+    #[ignore = "reads a checkout of the-cascade-protocol/cascade-bridge-spec beside this one"]
     fn passes_every_entry_of_the_synthetic_xml_adapter_that_a_bridge_can_judge() {
         passes_every_entry_of("synthetic-adapter");
     }
 
     /// passes every entry of the synthetic JSON adapter that a Bridge can judge
     #[test]
-    #[ignore = "reads a checkout of jayostis/cascade-bridge-spec beside this one"]
+    #[ignore = "reads a checkout of the-cascade-protocol/cascade-bridge-spec beside this one"]
     fn passes_every_entry_of_the_synthetic_json_adapter_that_a_bridge_can_judge() {
         passes_every_entry_of("synthetic-json-adapter");
     }

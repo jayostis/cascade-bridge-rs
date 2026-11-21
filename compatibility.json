@@ -22,7 +22,7 @@
     }
   ],
   "mustPassWith": [
-    "https://github.com/jayostis/cascade-bridge-adapter-ccda",
-    "https://github.com/jayostis/cascade-bridge-adapter-fhir-r4"
+    "https://github.com/the-cascade-protocol/cascade-bridge-adapter-ccda",
+    "https://github.com/the-cascade-protocol/cascade-bridge-adapter-fhir-r4"
   ]
 }

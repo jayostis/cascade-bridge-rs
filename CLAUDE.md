@@ -1,7 +1,7 @@
 # cascade-bridge-rs — Agent Context
 
 The Cascade Bridge for Rust: it runs Cascade Bridge Adapters. The contract is
-the Cascade Bridge Specification, `jayostis/cascade-bridge-spec`, and this
+the Cascade Bridge Specification, `the-cascade-protocol/cascade-bridge-spec`, and this
 repository is one implementation of it, never a second statement of it.
 
 ## Documentation is a defect until proven otherwise
@@ -35,8 +35,8 @@ So:
   Implement that, not a paraphrase. Where the specification is silent or
   wrong, the fix is a pull request there, not a behaviour invented here.
 - **Nothing here pins another repository.** Which version of each
-  one a run uses is `jayostis/cascade-bridge-spec`'s
-  [`compatibility.md`](https://github.com/jayostis/cascade-bridge-spec/blob/main/compatibility.md).
+  one a run uses is `the-cascade-protocol/cascade-bridge-spec`'s
+  [`compatibility.md`](https://github.com/the-cascade-protocol/cascade-bridge-spec/blob/main/compatibility.md).
 - **Its own tests use the tiny adapters, `crates/bridge/tests/tiny-adapter`
   and `tiny-json-adapter`**, built so each outcome is reached by the smallest
   input that can reach it. The specification's synthetic adapters are

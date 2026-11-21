@@ -97,7 +97,7 @@ jobs:
       - run: cargo build --release --locked -p cascade-bridge-cli
         working-directory: ${{ github.event.repository.name }}
       # Checks the adapters and the repository each reads its vocabulary from out beside this one, and stops there.
-      - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
+      - uses: the-cascade-protocol/cascade-bridge-spec/.github/actions/start@main
         with:
           checkout-only: 'true'
       - name: every fixture of every adapter

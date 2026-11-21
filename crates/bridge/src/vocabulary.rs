@@ -12,7 +12,7 @@ use oxrdf::vocab::rdf;
 use oxrdf::{NamedOrBlankNodeRef, Quad, TermRef};
 use std::collections::{BTreeSet, HashSet};
 
-// vocab/bridge.ttl is a copy of vocab/bridge.ttl in jayostis/cascade-bridge-spec, the authority.
+// vocab/bridge.ttl is a copy of vocab/bridge.ttl in the-cascade-protocol/cascade-bridge-spec, the authority.
 const BRIDGE_VOCABULARY: &[u8] = include_bytes!("vocab/bridge.ttl");
 const BRIDGE_NAMESPACE: &str = "https://ns.cascadeprotocol.org/bridge/v1-draft#";
 

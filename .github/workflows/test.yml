@@ -40,7 +40,7 @@ jobs:
       - run: cargo test --locked
       - uses: actions/checkout@v7
         with:
-          repository: jayostis/cascade-bridge-adapter-ccda
+          repository: the-cascade-protocol/cascade-bridge-adapter-ccda
           path: cascade-bridge-adapter-ccda
           persist-credentials: false
       - run: bash .github/scripts/conformance-matches-adapter.sh cascade-bridge-adapter-ccda

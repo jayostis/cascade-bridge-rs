@@ -15,7 +15,7 @@ jobs:
       group: ready-${{ github.ref }}
       cancel-in-progress: true
     steps:
-      - uses: jayostis/cascade-bridge-spec/.github/actions/start@main
+      - uses: the-cascade-protocol/cascade-bridge-spec/.github/actions/start@main
         with:
           check: ready-to-merge
 
@@ -27,6 +27,6 @@ jobs:
       actions: write
       pull-requests: read
     steps:
-      - uses: jayostis/cascade-bridge-spec/.github/actions/rerun-when-edited@main
+      - uses: the-cascade-protocol/cascade-bridge-spec/.github/actions/rerun-when-edited@main
         with:
           workflows: ci.yml
